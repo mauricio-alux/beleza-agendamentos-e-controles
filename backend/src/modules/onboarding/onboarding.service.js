@@ -268,71 +268,86 @@ async function createTenant(input, authUser, requestContext = {}) {
   const plano = await planosService.validatePlan(input.plano_id);
   const email = normalizeEmail(input.tenant.email || authUser.email);
   const slug = await generateTenantSlug(input.tenant.nome_fantasia);
+  let tenant = null;
 
-  const tenant = await tenantsRepository.create({
-    plano_id: plano.id,
-    nome_fantasia: input.tenant.nome_fantasia,
-    razao_social: input.tenant.razao_social || null,
-    cpf_cnpj: input.tenant.cpf_cnpj ? onlyDigits(input.tenant.cpf_cnpj) : null,
-    email,
-    telefone: input.tenant.telefone ? onlyDigits(input.tenant.telefone) : null,
-    tipo_negocio: input.tenant.tipo_negocio || null,
-    slug,
-    status: 'trial',
-    timezone: input.tenant.timezone || 'America/Sao_Paulo',
-    endereco: input.tenant.endereco || {},
-    configuracoes: {
-      moeda: 'BRL',
-      idioma: 'pt-BR',
-      formato_agenda: 'semanal',
-      horario_inicio_padrao: '09:00',
-      horario_fim_padrao: '18:00',
-      intervalo_agendamento: 30,
-      fl_agendamento_online: true,
-      status_onboarding: 'em_andamento',
-      onboarding_version: 'foundation_core_v1'
-    }
-  });
-
-  const usuario = await usuariosRepository.create({
-    tenant_id: tenant.id,
-    auth_user_id: authUser.id,
-    nome: input.admin.nome,
-    email: normalizeEmail(authUser.email),
-    telefone: input.admin.telefone ? onlyDigits(input.admin.telefone) : null,
-    tipo_usuario: 'Administrador'
-  });
-
-  const assinatura = await subscriptionService.createTrial({
-    tenantId: tenant.id,
-    planoId: plano.id,
-    email: usuario.email
-  });
-
-  const estrutura = await createTenantStructure({
-    tenant,
-    usuario,
-    servicosIniciais: input.servicos_iniciais || []
-  });
-
-  await eventLogsService.logEvent('tenant_created', {
-    tenantId: tenant.id,
-    usuarioId: usuario.id,
-    ipAddress: requestContext.ipAddress,
-    userAgent: requestContext.userAgent,
-    payload: {
+  try {
+    tenant = await tenantsRepository.create({
       plano_id: plano.id,
+      nome_fantasia: input.tenant.nome_fantasia,
+      razao_social: input.tenant.razao_social || null,
+      cpf_cnpj: input.tenant.cpf_cnpj ? onlyDigits(input.tenant.cpf_cnpj) : null,
+      email,
+      telefone: input.tenant.telefone ? onlyDigits(input.tenant.telefone) : null,
+      tipo_negocio: input.tenant.tipo_negocio || null,
       slug,
-      auth_user_id: authUser.id
-    }
-  });
+      status: 'trial',
+      timezone: input.tenant.timezone || 'America/Sao_Paulo',
+      endereco: input.tenant.endereco || {},
+      configuracoes: {
+        moeda: 'BRL',
+        idioma: 'pt-BR',
+        formato_agenda: 'semanal',
+        horario_inicio_padrao: '09:00',
+        horario_fim_padrao: '18:00',
+        intervalo_agendamento: 30,
+        fl_agendamento_online: true,
+        status_onboarding: 'em_andamento',
+        onboarding_version: 'foundation_core_v1'
+      }
+    });
 
-  return {
-    tenant,
-    usuario,
-    assinatura,
-    ...estrutura
-  };
+    const usuario = await usuariosRepository.create({
+      tenant_id: tenant.id,
+      auth_user_id: authUser.id,
+      nome: input.admin.nome,
+      email: normalizeEmail(authUser.email),
+      telefone: input.admin.telefone ? onlyDigits(input.admin.telefone) : null,
+      tipo_usuario: 'Administrador'
+    });
+
+    const assinatura = await subscriptionService.createTrial({
+      tenantId: tenant.id,
+      planoId: plano.id,
+      email: usuario.email
+    });
+
+    const estrutura = await createTenantStructure({
+      tenant,
+      usuario,
+      servicosIniciais: input.servicos_iniciais || []
+    });
+
+    await eventLogsService.logEvent('tenant_created', {
+      tenantId: tenant.id,
+      usuarioId: usuario.id,
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+      payload: {
+        plano_id: plano.id,
+        slug,
+        auth_user_id: authUser.id
+      }
+    });
+
+    return {
+      tenant,
+      usuario,
+      assinatura,
+      ...estrutura
+    };
+  } catch (error) {
+    if (tenant?.id) {
+      await tenantsRepository.hardDelete(tenant.id).catch((rollbackError) => {
+        console.error('Failed to rollback tenant provisioning', {
+          tenantId: tenant.id,
+          authUserId: authUser.id,
+          error: rollbackError.message
+        });
+      });
+    }
+
+    throw error;
+  }
 }
 
 async function getStatus(tenantId) {

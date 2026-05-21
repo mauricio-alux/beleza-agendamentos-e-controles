@@ -1,27 +1,19 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Metadata } from "next";
+import { RegisterCard } from "@/components/cadastro/RegisterCard";
+import { RegisterForm } from "@/components/cadastro/RegisterForm";
+import { RegisterLayout } from "@/components/cadastro/RegisterLayout";
+
+export const metadata: Metadata = {
+  title: "Cadastro | Bellory",
+  description: "Crie sua conta Bellory e ative seu salao com trial, tenant e onboarding automaticos."
+};
 
 export default function CadastroPage() {
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle className="font-display text-3xl">Cadastro em breve</CardTitle>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Esta tela será conectada ao endpoint de onboarding do Bellory. A landing já está preparada para essa integração.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <Button asChild>
-            <Link href="/">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar para a landing
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-    </main>
+    <RegisterLayout>
+      <RegisterCard>
+        <RegisterForm />
+      </RegisterCard>
+    </RegisterLayout>
   );
 }

@@ -59,6 +59,19 @@ async function update(id, payload) {
   return data;
 }
 
+async function hardDelete(id) {
+  const { error } = await supabaseAdmin
+    .from('usuarios')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true };
+}
+
 async function listByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('usuarios')
@@ -79,5 +92,6 @@ module.exports = {
   findByEmail,
   create,
   update,
+  hardDelete,
   listByTenant
 };

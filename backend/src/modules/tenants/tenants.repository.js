@@ -44,6 +44,19 @@ async function findById(id) {
   return data;
 }
 
+async function hardDelete(id) {
+  const { error } = await supabaseAdmin
+    .from('tenants')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true };
+}
+
 async function update(id, payload) {
   const { data, error } = await supabaseAdmin
     .from('tenants')
@@ -110,6 +123,7 @@ module.exports = {
   slugExists,
   create,
   findById,
+  hardDelete,
   update,
   findSettings,
   updateSettings,

@@ -1,22 +1,30 @@
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const env = require('./env');
 
-const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+const options = {
+  realtime: {
+    transport: WebSocket
+  },
   auth: { persistSession: false, autoRefreshToken: false }
+};
+
+const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+  ...options
 });
 
 const supabaseAdmin = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false }
+  ...options
 });
 
 function createSupabaseForToken(accessToken) {
   return createClient(env.supabaseUrl, env.supabaseAnonKey, {
+    ...options,
     global: {
       headers: {
         Authorization: `Bearer ${accessToken}`
       }
-    },
-    auth: { persistSession: false, autoRefreshToken: false }
+    }
   });
 }
 

@@ -48,6 +48,73 @@ function formatSessionResponse(session, authUser, usuario, tenant) {
   };
 }
 
+async function findAuthUserByEmail(email) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 10) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+
+    if (error) {
+      throw new AppError('Nao foi possivel verificar o email no provedor de autenticacao', 400, 'AUTH_EMAIL_CHECK_FAILED');
+    }
+
+    const user = data.users.find((item) => normalizeEmail(item.email) === email);
+    if (user) {
+      return user;
+    }
+
+    if (data.users.length < perPage) {
+      return null;
+    }
+
+    page += 1;
+  }
+
+  return null;
+}
+
+async function rollbackAuthUser(authUserId, reason = 'register_failed') {
+  if (!authUserId) {
+    return;
+  }
+
+  console.info('Rolling back Supabase Auth user', { authUserId, reason });
+
+  const partialUsuario = await usuariosRepository.findByAuthUserId(authUserId).catch((error) => {
+    console.error('Failed to inspect partial usuario during rollback', {
+      authUserId,
+      error: error.message
+    });
+    return null;
+  });
+
+  if (partialUsuario?.tenant_id) {
+    await tenantsRepository.hardDelete(partialUsuario.tenant_id).catch((error) => {
+      console.error('Failed to rollback tenant during auth rollback', {
+        authUserId,
+        tenantId: partialUsuario.tenant_id,
+        error: error.message
+      });
+    });
+  } else if (partialUsuario?.id) {
+    await usuariosRepository.hardDelete(partialUsuario.id).catch((error) => {
+      console.error('Failed to rollback usuario during auth rollback', {
+        authUserId,
+        usuarioId: partialUsuario.id,
+        error: error.message
+      });
+    });
+  }
+
+  await supabaseAdmin.auth.admin.deleteUser(authUserId).catch((error) => {
+    console.error('Failed to rollback Supabase Auth user', {
+      authUserId,
+      error: error.message
+    });
+  });
+}
+
 async function getAuthenticatedUser(authUser) {
   const usuario = await usuariosRepository.findByAuthUserId(authUser.id);
 
@@ -90,6 +157,7 @@ async function validateToken(accessToken) {
 
 async function register(input, requestContext = {}) {
   const email = normalizeEmail(input.email);
+  const telefone = input.telefone ? onlyDigits(input.telefone) : null;
 
   await planosService.validatePlan(input.plano_id);
 
@@ -98,24 +166,60 @@ async function register(input, requestContext = {}) {
     throw new AppError('Email ja cadastrado', 409, 'USER_EMAIL_ALREADY_EXISTS');
   }
 
-  const { data, error } = await supabase.auth.signUp({
+  const existingAuthUser = await findAuthUserByEmail(email);
+  if (existingAuthUser) {
+    const linkedUsuario = await usuariosRepository.findByAuthUserId(existingAuthUser.id);
+
+    if (linkedUsuario) {
+      throw new AppError('Email ja cadastrado', 409, 'USER_EMAIL_ALREADY_EXISTS');
+    }
+
+    console.info('Removing orphan Supabase Auth user before register retry', {
+      authUserId: existingAuthUser.id,
+      email
+    });
+
+    await rollbackAuthUser(existingAuthUser.id, 'orphan_auth_retry');
+  }
+
+  console.info('Creating confirmed Supabase Auth user', { email });
+
+  const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: input.senha,
-    options: {
-      data: {
-        nome: input.nome || null,
-        telefone: input.telefone ? onlyDigits(input.telefone) : null
-      }
+    email_confirm: true,
+    user_metadata: {
+      nome: input.nome || null,
+      telefone
     }
   });
 
-  if (error) {
-    throw new AppError(error.message, 400, 'AUTH_REGISTER_FAILED');
+  if (createError) {
+    console.error('Supabase Auth register failed', {
+      email,
+      code: createError.code,
+      status: createError.status,
+      message: createError.message
+    });
+
+    const message = createError.message || 'Nao foi possivel criar o usuario de autenticacao';
+    if (/rate limit|too many/i.test(message)) {
+      throw new AppError('Limite temporario do provedor de autenticacao. Tente novamente em alguns minutos.', 429, 'AUTH_RATE_LIMIT');
+    }
+
+    const code = /already|registered|exists|email/i.test(message)
+      ? 'USER_EMAIL_ALREADY_EXISTS'
+      : 'AUTH_REGISTER_FAILED';
+    const statusCode = code === 'USER_EMAIL_ALREADY_EXISTS' ? 409 : 400;
+
+    throw new AppError(message, statusCode, code);
   }
 
-  if (!data.user) {
+  if (!createData.user) {
     throw new AppError('Nao foi possivel criar o usuario de autenticacao', 400, 'AUTH_USER_NOT_CREATED');
   }
+
+  const authUser = createData.user;
 
   try {
     const onboarding = await onboardingService.createTenant(
@@ -124,18 +228,29 @@ async function register(input, requestContext = {}) {
         tenant: {
           ...input.tenant,
           email: input.tenant.email || email,
-          telefone: input.tenant.telefone || input.telefone || null
+          telefone: input.tenant.telefone || telefone || null
         },
         admin: {
           nome: input.nome,
-          telefone: input.telefone || null
+          telefone
         },
         atua_como_profissional: input.atua_como_profissional,
         servicos_iniciais: input.servicos_iniciais || []
       },
-      data.user,
+      authUser,
       requestContext
     );
+
+    console.info('Signing in newly registered user', { email, authUserId: authUser.id });
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
+      email,
+      password: input.senha
+    });
+
+    if (sessionError || !sessionData.session) {
+      throw new AppError('Usuario criado, mas nao foi possivel iniciar a sessao', 400, 'AUTH_SESSION_NOT_CREATED');
+    }
 
     await eventLogsService.logEvent('user_registered', {
       tenantId: onboarding.tenant.id,
@@ -143,27 +258,29 @@ async function register(input, requestContext = {}) {
       ipAddress: requestContext.ipAddress,
       userAgent: requestContext.userAgent,
       payload: {
-        auth_user_id: data.user.id,
+        auth_user_id: authUser.id,
         email
       }
     });
 
+    console.info('Register completed', {
+      email,
+      authUserId: authUser.id,
+      tenantId: onboarding.tenant.id,
+      usuarioId: onboarding.usuario.id
+    });
+
     return {
-      access_token: data.session?.access_token || null,
-      refresh_token: data.session?.refresh_token || null,
-      expires_at: data.session?.expires_at || null,
-      auth_user: data.user,
-      session: data.session,
+      access_token: sessionData.session.access_token,
+      refresh_token: sessionData.session.refresh_token,
+      expires_at: sessionData.session.expires_at || null,
+      auth_user: sessionData.user || authUser,
+      session: sessionData.session,
       onboarding,
       onboarding_required: false
     };
   } catch (provisioningError) {
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch((deleteError) => {
-      console.error('Failed to rollback Supabase Auth user', {
-        authUserId: data.user.id,
-        error: deleteError
-      });
-    });
+    await rollbackAuthUser(authUser.id, 'register_provisioning_failed');
 
     throw provisioningError;
   }

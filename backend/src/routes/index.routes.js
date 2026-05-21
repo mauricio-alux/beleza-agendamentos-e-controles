@@ -6,6 +6,7 @@ const tenantsRoutes = require('./tenants.routes');
 const tenantRoutes = require('./tenant.routes');
 const usuariosRoutes = require('./usuarios.routes');
 const subscriptionRoutes = require('./subscription.routes');
+const agendaRoutes = require('./agenda.routes');
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/tenants', tenantsRoutes);
 router.use('/tenant', tenantRoutes);
 router.use('/usuarios', usuariosRoutes);
 router.use('/subscription', subscriptionRoutes);
+router.use('/agenda', agendaRoutes);
 
 module.exports = router;
