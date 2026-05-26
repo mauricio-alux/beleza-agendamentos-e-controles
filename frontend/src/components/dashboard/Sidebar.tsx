@@ -15,7 +15,7 @@ export function Sidebar() {
         <BrandLogo />
         <nav className="space-y-1">
           {dashboardNavItems.map(({ label, href, icon: Icon }) => {
-            const isActive = pathname === href;
+            const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
             return (
               <Link

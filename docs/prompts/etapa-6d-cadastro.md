@@ -351,5 +351,4 @@ Build aprovado. Também validei a rota local:
 ```text
 http://127.0.0.1:3001/cadastro
 ```
-
 A rota respondeu `200 OK`. O teste completo de criação real depende do backend/Supabase estar rodando com planos ativos em `/public/plans`.

@@ -1,10 +1,23 @@
 import Link from "next/link";
 import { quickActions } from "@/components/dashboard/navigation";
+import type { DashboardRoleConfig } from "@/services/dashboard.service";
 
-export function QuickActions() {
+type QuickActionsProps = {
+  roleConfig?: DashboardRoleConfig;
+};
+
+export function QuickActions({ roleConfig }: QuickActionsProps) {
+  const actions = quickActions.filter((action) => {
+    if (!roleConfig) return true;
+    if (action.href === "/campanhas") return roleConfig.permissions.canViewCampaigns;
+    if (action.href === "/financeiro") return roleConfig.permissions.canViewFinancials;
+    if (action.href === "/agenda/novo") return roleConfig.permissions.canManageAppointments;
+    return true;
+  });
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {quickActions.map(({ label, href, icon: Icon }) => (
+      {actions.map(({ label, href, icon: Icon }) => (
         <Link
           key={label}
           href={href}

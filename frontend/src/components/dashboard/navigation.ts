@@ -23,7 +23,7 @@ export const dashboardNavItems = [
 
 export const quickActions = [
   { label: "Novo agendamento", href: "/agenda", icon: CalendarDays },
-  { label: "Novo cliente", href: "/clientes", icon: UsersRound },
+  { label: "Novo cliente", href: "/clientes?novo=1", icon: UsersRound },
   { label: "Novo servico", href: "/servicos", icon: Scissors },
   { label: "Nova campanha", href: "/campanhas", icon: Sparkles }
 ];

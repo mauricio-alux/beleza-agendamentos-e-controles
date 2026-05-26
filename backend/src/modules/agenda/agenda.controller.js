@@ -5,7 +5,9 @@ const {
   createAgendaSchema,
   updateAgendaSchema,
   cancelAgendaSchema,
-  rescheduleAgendaSchema
+  rescheduleAgendaSchema,
+  agendaIntelligenceSchema,
+  professionalScheduleSchema
 } = require('./agenda.validators');
 
 async function meta(req, res) {
@@ -22,6 +24,29 @@ async function disponibilidade(req, res) {
 async function list(req, res) {
   const input = listAgendaSchema.parse(req.query);
   const data = await agendaService.list(req.tenantId, input);
+  return res.json({ data });
+}
+
+async function analytics(req, res) {
+  const input = agendaIntelligenceSchema.parse(req.query);
+  const data = await agendaService.getOperationalAnalytics(req.tenantId, input);
+  return res.json({ data });
+}
+
+async function signals(req, res) {
+  const input = agendaIntelligenceSchema.parse(req.query);
+  const data = await agendaService.getSignals(req.tenantId, input);
+  return res.json({ data });
+}
+
+async function getProfessionalSchedule(req, res) {
+  const data = await agendaService.getProfessionalSchedule(req.tenantId, req.params.id);
+  return res.json({ data });
+}
+
+async function updateProfessionalSchedule(req, res) {
+  const input = professionalScheduleSchema.parse(req.body);
+  const data = await agendaService.updateProfessionalSchedule(req.tenantId, req.params.id, input);
   return res.json({ data });
 }
 
@@ -62,6 +87,10 @@ async function reschedule(req, res) {
 module.exports = {
   meta,
   disponibilidade,
+  analytics,
+  signals,
+  getProfessionalSchedule,
+  updateProfessionalSchedule,
   list,
   getById,
   create,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, ShieldCheck, UserRound } from "lucide-react";
+import { Pencil, Plus, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { CompletionCard } from "@/components/onboarding/CompletionCard";
 import { OnboardingLayout } from "@/components/onboarding/OnboardingLayout";
@@ -9,6 +9,12 @@ import { WelcomeCard } from "@/components/onboarding/WelcomeCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  SERVICE_CATEGORIES,
+  SERVICE_CATEGORY_LABELS,
+  SERVICE_DURATION_OPTIONS,
+  type ServiceCategory
+} from "@/constants/service-categories";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { cn } from "@/lib/utils";
@@ -146,49 +152,219 @@ function OperationStep() {
 }
 
 function ServicesStep() {
-  const { data, updateService, addService } = useOnboarding();
+  const { data, updateService, upsertService, removeService } = useOnboarding();
   const [serviceName, setServiceName] = useState("");
+  const [duration, setDuration] = useState(45);
+  const [customDuration, setCustomDuration] = useState("");
+  const [price, setPrice] = useState("");
+  const [category, setCategory] = useState<ServiceCategory | "">("");
+  const [editingService, setEditingService] = useState<string | null>(null);
 
   function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    addService(serviceName);
+    const finalDuration = duration === 0 ? Number(customDuration) : duration;
+    upsertService({
+      nome: serviceName,
+      duracao_minutos: finalDuration || data.duracao_padrao_servico,
+      preco: parseCurrency(price),
+      categoria: category,
+      custom: true,
+      selected: true
+    });
     setServiceName("");
+    setDuration(45);
+    setCustomDuration("");
+    setPrice("");
+    setCategory("");
+  }
+
+  function startEdit(serviceNameValue: string) {
+    setEditingService((current) => (current === serviceNameValue ? null : serviceNameValue));
   }
 
   return (
     <SetupCard title="Servicos iniciais" description="Selecione o que ja faz sentido para seu salao comecar hoje.">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         {data.services.map((service) => (
-          <button
+          <div
             key={service.nome}
-            type="button"
-            onClick={() => updateService(service.nome, !service.selected)}
             className={cn(
-              "rounded-2xl border p-4 text-left transition duration-200",
+              "rounded-2xl border p-4 transition duration-200",
               service.selected
                 ? "border-primary/40 bg-secondary shadow-sm"
                 : "border-border bg-background hover:border-primary/30"
             )}
           >
-            <span className="block text-base font-bold text-foreground">{service.nome}</span>
-            <span className="mt-1 block text-sm text-muted-foreground">{service.duracao_minutos} minutos</span>
-          </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <button
+                type="button"
+                onClick={() => updateService(service.nome, !service.selected)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className="block text-base font-bold text-foreground">{service.nome}</span>
+                <span className="mt-1 block text-sm text-muted-foreground">
+                  {service.duracao_minutos} min · {formatCurrency(service.preco)}
+                  {service.categoria ? ` · ${SERVICE_CATEGORY_LABELS[service.categoria]}` : ""}
+                </span>
+              </button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="icon" onClick={() => startEdit(service.nome)} aria-label="Editar servico">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.nome)} aria-label="Remover servico">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {editingService === service.nome ? (
+              <ServiceInlineEditor
+                service={service}
+                onClose={() => setEditingService(null)}
+                onSave={(nextService) => {
+                  upsertService(nextService);
+                  setEditingService(null);
+                }}
+              />
+            ) : null}
+          </div>
         ))}
       </div>
 
-      <form onSubmit={handleAdd} className="mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-background p-3 sm:flex-row">
-        <Input
-          value={serviceName}
-          onChange={(event) => setServiceName(event.target.value)}
-          placeholder="Adicionar outro servico"
-        />
-        <Button type="submit" variant="accent" className="sm:w-auto">
+      <form onSubmit={handleAdd} className="mt-5 grid gap-3 rounded-2xl border border-border bg-background p-3 lg:grid-cols-[1.4fr_0.9fr_0.9fr_1fr_auto]">
+        <Input value={serviceName} onChange={(event) => setServiceName(event.target.value)} placeholder="Nome do servico" />
+        <DurationSelect duration={duration} customDuration={customDuration} onDurationChange={setDuration} onCustomDurationChange={setCustomDuration} />
+        <Input value={price} onChange={(event) => setPrice(formatCurrencyInput(event.target.value))} placeholder="R$ 80,00" />
+        <CategorySelect value={category} onChange={setCategory} />
+        <Button type="submit" variant="accent">
           <Plus className="h-4 w-4" />
           Adicionar
         </Button>
       </form>
     </SetupCard>
   );
+}
+
+type ServiceEditorPayload = {
+  nome: string;
+  duracao_minutos: number;
+  preco: number;
+  categoria?: ServiceCategory | "";
+  custom?: boolean;
+  selected?: boolean;
+};
+
+function ServiceInlineEditor({
+  service,
+  onSave,
+  onClose
+}: {
+  service: ServiceEditorPayload;
+  onSave: (service: ServiceEditorPayload) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(service.nome);
+  const [duration, setDuration] = useState(
+    SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as (typeof SERVICE_DURATION_OPTIONS)[number])
+      ? service.duracao_minutos
+      : 0
+  );
+  const [customDuration, setCustomDuration] = useState(
+    SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as (typeof SERVICE_DURATION_OPTIONS)[number])
+      ? ""
+      : String(service.duracao_minutos)
+  );
+  const [price, setPrice] = useState(formatCurrency(service.preco));
+  const [category, setCategory] = useState<ServiceCategory | "">(service.categoria || "");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSave({
+      nome: name,
+      duracao_minutos: duration === 0 ? Number(customDuration) : duration,
+      preco: parseCurrency(price),
+      categoria: category,
+      custom: service.custom,
+      selected: service.selected
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-2xl border border-white/70 bg-white/80 p-3 lg:grid-cols-[1.4fr_0.9fr_0.9fr_1fr_auto_auto]">
+      <Input value={name} onChange={(event) => setName(event.target.value)} />
+      <DurationSelect duration={duration} customDuration={customDuration} onDurationChange={setDuration} onCustomDurationChange={setCustomDuration} />
+      <Input value={price} onChange={(event) => setPrice(formatCurrencyInput(event.target.value))} />
+      <CategorySelect value={category} onChange={setCategory} />
+      <Button type="submit" variant="accent">Salvar</Button>
+      <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Fechar edicao">
+        <X className="h-4 w-4" />
+      </Button>
+    </form>
+  );
+}
+
+function DurationSelect({
+  duration,
+  customDuration,
+  onDurationChange,
+  onCustomDurationChange
+}: {
+  duration: number;
+  customDuration: string;
+  onDurationChange: (value: number) => void;
+  onCustomDurationChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <select
+        value={duration}
+        onChange={(event) => onDurationChange(Number(event.target.value))}
+        className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+      >
+        {SERVICE_DURATION_OPTIONS.map((option) => (
+          <option key={option} value={option}>{option} min</option>
+        ))}
+        <option value={0}>Personalizado</option>
+      </select>
+      {duration === 0 ? (
+        <Input
+          type="number"
+          min={1}
+          value={customDuration}
+          onChange={(event) => onCustomDurationChange(event.target.value)}
+          placeholder="75 min"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CategorySelect({ value, onChange }: { value: ServiceCategory | ""; onChange: (value: ServiceCategory | "") => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value as ServiceCategory | "")}
+      className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+    >
+      <option value="">Categoria opcional</option>
+      {SERVICE_CATEGORIES.map((category) => (
+        <option key={category} value={category}>{SERVICE_CATEGORY_LABELS[category]}</option>
+      ))}
+    </select>
+  );
+}
+
+function parseCurrency(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits ? Number(digits) / 100 : 0;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
+}
+
+function formatCurrencyInput(value: string) {
+  return formatCurrency(parseCurrency(value));
 }
 
 function ProfessionalStep() {

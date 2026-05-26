@@ -1,0 +1,45 @@
+"use client";
+
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+type SettingsStateProps = {
+  type: "loading" | "error" | "empty";
+  title?: string;
+  description?: string;
+  onRetry?: () => void;
+};
+
+export function SettingsState({ type, title, description, onRetry }: SettingsStateProps) {
+  if (type === "loading") {
+    return (
+      <div className="grid min-h-[360px] place-items-center rounded-[1.5rem] border border-white/80 bg-white/85 p-6 shadow-soft">
+        <div className="flex items-center gap-3 text-sm font-semibold text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          Carregando configuracoes...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid min-h-[320px] place-items-center rounded-[1.5rem] border border-white/80 bg-white/90 p-6 text-center shadow-soft">
+      <div className="max-w-md space-y-4">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary text-primary">
+          <AlertCircle className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-lg font-bold text-foreground">{title || "Nada para mostrar"}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {description || "Esta area ainda nao esta disponivel para o seu perfil."}
+          </p>
+        </div>
+        {onRetry ? (
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Tentar novamente
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}

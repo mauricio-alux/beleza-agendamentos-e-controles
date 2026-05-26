@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, LogOut, Search, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,11 +41,13 @@ export function TopHeader() {
         <Button variant="outline" size="icon" aria-label="Notificacoes">
           <Bell className="h-4 w-4" />
         </Button>
-        <Button variant="outline" className="hidden sm:inline-flex">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-secondary text-xs font-bold text-primary">
-            {initials || <UserRound className="h-4 w-4" />}
-          </span>
-          Perfil
+        <Button asChild variant="outline" className="hidden sm:inline-flex">
+          <Link href="/configuracoes/perfil">
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-secondary text-xs font-bold text-primary">
+              {initials || <UserRound className="h-4 w-4" />}
+            </span>
+            Perfil
+          </Link>
         </Button>
         <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sair">
           <LogOut className="h-4 w-4" />

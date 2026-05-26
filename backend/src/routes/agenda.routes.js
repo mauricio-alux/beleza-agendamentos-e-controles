@@ -11,6 +11,10 @@ router.use(authMiddleware, tenantMiddleware, requireValidSubscription);
 
 router.get('/meta', asyncHandler(agendaController.meta));
 router.get('/disponibilidade', asyncHandler(agendaController.disponibilidade));
+router.get('/analytics', asyncHandler(agendaController.analytics));
+router.get('/signals', asyncHandler(agendaController.signals));
+router.get('/profissionais/:id/agenda', asyncHandler(agendaController.getProfessionalSchedule));
+router.patch('/profissionais/:id/agenda', asyncHandler(agendaController.updateProfessionalSchedule));
 router.get('/', asyncHandler(agendaController.list));
 router.get('/:id', asyncHandler(agendaController.getById));
 router.post('/', asyncHandler(agendaController.create));

@@ -1,35 +1,25 @@
 "use client";
 
-import {
-  CalendarDays,
-  Clock3,
-  Loader2,
-  Megaphone,
-  TrendingUp,
-  UsersRound,
-  WalletCards,
-  WandSparkles
-} from "lucide-react";
+import { RefreshCcw, WandSparkles } from "lucide-react";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { AgendaPreview } from "@/components/dashboard/AgendaPreview";
+import { CampaignPreview } from "@/components/dashboard/CampaignPreview";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
+import { DashboardLoadingState } from "@/components/dashboard/DashboardLoadingState";
+import { DashboardWidgetsRegistry } from "@/components/dashboard/DashboardWidgetsRegistry";
 import { EmptyState } from "@/components/dashboard/EmptyState";
-import { KPIWidget } from "@/components/dashboard/KPIWidget";
+import { NextAppointments } from "@/components/dashboard/NextAppointments";
+import { NotificationsCenter } from "@/components/dashboard/NotificationsCenter";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
-import { useDashboard } from "@/hooks/useDashboard";
+import { Button } from "@/components/ui/button";
+import { useDashboardContext } from "@/context/DashboardProvider";
 
 export function DashboardHome() {
-  const { snapshot, isLoading, error } = useDashboard();
+  const { snapshot, isLoading, isRefreshing, error, lastUpdatedAt, refresh } = useDashboardContext();
 
   if (isLoading) {
-    return (
-      <div className="grid min-h-[52vh] place-items-center">
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-white px-5 py-4 text-sm font-semibold text-muted-foreground shadow-soft">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          Carregando indicadores...
-        </div>
-      </div>
-    );
+    return <DashboardLoadingState />;
   }
 
   if (!snapshot || error) {
@@ -49,84 +39,59 @@ export function DashboardHome() {
     <div className="grid gap-5">
       <WelcomeBanner snapshot={snapshot} />
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Atualizacao operacional</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {lastUpdatedAt ? `Ultima leitura as ${lastUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Polling leve ativo"}
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={refresh} disabled={isRefreshing}>
+          <RefreshCcw className={isRefreshing ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
+          Atualizar
+        </Button>
+      </div>
+
       <DashboardCard title="Acoes rapidas" description="Comece pelas operacoes mais frequentes do salao.">
-        <QuickActions />
+        <QuickActions roleConfig={snapshot.roleConfig} />
       </DashboardCard>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KPIWidget
-          label="Faturamento hoje"
-          value={snapshot.kpis.faturamentoHoje}
-          hint="Pronto para conectar aos recebimentos."
-          icon={WalletCards}
-          tone="primary"
-        />
-        <KPIWidget
-          label="Clientes ativos"
-          value={snapshot.kpis.clientesAtivos}
-          hint="Base vinculada ao tenant atual."
-          icon={UsersRound}
-          tone="accent"
-        />
-        <KPIWidget
-          label="Ocupacao"
-          value={snapshot.kpis.ocupacao}
-          hint="Indicador preparado para a agenda."
-          icon={TrendingUp}
-          tone="primary"
-        />
-        <KPIWidget
-          label="Atendimentos hoje"
-          value={snapshot.kpis.atendimentosHoje}
-          hint="Sem atendimentos confirmados hoje."
-          icon={CalendarDays}
-          tone="neutral"
-        />
-      </section>
+      <DashboardWidgetsRegistry snapshot={snapshot} />
 
       <section className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <DashboardCard title="Agenda do dia" description="Visao executiva dos horarios mais importantes.">
-          <div className="space-y-3">
-            {snapshot.appointments.map((appointment) => (
-              <div key={appointment.id} className="flex items-center gap-3 rounded-2xl border border-border bg-background/80 p-3">
-                <span className="grid h-12 w-12 flex-none place-items-center rounded-full bg-secondary text-primary">
-                  <Clock3 className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-foreground">{appointment.time}</p>
-                  <p className="truncate text-sm text-muted-foreground">{appointment.client}</p>
-                </div>
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold text-foreground">{appointment.service}</p>
-                  <p className="text-xs text-accent">{appointment.status}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <AgendaPreview appointments={snapshot.agenda.today} />
         </DashboardCard>
 
         <DashboardCard title="Campanhas futuras" description="Espaco reservado para relacionamento e retorno de clientes.">
-          <EmptyState
-            icon={Megaphone}
-            title="Campanhas inteligentes"
-            description="O Bellory ja esta preparado para campanhas, retorno de clientes e WhatsApp operacional."
-            actionLabel="Nova campanha"
-          />
+          <CampaignPreview campaigns={snapshot.activity.campaigns} />
         </DashboardCard>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <DashboardCard title="Proximos atendimentos" description="Resumo visual dos proximos horarios confirmados.">
-          <EmptyState
-            icon={CalendarDays}
-            title="Nenhum atendimento confirmado"
-            description="Assim que a agenda for ativada, os proximos horarios aparecem aqui."
-            actionLabel="Novo agendamento"
-          />
+          <NextAppointments appointments={snapshot.agenda.next} />
         </DashboardCard>
 
         <DashboardCard title="Atividades recentes" description="Eventos importantes do salao e da conta.">
-          <ActivityFeed activities={snapshot.activities} />
+          <ActivityFeed activities={snapshot.activity.activities} />
+        </DashboardCard>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <DashboardCard title="Notificacoes" description="Alertas operacionais preparados para automacoes futuras.">
+          <NotificationsCenter notifications={snapshot.activity.notifications} />
+        </DashboardCard>
+
+        <DashboardCard title="Arquitetura realtime-ready" description="Polling inicial agora, realtime preparado para evolucao.">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {snapshot.realtime.future.map((item) => (
+              <div key={item} className="rounded-2xl border border-border bg-background/80 p-3">
+                <p className="text-sm font-bold capitalize text-foreground">{item}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Preparado para etapa futura.</p>
+              </div>
+            ))}
+          </div>
         </DashboardCard>
       </section>
     </div>

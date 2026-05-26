@@ -6,12 +6,13 @@
 - 6C — Onboarding interno
 - 6D — Cadastro SaaS
 - 6E — Dashboard estrutural
-
-## Próximo
 - 7 — Motor Inteligente de Agendamento
 
-## Depois
+## Próximo
 - 8 — CRM Base
+
+## Depois
+
 - 9 — Gestão operacional do salão
 - 10 — WhatsApp operacional
 - 11 — Dashboard real com KPIs

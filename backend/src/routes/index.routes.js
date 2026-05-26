@@ -7,6 +7,11 @@ const tenantRoutes = require('./tenant.routes');
 const usuariosRoutes = require('./usuarios.routes');
 const subscriptionRoutes = require('./subscription.routes');
 const agendaRoutes = require('./agenda.routes');
+const dashboardRoutes = require('./dashboard.routes');
+const settingsRoutes = require('./settings.routes');
+const servicesRoutes = require('./services.routes');
+const clientsRoutes = require('./clients.routes');
+const teamRoutes = require('./team.routes');
 
 const router = Router();
 
@@ -18,5 +23,10 @@ router.use('/tenant', tenantRoutes);
 router.use('/usuarios', usuariosRoutes);
 router.use('/subscription', subscriptionRoutes);
 router.use('/agenda', agendaRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/services', servicesRoutes);
+router.use('/clients', clientsRoutes);
+router.use('/team', teamRoutes);
 
 module.exports = router;

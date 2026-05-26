@@ -70,10 +70,10 @@ export class RegisterError extends Error {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 const DEFAULT_SERVICES = [
-  { nome: "Corte", duracao_minutos: 45, preco: 0, categoria: "Cabelo" },
-  { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "Cabelo" },
-  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "Unhas" },
-  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "Cabelo" }
+  { nome: "Corte", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
+  { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
+  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "manicure" },
+  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "tratamento" }
 ];
 
 function friendlyError(status: number, code?: string, message = "") {

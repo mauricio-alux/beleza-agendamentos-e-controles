@@ -10,10 +10,10 @@ const onboardingRepository = require('./onboarding.repository');
 const eventLogsService = require('../event-logs/eventLogs.service');
 
 const DEFAULT_SERVICES = [
-  { nome: 'Corte', duracao_minutos: 45, preco: 0, categoria: 'Cabelo' },
-  { nome: 'Escova', duracao_minutos: 45, preco: 0, categoria: 'Cabelo' },
-  { nome: 'Hidratacao', duracao_minutos: 60, preco: 0, categoria: 'Cabelo' },
-  { nome: 'Manicure', duracao_minutos: 60, preco: 0, categoria: 'Unhas' }
+  { nome: 'Corte', duracao_minutos: 45, preco: 0, categoria: 'cabelo' },
+  { nome: 'Escova', duracao_minutos: 45, preco: 0, categoria: 'cabelo' },
+  { nome: 'Hidratacao', duracao_minutos: 60, preco: 0, categoria: 'tratamento' },
+  { nome: 'Manicure', duracao_minutos: 60, preco: 0, categoria: 'manicure' }
 ];
 
 const DEFAULT_ONBOARDING_STEPS = [
@@ -162,6 +162,69 @@ async function createProfessionalServiceLinks(tenantId, profissional, servicos, 
       };
     })
   );
+}
+
+async function syncOnboardingServices(tenantId, usuarioId, services = []) {
+  const selectedServices = services.filter((service) => service?.nome);
+  const existingServices = await onboardingRepository.findServicesByTenant(tenantId);
+  const profissional = await onboardingRepository.findProfessionalByUser(tenantId, usuarioId);
+  const professionalLinks = profissional
+    ? await onboardingRepository.findProfessionalServices(tenantId, profissional.id)
+    : [];
+
+  const savedServices = [];
+
+  for (const [index, service] of selectedServices.entries()) {
+    const existing = existingServices.find(
+      (item) => item.nome.toLowerCase() === service.nome.toLowerCase()
+    );
+    const payload = {
+      nome: service.nome,
+      duracao_minutos: service.duracao_minutos,
+      preco: service.preco || 0,
+      categoria: service.categoria || null,
+      ordem_exibicao: index,
+      ativo: true,
+      metadata: {
+        ...(existing?.metadata || {}),
+        origem: 'onboarding_services_step',
+        custom: Boolean(service.custom)
+      }
+    };
+
+    const saved = existing
+      ? await onboardingRepository.updateServico(tenantId, existing.id, payload)
+      : (await onboardingRepository.createServicos([{ tenant_id: tenantId, ...payload }]))[0];
+
+    savedServices.push(saved);
+
+    if (profissional) {
+      const existingLink = professionalLinks.find((item) => item.servico_id === saved.id);
+      const linkPayload = {
+        duracao_minutos: saved.duracao_minutos,
+        preco: saved.preco,
+        ativo: true
+      };
+
+      if (existingLink) {
+        await onboardingRepository.updateProfissionalServico(tenantId, existingLink.id, linkPayload);
+      } else {
+        await onboardingRepository.createProfissionalServicos([{
+          tenant_id: tenantId,
+          profissional_id: profissional.id,
+          servico_id: saved.id,
+          ...linkPayload
+        }]);
+      }
+    }
+  }
+
+  const selectedNames = new Set(selectedServices.map((service) => service.nome.toLowerCase()));
+  await Promise.all(existingServices
+    .filter((service) => !selectedNames.has(service.nome.toLowerCase()))
+    .map((service) => onboardingRepository.updateServico(tenantId, service.id, { ativo: false })));
+
+  return savedServices;
 }
 
 async function createDefaultSchedule(tenantId, profissionalId) {
@@ -384,9 +447,20 @@ async function completeOnboarding(tenant, usuario) {
 }
 
 async function updateStep(tenantId, usuarioId, step, input) {
+  const metadata = input.metadata || {};
+  const services = metadata.payload?.services || metadata.services || [];
+
+  if (step === 'services_created' && input.status === 'concluido') {
+    const savedServices = await syncOnboardingServices(tenantId, usuarioId, services);
+    metadata.services_synced = {
+      total: savedServices.length,
+      synced_at: new Date().toISOString()
+    };
+  }
+
   const payload = {
     status: input.status,
-    metadata: input.metadata || {},
+    metadata,
     completed_at: input.status === 'concluido' ? new Date().toISOString() : null
   };
 

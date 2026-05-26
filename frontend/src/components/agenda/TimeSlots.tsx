@@ -1,4 +1,5 @@
 import { AvailabilityIndicator } from "@/components/agenda/AvailabilityIndicator";
+import { SlotRankingBadge } from "@/components/agenda/SlotRankingBadge";
 import type { AvailabilityResponse } from "@/services/agenda.service";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,11 @@ export function TimeSlots({ availability, selectedSlot, onSelect }: TimeSlotsPro
 
   return (
     <div className="space-y-4">
-      <AvailabilityIndicator total={slots.length} reason={availability?.unavailable_reason} />
+      <AvailabilityIndicator
+        total={slots.length}
+        reason={availability?.unavailable_reason}
+        strategy={availability?.intelligence?.ranking_strategy}
+      />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
         {slots.map((slot) => (
           <button
@@ -27,7 +32,10 @@ export function TimeSlots({ availability, selectedSlot, onSelect }: TimeSlotsPro
                 : "border-border bg-white/90 text-foreground hover:border-primary hover:text-primary"
             )}
           >
-            {slot.hora}
+            <span className="flex flex-col items-center gap-1">
+              <span>{slot.hora}</span>
+              <SlotRankingBadge slot={slot} />
+            </span>
           </button>
         ))}
       </div>

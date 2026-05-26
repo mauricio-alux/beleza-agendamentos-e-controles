@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { agendaService, type Appointment } from "@/services/agenda.service";
 import { formatTime, toCurrency } from "@/components/agenda/date";
+import { canAttendantConfirm, canCancelAppointment, getAppointmentStatusLabel } from "@/components/agenda/status";
 
 type AppointmentDetailProps = {
   id: string;
@@ -66,6 +67,13 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
   }
 
   const service = appointment.servicos?.[0];
+  const intendedStatus = appointment.metadata?.intended_status;
+  const displayStatus = typeof intendedStatus === "string" ? intendedStatus : appointment.status;
+  const displayValue = firstPositiveNumber(
+    appointment.valor_total,
+    service?.valor_servico,
+    service?.servico?.preco
+  );
 
   return (
     <div className="grid gap-5">
@@ -87,19 +95,19 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
 
       <DashboardCard title="Resumo do atendimento">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Info label="Status" value={appointment.status} />
-          <Info label="Valor" value={toCurrency(appointment.valor_total)} />
+          <Info label="Status" value={getAppointmentStatusLabel(displayStatus)} />
+          <Info label="Valor" value={toCurrency(displayValue)} />
           <Info label="Profissional" value={appointment.profissional?.nome_publico || "Profissional"} />
           <Info label="WhatsApp" value={appointment.cliente?.telefone || "-"} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          {appointment.status === "pendente" ? (
+          {canAttendantConfirm(appointment.status, typeof intendedStatus === "string" ? intendedStatus : undefined) ? (
             <Button type="button" variant="accent" onClick={confirm}>
               <CheckCircle2 className="h-4 w-4" />
               Confirmar
             </Button>
           ) : null}
-          {appointment.status !== "cancelado" ? (
+          {canCancelAppointment(appointment.status) ? (
             <Button type="button" variant="outline" onClick={cancel}>
               <XCircle className="h-4 w-4" />
               Cancelar
@@ -109,6 +117,11 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
       </DashboardCard>
     </div>
   );
+}
+
+function firstPositiveNumber(...values: Array<number | null | undefined>) {
+  const value = values.find((item) => Number(item) > 0);
+  return value === undefined ? 0 : Number(value);
 }
 
 function Info({ label, value }: { label: string; value: string }) {

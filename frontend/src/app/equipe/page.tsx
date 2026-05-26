@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { UserRoundCog } from "lucide-react";
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { TeamManager } from "@/components/team/TeamManager";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
@@ -10,12 +9,7 @@ export const metadata: Metadata = {
 export default function EquipePage() {
   return (
     <DashboardLayout>
-      <PlaceholderPage
-        title="Equipe"
-        description="Gerencie profissionais, papeis e disponibilidade em uma base multi-profissional."
-        icon={UserRoundCog}
-        actionLabel="Novo profissional"
-      />
+      <TeamManager />
     </DashboardLayout>
   );
 }

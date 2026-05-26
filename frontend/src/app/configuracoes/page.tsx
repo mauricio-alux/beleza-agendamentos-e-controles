@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Settings } from "lucide-react";
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { SettingsHome } from "@/components/settings/SettingsHome";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
@@ -10,12 +9,7 @@ export const metadata: Metadata = {
 export default function ConfiguracoesPage() {
   return (
     <DashboardLayout>
-      <PlaceholderPage
-        title="Configuracoes"
-        description="Ajuste dados do salao, preferencias operacionais, links publicos e integracoes futuras."
-        icon={Settings}
-        actionLabel="Editar configuracoes"
-      />
+      <SettingsHome />
     </DashboardLayout>
   );
 }

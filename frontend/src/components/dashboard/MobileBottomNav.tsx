@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { dashboardNavItems } from "@/components/dashboard/navigation";
 import { cn } from "@/lib/utils";
 
-const mobileItems = dashboardNavItems.slice(0, 5);
+const mobileItems = dashboardNavItems.filter(({ href }) =>
+  ["/dashboard", "/agenda", "/clientes", "/campanhas", "/configuracoes"].includes(href)
+);
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -14,7 +16,7 @@ export function MobileBottomNav() {
     <nav className="fixed inset-x-3 bottom-3 z-40 rounded-[1.5rem] border border-white/80 bg-white/95 p-2 shadow-glow backdrop-blur-xl lg:hidden">
       <div className="grid grid-cols-5 gap-1">
         {mobileItems.map(({ label, href, icon: Icon }) => {
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link

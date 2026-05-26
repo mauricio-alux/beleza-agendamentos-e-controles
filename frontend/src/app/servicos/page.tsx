@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Scissors } from "lucide-react";
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { ServicesManager } from "@/components/services/ServicesManager";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
@@ -10,12 +9,7 @@ export const metadata: Metadata = {
 export default function ServicosPage() {
   return (
     <DashboardLayout>
-      <PlaceholderPage
-        title="Servicos"
-        description="Prepare catalogo, duracao, precos e comissoes para a agenda online."
-        icon={Scissors}
-        actionLabel="Novo servico"
-      />
+      <ServicesManager />
     </DashboardLayout>
   );
 }

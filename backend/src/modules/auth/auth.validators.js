@@ -1,11 +1,12 @@
 const { z } = require('zod');
+const { SERVICE_CATEGORIES } = require('../../constants/service-categories');
 
 const serviceSchema = z.object({
   nome: z.string().min(2).max(150),
   descricao: z.string().optional(),
   duracao_minutos: z.number().int().positive(),
   preco: z.number().nonnegative().default(0),
-  categoria: z.string().max(100).optional(),
+  categoria: z.enum(SERVICE_CATEGORIES).nullable().optional(),
   percentual_comissao: z.number().min(0).max(100).optional()
 });
 

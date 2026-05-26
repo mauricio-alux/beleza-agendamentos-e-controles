@@ -25,7 +25,7 @@ ________________________________________
 📲 3. ONDE ENTRA O WHATSAPP (CONCEITO ATUAL)
 👉 O WhatsApp entra DEPOIS do cliente estar dentro do sistema
 ________________________________________
-🧩 PAPEL DO WHATSAPP NO SEU SaaS
+🧩 PAPEL DO WHATSAPP NESSE SaaS
 🔹 Ele NÃO é:
 ❌ Canal de venda
 ❌ Canal de cadastro
@@ -49,16 +49,16 @@ ________________________________________
 📌 Cliente final:
 Recebe no WhatsApp:
 👉 Clica no link
-👉 Vai para seu app (agendamento)
+👉 Vai para o app (agendamento)
 ________________________________________
 🧠 ANALOGIA SIMPLES
-Seu SaaS é:
+O SaaS é:
 🏢 O escritório (sistema principal)
 WhatsApp é:
 📢 O mensageiro (canal de comunicação)
 ________________________________________
 🚀 MODELO ATUAL
-🔹 Camada 1 — Plataforma (seu SaaS)
+🔹 Camada 1 — Plataforma (SaaS)
 •	Cadastro
 •	Login
 •	Dashboard

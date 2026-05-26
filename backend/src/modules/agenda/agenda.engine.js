@@ -1,4 +1,5 @@
 const { AppError } = require('../../utils/errors');
+const occupancyEngine = require('./domain/occupancy.engine');
 
 const DEFAULT_SLOT_INTERVAL = 30;
 const DEFAULT_MIN_ADVANCE = 60;
@@ -69,24 +70,6 @@ function hasConflict(start, end, busyRanges) {
   return busyRanges.some((range) => rangesOverlap(start, end, range.start, range.end));
 }
 
-function scoreSlot(start, end, busyRanges, intervalMinutes) {
-  const beforeGap = busyRanges
-    .filter((range) => range.end <= start)
-    .map((range) => (start - range.end) / 60000)
-    .sort((a, b) => a - b)[0];
-
-  const afterGap = busyRanges
-    .filter((range) => range.start >= end)
-    .map((range) => (range.start - end) / 60000)
-    .sort((a, b) => a - b)[0];
-
-  let score = 100;
-  if (beforeGap !== undefined && beforeGap > 0 && beforeGap < intervalMinutes) score -= 20;
-  if (afterGap !== undefined && afterGap > 0 && afterGap < intervalMinutes) score -= 20;
-  if (beforeGap === 0 || afterGap === 0) score += 8;
-  return Math.max(0, Math.min(score, 100));
-}
-
 function generateAvailability({
   date,
   schedules,
@@ -143,15 +126,29 @@ function generateAvailability({
       slots.push({
         inicio: start.toISOString(),
         fim: end.toISOString(),
-        hora: toTime(start.getHours() * 60 + start.getMinutes()),
-        score: scoreSlot(start, end, busyRanges, slotInterval)
+        hora: toTime(start.getHours() * 60 + start.getMinutes())
       });
     }
   }
 
+  const rankedSlots = occupancyEngine.rankSlots(slots, {
+    busyRanges,
+    workIntervals,
+    durationMinutes,
+    slotInterval
+  });
+
   return {
-    available: slots.sort((a, b) => b.score - a.score || a.inicio.localeCompare(b.inicio)),
-    unavailable_reason: slots.length ? null : 'Horario indisponivel'
+    available: rankedSlots.map((slot) => ({
+      ...slot,
+      score: slot.ranking_score
+    })),
+    unavailable_reason: rankedSlots.length ? null : 'Horario indisponivel',
+    intelligence: {
+      ranking_strategy: 'occupancy_engine_v1',
+      realtime_ready: true,
+      ai_ready: true
+    }
   };
 }
 
@@ -166,7 +163,10 @@ function assertAvailability(startIso, durationMinutes, availability, ignoreMessa
   return {
     start: new Date(slot.inicio),
     end: new Date(slot.fim),
-    durationMinutes
+    durationMinutes,
+    ranking_score: slot.ranking_score,
+    occupancy_score: slot.occupancy_score,
+    slot_quality: slot.slot_quality
   };
 }
 

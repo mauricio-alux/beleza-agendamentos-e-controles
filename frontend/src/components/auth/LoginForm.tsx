@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
+import { onboardingService } from "@/services/onboarding.service";
 
 type FormErrors = {
   email?: string;
@@ -28,10 +29,8 @@ export function LoginForm() {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const redirectPath = useMemo(
-    () => process.env.NEXT_PUBLIC_AUTH_REDIRECT_PATH || "/onboarding",
-    []
-  );
+  const onboardingPath = useMemo(() => process.env.NEXT_PUBLIC_AUTH_REDIRECT_PATH || "/onboarding", []);
+  const dashboardPath = useMemo(() => process.env.NEXT_PUBLIC_DASHBOARD_PATH || "/dashboard", []);
 
   function validate() {
     const nextErrors: FormErrors = {};
@@ -61,8 +60,9 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      await login({ email: email.trim().toLowerCase(), senha, persist: remember });
-      router.replace(redirectPath);
+      const session = await login({ email: email.trim().toLowerCase(), senha, persist: remember });
+      const onboardingStatus = await onboardingService.getStatus(session);
+      router.replace(onboardingStatus.progress >= 100 ? dashboardPath : onboardingPath);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Não foi possível conectar. Tente novamente.");
     } finally {

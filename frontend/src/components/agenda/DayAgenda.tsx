@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { AlertCircle, Loader2, Plus } from "lucide-react";
 import { AgendaFilters } from "@/components/agenda/AgendaFilters";
+import { AgendaInsights } from "@/components/agenda/AgendaInsights";
 import { CalendarView } from "@/components/agenda/CalendarView";
+import { OccupancyIndicator } from "@/components/agenda/OccupancyIndicator";
 import { ScheduleTimeline } from "@/components/agenda/ScheduleTimeline";
+import { ScheduleOptimizationHints } from "@/components/agenda/ScheduleOptimizationHints";
+import { SmartSlotSuggestions } from "@/components/agenda/SmartSlotSuggestions";
 import { TimeSlots } from "@/components/agenda/TimeSlots";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { Button } from "@/components/ui/button";
@@ -64,17 +68,25 @@ export function DayAgenda() {
             />
           </DashboardCard>
           <DashboardCard title="Horarios sugeridos">
-            <TimeSlots availability={agenda.availability} selectedSlot="" onSelect={() => null} />
+            <div className="space-y-5">
+              <SmartSlotSuggestions slots={agenda.smartSuggestions} />
+              <TimeSlots availability={agenda.availability} selectedSlot="" onSelect={() => null} />
+            </div>
           </DashboardCard>
+          <OccupancyIndicator analytics={agenda.analytics} />
+          <AgendaInsights signals={agenda.signals} />
         </div>
 
-        <DashboardCard title="Timeline diaria" description="Atendimentos existentes e status operacional.">
-          <ScheduleTimeline
-            appointments={agenda.appointments}
-            onConfirm={agenda.confirmAppointment}
-            onCancel={(id) => agenda.cancelAppointment(id, "Cancelado pelo painel")}
-          />
-        </DashboardCard>
+        <div className="space-y-5">
+          <DashboardCard title="Timeline diaria" description="Atendimentos existentes e status operacional.">
+            <ScheduleTimeline
+              appointments={agenda.appointments}
+              onConfirm={agenda.confirmAppointment}
+              onCancel={(id) => agenda.cancelAppointment(id, "Cancelado pelo painel")}
+            />
+          </DashboardCard>
+          <ScheduleOptimizationHints analytics={agenda.analytics} />
+        </div>
       </div>
     </div>
   );

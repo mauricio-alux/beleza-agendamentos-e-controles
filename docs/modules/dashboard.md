@@ -7,116 +7,118 @@ O dashboard.md pode ser tratado como um dos principais documentos estruturais do
 Abaixo está a especificação profissional consolidada do módulo.
 ________________________________________
 docs/modules/dashboard.md
-# Dashboard Module — Bellory
-
-## 1. Objetivo do Módulo
-
+Dashboard Module — Bellory
+1. Objetivo do Módulo
 O módulo Dashboard é o HUB operacional central do Bellory.
-
 Seu objetivo é consolidar:
-- operação diária
-- visão executiva
-- navegação principal
-- indicadores operacionais
-- ações rápidas
-- visão resumida dos módulos
-
+•	operação diária
+•	visão executiva
+•	navegação principal
+•	indicadores operacionais
+•	ações rápidas
+•	visão resumida dos módulos
+•	entry points contextuais
+•	visão inteligente da operação
 O Dashboard NÃO deve funcionar como:
-- ERP complexo
-- painel burocrático
-- sistema técnico pesado
-
+•	ERP complexo
+•	painel burocrático
+•	sistema técnico pesado
+•	central administrativa pesada
 O Dashboard deve transmitir:
-- simplicidade
-- modernidade
-- profissionalismo
-- organização
-- automação
-- crescimento operacional
-
-# 2. Papel Estratégico
-
+•	simplicidade
+•	modernidade
+•	profissionalismo
+•	organização
+•	automação
+•	crescimento operacional
+•	inteligência operacional
+________________________________________
+2. Papel Estratégico
 O Dashboard é:
-- principal ponto de entrada operacional
-- centro de navegação do sistema
-- painel executivo simplificado
-- camada visual do negócio
-- interface principal do usuário
-
+•	principal ponto de entrada operacional
+•	centro de navegação do sistema
+•	painel executivo simplificado
+•	camada visual do negócio
+•	interface principal do usuário
+•	HUB operacional inteligente
 O Dashboard centraliza:
-- agenda
-- clientes
-- serviços
-- campanhas
-- financeiro
-- indicadores
-- notificações
-- atividades recentes
-
-# 3. Objetivos de UX
-
+•	agenda
+•	clientes
+•	serviços
+•	campanhas
+•	financeiro
+•	indicadores
+•	notificações
+•	atividades recentes
+•	ações rápidas
+Mas NÃO deve centralizar:
+•	formulários administrativos pesados
+•	manutenção cadastral completa
+•	regras complexas de negócio
+________________________________________
+3. Objetivos de UX
 O Dashboard deve fazer o usuário sentir:
-
 "Meu negócio agora é profissional."
-
 A experiência deve transmitir:
-- facilidade operacional
-- clareza
-- controle
-- velocidade
-- organização automática
-
-# 4. Público-Alvo
-
+•	facilidade operacional
+•	clareza
+•	controle
+•	velocidade
+•	organização automática
+•	baixa fricção
+•	simplicidade operacional
+________________________________________
+4. Público-Alvo
 O módulo foi projetado para:
-
-- profissionais autônomos
-- pequenos salões
-- profissionais com baixa maturidade tecnológica
-- usuários mobile-first
-
----
-
-# 5. Conceito Arquitetural
-
+•	profissionais autônomos
+•	pequenos salões
+•	profissionais com baixa maturidade tecnológica
+•	usuários mobile-first
+________________________________________
+5. Conceito Arquitetural
 O Dashboard deve funcionar como:
-
-- camada agregadora de dados
-- consumidor resumido dos módulos
-- interface desacoplada
-- estrutura preparada para analytics futuro
-
+•	camada agregadora de dados
+•	consumidor resumido dos módulos
+•	interface desacoplada
+•	estrutura preparada para analytics futuro
+•	HUB operacional inteligente
 O Dashboard NÃO deve:
-- conter regras pesadas de negócio
-- centralizar lógica operacional
-- executar cálculos complexos diretamente
-
+•	conter regras pesadas de negócio
+•	centralizar lógica operacional
+•	executar cálculos complexos diretamente
+•	virar painel administrativo pesado
 As regras devem permanecer:
-- nos módulos específicos
-- nos serviços backend
-- nas engines operacionais
-
----
-
-# 6. Estrutura Geral
-
-## Frontend
-
-```text
+•	nos módulos específicos
+•	nos serviços backend
+•	nas engines operacionais
+________________________________________
+6. Estrutura Geral
+Frontend
 frontend/src/
   app/
     dashboard/
+    configuracoes/
   components/
     dashboard/
+    settings/
   layouts/
   hooks/
   services/
 Backend
 backend/src/modules/dashboard/
+backend/src/modules/settings/
 ________________________________________
 7. Rotas Frontend
-Principal
+Principais
 /dashboard
+/configuracoes
+/configuracoes/perfil
+/configuracoes/salao
+/configuracoes/operacao
+/configuracoes/servicos
+/configuracoes/equipe
+/configuracoes/assinatura
+/configuracoes/seguranca
 Rotas futuras integradas
 /agenda
 /clientes
@@ -124,7 +126,16 @@ Rotas futuras integradas
 /equipe
 /campanhas
 /financeiro
-/configuracoes
+Rotas futuras administrativas
+/admin
+/admin/tenants
+/admin/usuarios
+/admin/planos
+/admin/saude-operacional
+Rotas futuras cliente final
+/minha-conta
+/minha-conta/perfil
+/minha-conta/agendamentos
 ________________________________________
 8. Estrutura Visual
 8.1 Header Superior
@@ -133,8 +144,8 @@ Exibir:
 •	avatar usuário
 •	notificações
 •	acesso perfil
+•	acesso configurações
 •	logout
-________________________________________
 8.2 Sidebar Desktop
 Itens:
 •	Dashboard
@@ -145,18 +156,70 @@ Itens:
 •	Campanhas
 •	Financeiro
 •	Configurações
-________________________________________
 8.3 Bottom Navigation Mobile
 Objetivo:
 •	navegação rápida touch
 •	experiência mobile-first
+•	baixa fricção operacional
+Itens:
+•	Dashboard
+•	Agenda
+•	Clientes
+•	Campanhas
+•	Mais/Configurações
 ________________________________________
-9. Componentes Principais
+9. Configurações Operacionais
+As manutenções cadastrais devem existir como:
+•	camada desacoplada
+•	central de configurações
+•	área operacional secundária
+E NÃO como:
+•	cards permanentes no Dashboard
+•	formulários administrativos na home
+•	módulos pesados visíveis constantemente
+A área:
+/configuracoes
+será responsável por:
+•	perfil usuário
+•	dados salão
+•	operação
+•	equipe
+•	serviços
+•	assinatura
+•	segurança
+________________________________________
+10. Navegação de Configurações
+O fluxo recomendado:
+1.	Usuário entra no /dashboard
+2.	Executa tarefas operacionais
+3.	Para manutenção cadastral acessa /configuracoes
+4.	Navega por seções organizadas
+Desktop
+Layout recomendado:
+| Navegação Settings | Conteúdo |
+Mobile
+Lista vertical touch-friendly:
+•	Minha Conta
+•	Dados do Salão
+•	Horários e Agenda
+•	Serviços
+•	Equipe
+•	Plano
+•	Segurança
+Cada item abre:
+•	página dedicada
+OU
+•	painel focado
+________________________________________
+11. Componentes Principais
 Estruturais
 •	DashboardLayout
 •	TopHeader
 •	Sidebar
 •	MobileBottomNav
+•	UserMenu
+•	SettingsLayout
+•	SettingsNavigation
 Widgets
 •	KPIWidget
 •	DashboardCard
@@ -169,8 +232,15 @@ Operacionais
 •	NextAppointments
 •	NotificationsCenter
 •	CampaignPreview
+Settings
+•	SettingsHome
+•	SettingsSectionCard
+•	MobileSettingsList
+•	OperationalSettingsForm
+•	TenantProfileForm
+•	UserProfileForm
 ________________________________________
-10. KPIs Operacionais
+12. KPIs Operacionais
 KPIs iniciais
 •	faturamento hoje
 •	clientes ativos
@@ -188,7 +258,28 @@ Evitar:
 •	excesso gráfico
 •	aparência analítica pesada
 ________________________________________
-11. Atualização de Dados
+13. Quick Actions
+Botões rápidos:
+•	Novo agendamento
+•	Novo cliente
+•	Novo serviço
+•	Nova campanha
+Objetivo
+•	reduzir cliques
+•	aumentar velocidade operacional
+QuickActions Contextuais
+Permitir apenas:
+•	completar cadastro salão
+•	ajustar horários operação
+•	adicionar equipe
+•	cadastrar serviços
+IMPORTANTE:
+Esses cards devem:
+•	aparecer apenas contextualizados
+•	desaparecer após configuração
+•	nunca virar painel administrativo fixo
+________________________________________
+14. Atualização de Dados
 MVP Inicial
 Atualização via:
 •	polling periódico
@@ -196,7 +287,6 @@ Estratégia:
 •	refresh automático leve
 •	intervalos controlados
 •	baixo consumo
-________________________________________
 Preparação futura
 Arquitetura preparada para:
 •	websocket
@@ -206,15 +296,16 @@ Arquitetura preparada para:
 •	pub/sub
 •	streaming operacional
 ________________________________________
-12. Dashboard Adaptativo por Role
+15. Dashboard Adaptativo por Role
 O Dashboard deve adaptar:
 •	widgets
 •	navegação
 •	permissões
 •	indicadores
+•	acessos de configuração
 conforme o tipo de usuário.
 ________________________________________
-13. Roles
+16. Roles
 Administrador
 Visualiza:
 •	operação do salão
@@ -222,14 +313,16 @@ Visualiza:
 •	campanhas
 •	financeiro
 •	KPIs completos
-________________________________________
+•	configurações operacionais
+•	dados do tenant
 Autônomo
 Visualiza:
 •	agenda pessoal
 •	clientes próprios
 •	ganhos próprios
 •	campanhas pessoais
-________________________________________
+•	configurações próprias
+•	operação própria
 Cliente
 Visualiza:
 •	próximos agendamentos
@@ -237,7 +330,11 @@ Visualiza:
 •	promoções
 •	notificações
 •	reagendamentos
-________________________________________
+•	dados pessoais
+NÃO acessa:
+•	configurações administrativas
+•	equipe
+•	tenant
 MasterAdmin
 Visualiza:
 •	tenants
@@ -246,8 +343,9 @@ Visualiza:
 •	usuários ativos
 •	métricas plataforma
 •	saúde operacional
+•	configurações globais plataforma
 ________________________________________
-14. Integrações
+17. Integrações
 O Dashboard consome dados resumidos dos módulos:
 •	Agenda
 •	CRM
@@ -255,15 +353,16 @@ O Dashboard consome dados resumidos dos módulos:
 •	Campaigns
 •	Financeiro
 •	AI Engine
+•	Settings
 ________________________________________
-15. Integração Agenda
+18. Integração Agenda
 Consumir:
 •	agenda do dia
 •	próximos atendimentos
 •	status operacional
 •	ocupação
 ________________________________________
-16. Integração CRM
+19. Integração CRM
 Consumir:
 •	clientes ativos
 •	retenção
@@ -271,21 +370,21 @@ Consumir:
 •	aniversariantes
 •	retorno previsto
 ________________________________________
-17. Integração WhatsApp
+20. Integração WhatsApp
 Consumir:
 •	mensagens enviadas
 •	confirmações
 •	lembretes
 •	status operacional
 ________________________________________
-18. Integração Campaigns
+21. Integração Campaigns
 Consumir:
 •	campanhas ativas
 •	campanhas futuras
 •	engajamento
 •	promoções
 ________________________________________
-19. Integração AI Engine
+22. Integração AI Engine
 Futuro:
 •	insights automáticos
 •	recomendações
@@ -293,30 +392,41 @@ Futuro:
 •	previsão de retorno
 •	sugestões operacionais
 ________________________________________
-20. Layout Mobile-First
+23. Layout Mobile-First
 O Dashboard deve priorizar:
 •	uso vertical
 •	navegação touch
 •	leitura rápida
 •	cards empilhados
 •	baixa fricção
+Configurações devem:
+•	usar lista vertical
+•	evitar tabelas pesadas
+•	usar forms curtos
+•	utilizar botões grandes
 ________________________________________
-21. Layout Desktop
+24. Layout Desktop
 Desktop deve:
 •	utilizar sidebar elegante
 •	grids modernos
 •	widgets organizados
 •	visual premium clean
+•	navegação interna settings
+Evitar:
+•	visual ERP
+•	excesso administrativo
+•	tabelas densas como experiência principal
 ________________________________________
-22. Estilo Visual
+25. Estilo Visual
 Inspirado em:
 •	Linear
 •	Stripe
 •	Notion
 •	Calendly
 •	Hubspot
+•	Fresha
 ________________________________________
-23. Paleta Visual
+26. Paleta Visual
 Primária
 #E26D7C
 Hover
@@ -332,7 +442,7 @@ Fundo
 Texto
 #2B2B2B
 ________________________________________
-24. Diretrizes Visuais
+27. Diretrizes Visuais
 Utilizar:
 •	glassmorphism leve
 •	glow discreto
@@ -340,13 +450,15 @@ Utilizar:
 •	sombras premium
 •	micro animações
 •	transições suaves
+•	progressive disclosure
 Evitar:
 •	excesso visual
 •	tabelas pesadas
 •	aparência ERP
 •	poluição visual
+•	formulários excessivos na home
 ________________________________________
-25. Segurança
+28. Segurança
 O Dashboard deve:
 •	exigir autenticação JWT
 •	validar tenant
@@ -354,7 +466,7 @@ O Dashboard deve:
 •	proteger rotas
 •	impedir acesso cross-tenant
 ________________________________________
-26. Multi-Tenant
+29. Multi-Tenant
 Todo dado exibido deve respeitar:
 •	tenant_id
 •	permissões
@@ -363,7 +475,7 @@ Nunca permitir:
 •	vazamento cross-tenant
 •	consultas globais indevidas
 ________________________________________
-27. Performance
+30. Performance
 Priorizar:
 •	queries resumidas
 •	lazy loading
@@ -371,14 +483,23 @@ Priorizar:
 •	paginação futura
 •	carregamento progressivo
 ________________________________________
-28. APIs Backend
-MVP Inicial
+31. APIs Backend
+Dashboard
 GET /dashboard/summary
 GET /dashboard/kpis
 GET /dashboard/activity
 GET /dashboard/agenda-preview
+Settings
+GET /settings/summary
+GET /settings/profile
+PATCH /settings/profile
+GET /settings/tenant
+PATCH /settings/tenant
+GET /settings/operation
+PATCH /settings/operation
 ________________________________________
-29. Hook Frontend
+32. Hook Frontend
+Dashboard
 useDashboard()
 Responsável por:
 •	carregar KPIs
@@ -386,27 +507,41 @@ Responsável por:
 •	controlar loading
 •	tratar erros
 •	polling inicial
+Settings
+useSettings()
+Responsável por:
+•	carregar configurações
+•	atualizar perfil
+•	atualizar tenant
+•	atualizar operação
+•	controlar permissões
 ________________________________________
-30. Service Frontend
+33. Services Frontend
+Dashboard
 dashboard.service.ts
 Responsável por:
 •	chamadas API
-•	transformação de payload
-•	normalização de dados
+•	transformação payload
+•	normalização dados
+Settings
+settings.service.ts
+Responsável por:
+•	APIs configurações
+•	payloads
+•	normalização
+•	tratamento erros
 ________________________________________
-31. Estados Operacionais
+34. Estados Operacionais
 Loading
 Exibir:
 •	skeletons
 •	shimmer
 •	placeholders elegantes
-________________________________________
 Empty State
 Exibir:
 •	mensagens amigáveis
 •	incentivo operacional
 •	onboarding contextual
-________________________________________
 Error State
 Nunca exibir:
 •	stack traces
@@ -416,17 +551,20 @@ Exibir:
 •	"Não foi possível carregar"
 •	"Tente novamente"
 ________________________________________
-32. Quick Actions
-Botões rápidos:
-•	Novo agendamento
-•	Novo cliente
-•	Novo serviço
-•	Nova campanha
-Objetivo:
-•	reduzir cliques
-•	aumentar velocidade operacional
+35. Como Evitar Poluição Visual
+Regras importantes:
+•	Não colocar todos os cadastros no Dashboard
+•	Não criar muitos botões permanentes
+•	Usar QuickActions apenas operacionalmente
+•	Usar alertas contextuais apenas quando necessário
+•	Centralizar manutenção em /configuracoes
+•	Usar progressive disclosure
+O Dashboard deve responder:
+"O que está acontecendo hoje?"
+Configurações responde:
+"Como meu negócio está parametrizado?"
 ________________________________________
-33. Escalabilidade Futura
+36. Escalabilidade Futura
 Arquitetura preparada para:
 •	BI
 •	Analytics
@@ -438,11 +576,12 @@ Arquitetura preparada para:
 •	marketplace
 •	gamificação operacional
 ________________________________________
-34. Objetivo Final
+37. Objetivo Final
 O Dashboard deve representar:
 •	profissionalização do salão
 •	central operacional inteligente
 •	experiência SaaS premium
 •	crescimento operacional assistido
+•	organização operacional simplificada
 O usuário deve sentir:
 "O Bellory organiza meu negócio para mim."

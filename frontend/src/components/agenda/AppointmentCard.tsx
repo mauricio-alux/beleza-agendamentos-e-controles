@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarCheck, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatTime, toCurrency } from "@/components/agenda/date";
+import { canAttendantConfirm, canCancelAppointment, getAppointmentStatusLabel } from "@/components/agenda/status";
 import type { Appointment } from "@/services/agenda.service";
 
 type AppointmentCardProps = {
@@ -10,17 +11,14 @@ type AppointmentCardProps = {
   onCancel?: (id: string) => void;
 };
 
-const statusLabel: Record<string, string> = {
-  pendente: "Pendente",
-  confirmado: "Confirmado",
-  cancelado: "Cancelado",
-  concluido: "Concluido",
-  no_show: "No-show",
-  reagendado: "Reagendado"
-};
-
 export function AppointmentCard({ appointment, onConfirm, onCancel }: AppointmentCardProps) {
   const service = appointment.servicos?.[0];
+  const intendedStatus = appointment.metadata?.intended_status;
+  const displayValue = firstPositiveNumber(
+    appointment.valor_total,
+    service?.valor_servico,
+    service?.servico?.preco
+  );
 
   return (
     <article className="rounded-[1.35rem] border border-border bg-white/90 p-4 shadow-sm transition hover:border-primary/35 hover:shadow-soft">
@@ -39,22 +37,22 @@ export function AppointmentCard({ appointment, onConfirm, onCancel }: Appointmen
           </div>
         </div>
         <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-primary">
-          {statusLabel[appointment.status] || appointment.status}
+          {getAppointmentStatusLabel(typeof intendedStatus === "string" ? intendedStatus : appointment.status)}
         </span>
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-foreground">{toCurrency(appointment.valor_total)}</p>
+        <p className="text-sm font-semibold text-foreground">{toCurrency(displayValue)}</p>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
             <Link href={`/agenda/${appointment.id}`}>Ver</Link>
           </Button>
-          {appointment.status === "pendente" && onConfirm ? (
+          {canAttendantConfirm(appointment.status, typeof intendedStatus === "string" ? intendedStatus : undefined) && onConfirm ? (
             <Button type="button" variant="accent" onClick={() => onConfirm(appointment.id)}>
               <CheckCircle2 className="h-4 w-4" />
               Confirmar
             </Button>
           ) : null}
-          {appointment.status !== "cancelado" && onCancel ? (
+          {canCancelAppointment(appointment.status) && onCancel ? (
             <Button type="button" variant="ghost" onClick={() => onCancel(appointment.id)}>
               <XCircle className="h-4 w-4" />
               Cancelar
@@ -64,4 +62,9 @@ export function AppointmentCard({ appointment, onConfirm, onCancel }: Appointmen
       </div>
     </article>
   );
+}
+
+function firstPositiveNumber(...values: Array<number | null | undefined>) {
+  const value = values.find((item) => Number(item) > 0);
+  return value === undefined ? 0 : Number(value);
 }

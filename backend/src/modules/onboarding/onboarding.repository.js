@@ -63,6 +63,32 @@ async function createServicos(payloads) {
   return data;
 }
 
+async function updateServico(tenantId, id, payload) {
+  const { data, error } = await supabaseAdmin
+    .from('servicos')
+    .update(payload)
+    .eq('tenant_id', tenantId)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateProfissionalServico(tenantId, id, payload) {
+  const { data, error } = await supabaseAdmin
+    .from('profissional_servicos')
+    .update(payload)
+    .eq('tenant_id', tenantId)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function findServicesByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('servicos')
@@ -182,8 +208,10 @@ module.exports = {
   createProfissional,
   findProfessionalByUser,
   createServicos,
+  updateServico,
   findServicesByTenant,
   createProfissionalServicos,
+  updateProfissionalServico,
   findProfessionalServices,
   createLinkAgendamento,
   findBookingLinkByTenant,

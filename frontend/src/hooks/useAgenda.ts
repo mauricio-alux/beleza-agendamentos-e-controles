@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { agendaService, type AgendaMeta, type Appointment, type AvailabilityResponse } from "@/services/agenda.service";
+import {
+  agendaService,
+  type AgendaAnalytics,
+  type AgendaMeta,
+  type AgendaSignals,
+  type Appointment,
+  type AvailabilityResponse
+} from "@/services/agenda.service";
 import { useAuth } from "@/hooks/useAuth";
 
 function toDateInput(date: Date) {
@@ -23,6 +30,9 @@ export function useAgenda() {
   const [meta, setMeta] = useState<AgendaMeta>({ profissionais: [], servicos: [] });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
+  const [analytics, setAnalytics] = useState<AgendaAnalytics | null>(null);
+  const [signals, setSignals] = useState<AgendaSignals | null>(null);
+  const [isRefreshingIntelligence, setIsRefreshingIntelligence] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +78,32 @@ export function useAgenda() {
     setAvailability(data);
   }, [date, selectedProfessionalId, selectedServiceId, session]);
 
+  const loadIntelligence = useCallback(async () => {
+    if (!session || !selectedProfessionalId) {
+      setAnalytics(null);
+      setSignals(null);
+      return;
+    }
+
+    setIsRefreshingIntelligence(true);
+
+    try {
+      const params = {
+        data: date,
+        profissional_id: selectedProfessionalId,
+        servico_id: selectedServiceId || undefined
+      };
+      const [nextAnalytics, nextSignals] = await Promise.all([
+        agendaService.getAnalytics(session, params),
+        agendaService.getSignals(session, params)
+      ]);
+      setAnalytics(nextAnalytics);
+      setSignals(nextSignals);
+    } finally {
+      setIsRefreshingIntelligence(false);
+    }
+  }, [date, selectedProfessionalId, selectedServiceId, session]);
+
   const refresh = useCallback(async () => {
     if (!session) return;
     setIsLoading(true);
@@ -93,10 +129,41 @@ export function useAgenda() {
     });
   }, [loadAvailability]);
 
+  useEffect(() => {
+    loadIntelligence().catch(() => null);
+  }, [loadIntelligence]);
+
+  useEffect(() => {
+    if (!session || !isAuthenticated) return;
+    const timer = window.setInterval(() => {
+      Promise.all([loadAppointments(), loadAvailability(), loadIntelligence()]).catch(() => null);
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated, loadAppointments, loadAvailability, loadIntelligence, session]);
+
   async function createAppointment(payload: {
     data_inicio: string;
-    cliente: { nome: string; telefone: string; email?: string };
+    cliente: {
+      nome: string;
+      telefone: string;
+      email?: string;
+      endereco?: {
+        cep?: string;
+        uf?: string;
+        cidade?: string;
+        logradouro?: string;
+        numero?: string;
+      };
+    };
     observacoes?: string;
+    client_context?: {
+      client_token?: string;
+      device_hash?: string;
+      user_agent?: string;
+      timezone?: string;
+      locale?: string;
+    };
   }) {
     if (!session || !selectedProfessionalId || !selectedServiceId) return null;
     setIsSaving(true);
@@ -122,7 +189,7 @@ export function useAgenda() {
     setIsSaving(true);
     try {
       await agendaService.confirm(session, id);
-      await loadAppointments();
+      await Promise.all([loadAppointments(), loadIntelligence()]);
     } finally {
       setIsSaving(false);
     }
@@ -135,6 +202,7 @@ export function useAgenda() {
       await agendaService.cancel(session, id, motivo);
       await loadAppointments();
       await loadAvailability();
+      await loadIntelligence();
     } finally {
       setIsSaving(false);
     }
@@ -152,8 +220,12 @@ export function useAgenda() {
     meta,
     appointments,
     availability,
+    analytics,
+    signals,
+    smartSuggestions: availability?.smart_suggestions || availability?.slots?.slice(0, 3) || [],
     isLoading: isLoading || isAuthLoading,
     isSaving,
+    isRefreshingIntelligence,
     error,
     refresh,
     createAppointment,

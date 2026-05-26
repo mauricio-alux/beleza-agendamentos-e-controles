@@ -1,8 +1,8 @@
 import { Sparkles } from "lucide-react";
-import type { DashboardSnapshot } from "@/services/dashboard.service";
+import type { DashboardActivity } from "@/services/dashboard.service";
 
 type ActivityFeedProps = {
-  activities: DashboardSnapshot["activities"];
+  activities: DashboardActivity[];
 };
 
 export function ActivityFeed({ activities }: ActivityFeedProps) {

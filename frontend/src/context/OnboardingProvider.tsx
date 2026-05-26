@@ -9,6 +9,7 @@ import {
   type OnboardingStepName,
   type TenantSettings
 } from "@/services/onboarding.service";
+import type { ServiceCategory } from "@/constants/service-categories";
 
 export type OnboardingStepId =
   | "welcome"
@@ -29,6 +30,7 @@ export type OnboardingServiceItem = {
   nome: string;
   duracao_minutos: number;
   preco: number;
+  categoria?: ServiceCategory | "";
   selected: boolean;
   custom?: boolean;
 };
@@ -61,7 +63,8 @@ type OnboardingContextValue = {
   progress: number;
   updateData: (patch: Partial<OnboardingFormData>) => void;
   updateService: (serviceName: string, selected: boolean) => void;
-  addService: (name: string) => void;
+  upsertService: (service: Omit<OnboardingServiceItem, "selected"> & { selected?: boolean }) => void;
+  removeService: (serviceName: string) => void;
   goToStep: (index: number) => void;
   goNext: () => Promise<void>;
   goBack: () => void;
@@ -70,10 +73,10 @@ type OnboardingContextValue = {
 };
 
 const defaultServices: OnboardingServiceItem[] = [
-  { nome: "Corte", duracao_minutos: 45, preco: 0, selected: true },
-  { nome: "Escova", duracao_minutos: 45, preco: 0, selected: true },
-  { nome: "Manicure", duracao_minutos: 60, preco: 0, selected: true },
-  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, selected: true }
+  { nome: "Corte", duracao_minutos: 45, preco: 0, categoria: "cabelo", selected: true },
+  { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "cabelo", selected: true },
+  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "manicure", selected: true },
+  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "tratamento", selected: true }
 ];
 
 export const onboardingSteps: OnboardingStepDefinition[] = [
@@ -155,6 +158,16 @@ function validateStep(step: OnboardingStepDefinition, data: OnboardingFormData) 
     return "Selecione pelo menos um servico inicial.";
   }
 
+  if (step.id === "services") {
+    const invalidService = data.services.find((service) =>
+      service.selected && (!service.nome.trim() || service.duracao_minutos <= 0 || service.preco < 0)
+    );
+
+    if (invalidService) {
+      return "Revise nome, duracao e preco dos servicos selecionados.";
+    }
+  }
+
   return "";
 }
 
@@ -188,6 +201,12 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
       setStatus(nextStatus);
       setSettings(nextSettings);
+
+      if (nextStatus.progress >= 100) {
+        router.replace(process.env.NEXT_PUBLIC_DASHBOARD_PATH || "/dashboard");
+        return;
+      }
+
       setData((current) => ({
         ...current,
         nome_fantasia: nextSettings.nome_fantasia || session.tenant.nome_fantasia || current.nome_fantasia,
@@ -202,10 +221,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         timezone: nextSettings.timezone || current.timezone
       }));
 
-      const completed = nextStatus.steps.find((step) => step.step === "onboarding_completed");
-      if (completed?.status === "concluido") {
-        setCurrentStepIndex(onboardingSteps.length - 1);
-      }
+      const firstPendingIndex = onboardingSteps.findIndex((step) => {
+        const backendStep = nextStatus.steps.find((item) => item.step === step.backendStep);
+        return backendStep?.status !== "concluido";
+      });
+      setCurrentStepIndex(firstPendingIndex >= 0 ? firstPendingIndex : 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nao foi possivel carregar o onboarding.");
     } finally {
@@ -239,31 +259,43 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const addService = useCallback((name: string) => {
-    const normalized = name.trim();
+  const upsertService = useCallback((service: Omit<OnboardingServiceItem, "selected"> & { selected?: boolean }) => {
+    const normalized = service.nome.trim();
     if (!normalized) {
       return;
     }
 
     setData((current) => {
-      if (current.services.some((service) => service.nome.toLowerCase() === normalized.toLowerCase())) {
-        return current;
-      }
+      const exists = current.services.some((item) => item.nome.toLowerCase() === normalized.toLowerCase());
 
       return {
         ...current,
-        services: [
-          ...current.services,
-          {
-            nome: normalized,
-            duracao_minutos: current.duracao_padrao_servico,
-            preco: 0,
-            selected: true,
-            custom: true
-          }
-        ]
+        services: exists
+          ? current.services.map((item) =>
+              item.nome.toLowerCase() === normalized.toLowerCase()
+                ? { ...item, ...service, nome: normalized, selected: service.selected ?? item.selected }
+                : item
+            )
+          : [
+              ...current.services,
+              {
+                nome: normalized,
+                duracao_minutos: service.duracao_minutos || current.duracao_padrao_servico,
+                preco: service.preco || 0,
+                categoria: service.categoria || "",
+                selected: service.selected ?? true,
+                custom: true
+              }
+            ]
       };
     });
+  }, []);
+
+  const removeService = useCallback((serviceName: string) => {
+    setData((current) => ({
+      ...current,
+      services: current.services.filter((service) => service.nome !== serviceName)
+    }));
   }, []);
 
   const saveStep = useCallback(
@@ -332,10 +364,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                 ? {
                     services: data.services
                       .filter((service) => service.selected)
-                      .map(({ nome, duracao_minutos, preco, custom }) => ({
+                      .map(({ nome, duracao_minutos, preco, categoria, custom }) => ({
                         nome,
                         duracao_minutos,
                         preco,
+                        categoria: categoria || null,
                         custom: Boolean(custom)
                       }))
                   }
@@ -415,7 +448,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       progress,
       updateData,
       updateService,
-      addService,
+      upsertService,
+      removeService,
       goToStep,
       goNext,
       goBack,
@@ -435,7 +469,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       progress,
       updateData,
       updateService,
-      addService,
+      upsertService,
+      removeService,
       goToStep,
       goNext,
       goBack,
