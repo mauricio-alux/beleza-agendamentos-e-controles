@@ -391,6 +391,45 @@ O sistema deve possuir:
 * campanhas rápidas
 * campanhas inteligentes
 
+## Catalogo inicial WhatsApp
+
+O SaaS mantem um catalogo base de templates de campanha em
+`public.templates_mensagem`. Esses templates sao modelos para tenants e devem
+ser personalizados pelo salao/autonomo antes do uso operacional.
+
+Classificacao:
+
+* `canal = whatsapp`
+* `tipo = marketing`
+* `metadata.categoria = campanha`
+* `metadata.escopo = tenant`
+* `metadata.owner = tenant`
+* `metadata.catalogo = campanhas_saas`
+* `language = pt_BR`
+* `categoria_provider = Marketing`
+* `ativo = true`
+* `aprovado_provider = false` inicialmente
+
+Catalogo inicial:
+
+* `campaign_promotion`
+* `campaign_birthday`
+* `campaign_inactive_client`
+* `campaign_return_reminder`
+* `campaign_new_service`
+* `campaign_new_professional`
+* `campaign_holiday`
+* `campaign_flash_sale`
+* `campaign_loyalty`
+* `campaign_package`
+* `campaign_seasonal`
+* `campaign_custom`
+
+Esses templates nao disparam mensagens automaticamente. Eles apenas
+disponibilizam modelos preparados para futura aprovacao na WhatsApp Business
+Platform, usando parametros posicionais (`{{1}}`, `{{2}}`, etc.) e linguagem
+comercial cordial.
+
 ---
 
 # 20. Biblioteca Visual
@@ -819,3 +858,32 @@ O módulo Campaigns deve representar:
 O usuário deve sentir:
 
 "O Bellory ajuda meu salão a crescer automaticamente."
+
+---
+
+# 45. Regras oficiais da Nova Campanha
+
+Atualizacao 2026-07-14:
+
+* toda campanha WhatsApp exige `template_id` no frontend e no backend;
+* templates disponiveis para campanhas devem ser ativos, WhatsApp, de marketing e do escopo global ou do tenant;
+* envio real exige template aprovado no provider, com nome do provider e idioma; dry-run e preview podem usar template pendente;
+* campanhas sem `agendada_para` iniciam como `rascunho`;
+* campanhas com `agendada_para` futura iniciam como `agendada`;
+* `agendada_para` passada ou invalida deve ser rejeitada tambem na criacao;
+* `tipo`, `publico`, `nome` e `template` sao sempre obrigatorios;
+* `promocao_servico`, `novo_servico` e `horarios_disponiveis` exigem `servico_id`;
+* `promocao_servico` exige valor promocional positivo ou cupom valido;
+* cupons exibidos devem estar ativos, dentro da validade, com beneficio efetivo, com limite disponivel e respeitando restricao de servico;
+* o campo de servico da campanha deve usar `servicos` reais do tenant, nao texto livre;
+* `nome_servico`, `valor_promocional` e `validade_promocao` permanecem como parametros renderizados do template.
+
+Publico inicial sugerido por tipo:
+
+* `campanha_geral`: todos os clientes elegiveis;
+* `promocao_servico`: todos os clientes elegiveis;
+* `recuperacao_inativos`: clientes inativos ha pelo menos 60 dias;
+* `aniversario`: aniversariantes do mes;
+* `novo_servico`: todos os clientes elegiveis;
+* `horarios_disponiveis`: clientes sem agendamento futuro;
+* `relacionamento`: clientes recorrentes.

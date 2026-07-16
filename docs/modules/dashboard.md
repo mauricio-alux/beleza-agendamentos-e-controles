@@ -1,3 +1,132 @@
+## MVP Operacional Implementado
+
+O Dashboard operacional do Bellory usa dados existentes dos modulos de Agenda,
+CRM, Historico do Cliente e WhatsApp. Nesta etapa nao foram criadas tabelas de
+indicadores, views materializadas ou cache persistente. A agregacao principal
+ocorre no backend e e entregue para o frontend em uma unica chamada inicial:
+
+```text
+GET /dashboard/summary
+GET /dashboard/resumo
+```
+
+Para carregamentos secundarios/lazy loading, o backend tambem oferece:
+
+```text
+GET /dashboard/detalhes
+```
+
+Os endpoints legados `GET /dashboard/kpis`, `GET /dashboard/activity` e
+`GET /dashboard/agenda-preview` permanecem por compatibilidade.
+
+### Performance
+
+- O frontend nao executa calculos pesados sobre grandes volumes.
+- `/dashboard/summary` devolve `kpis`, agenda, atividades e `operational` em
+  uma unica resposta.
+- Os indicadores agregados usam cache em memoria de curta duracao
+  (`45 segundos`) por tenant, usuario, role e profissional vinculado.
+- A arquitetura permanece preparada para futura troca por views, materialized
+  views ou cache Redis sem mudar o contrato principal do frontend.
+
+### Origem Dos Indicadores
+
+| Painel | Indicador | Origem | Regra de calculo |
+| --- | --- | --- | --- |
+| Visao operacional | Agendamentos do dia | `agendamentos` | todos os registros do tenant com data no dia atual |
+| Visao operacional | Aguardando atendente | `agendamentos.status` | `pendente`, `pendente_atendente` e `suspeito` no dia |
+| Visao operacional | Concluidos hoje | `agendamentos.status` | status `concluido` no dia |
+| Visao operacional | Cancelados hoje | `agendamentos.status` | status `cancelado` no dia |
+| Visao operacional | No-show hoje | `agendamentos.status` | status `no_show` no dia |
+| Visao operacional | Em andamento agora | `agendamentos` | status aceito, `data_inicio <= now <= data_fim` |
+| Visao operacional | Taxa de comparecimento | `agendamentos` | concluidos / (concluidos + no-show) |
+| Visao operacional | Ocupacao da agenda | `agendamentos` | agendamentos ativos do dia / capacidade estimada dos profissionais com agenda |
+| Clientes | Novos e recorrentes no mes | `cliente_historico_atendimentos` | clientes distintos e clientes com mais de um historico no mes |
+| Servicos | Mais realizados | `agendamentos` + `agendamento_servicos` | quantidade de concluidos no mes por servico |
+| Servicos | Receita por servico | `agendamentos.valor_total` | soma mensal de concluidos por servico |
+| Profissionais | Maior ocupacao | `agendamentos` + `profissionais` | concluidos no mes por profissional |
+| WhatsApp | Enviadas, pendentes, erros | `mensagens_whatsapp.status_envio` | mensagens do tenant criadas no dia |
+| WhatsApp | Eventos | `mensagens_whatsapp.tipo_evento` | agrupamento por evento/template |
+| Operacional | Tempo ate confirmacao | `agendamentos.created_at`, `confirmado_em` | media em minutos |
+| Operacional | Confirmacao ate conclusao | `agendamentos.confirmado_em`, `concluido_em` | media em minutos |
+| Operacional | Conclusoes automaticas | `agendamento_status_historico` | status `concluido` com origem `auto_completion` |
+
+### Filtros e RBAC
+
+O MVP aplica automaticamente:
+
+- `tenant_id` do usuario autenticado;
+- escopo por profissional quando o dashboard e pessoal (`Funcionario`,
+  `Terceiro` ou Autonomo nao owner);
+- periodo padrao do dia atual para indicadores executivos e WhatsApp;
+- mes atual para rankings e indicadores de clientes/servicos/profissionais.
+
+Filtros manuais por profissional, servico, categoria, cliente, status e periodo
+personalizado ficam preparados para evolucao do endpoint `/dashboard/detalhes`.
+Administradores e owners veem indicadores do tenant; perfis pessoais veem
+apenas indicadores do proprio vinculo profissional.
+
+### Frontend
+
+O componente `OperationalDashboardPanels` renderiza os indicadores do objeto
+`snapshot.operational`, mantendo a tela principal mobile-first e sem tabelas
+densas. Rankings e analises secundarias sao exibidos como cards compactos e
+podem migrar para lazy loading completo via `/dashboard/detalhes`.
+
+### Revisao Mobile-First
+
+A tela `/dashboard` foi revisada para uso em 360 px e 390 px como larguras
+minimas de referencia. Os cards usam grids que empilham em uma coluna no
+mobile, textos longos quebram dentro do container, a navegacao inferior usa
+rotulos compactos e os blocos de ranking/lista preservam `min-width: 0` para
+evitar rolagem horizontal da pagina. A revisao ficou limitada ao layout e a
+apresentacao visual, sem novas chamadas ao backend e sem alteracao de regras
+ou calculos dos indicadores.
+
+### Catalogo De Eventos Na Interface
+
+Atividades recentes usam uma camada de traducao no frontend para converter
+identificadores internos, como `appointment.created` ou
+`appointment.pending_attendant_reminder_60m`, em textos amigaveis. A interface
+nao deve exibir `event_type`, `tipo_evento` ou nomes tecnicos diretamente ao
+usuario. A mesma camada tambem e usada em rankings do Dashboard, como
+`WhatsApp operacional > Eventos`, para que `tipo_evento` e `template_nome`
+sejam exibidos como rotulos operacionais legiveis. Novos eventos devem ser
+adicionados ao catalogo de exibicao antes de aparecerem no Dashboard; quando
+um evento ainda nao estiver mapeado, a UI usa um fallback generico sem expor o
+identificador interno.
+
+### Definicoes Dos Indicadores
+
+Os indicadores do Dashboard devem evitar nomes duplicados quando o calculo for
+diferente. A nomenclatura exibida precisa refletir a formula real usada pelo
+backend.
+
+| Indicador exibido | Definicao | Formula/servico | Status considerados |
+| --- | --- | --- | --- |
+| Faturamento previsto hoje | Valor previsto a partir de agendamentos ativos financeiramente no dia | `sumAppointmentsRevenue`: soma `agendamentos.valor_total` no periodo diario | `confirmado`, `concluido` |
+| Clientes ativos | Base ativa de clientes do tenant | `countActiveClients`: total em `cliente_tenants` com `status = ativo` | Nao se aplica |
+| Capacidade ocupada hoje | Uso estimado da capacidade total do salao no dia | `countTodayAppointments / (profissionais ativos * 8)` | todos exceto `cancelado` |
+| Agenda ativa hoje | Agendamentos do dia que ainda contam como operacao ativa | `countTodayAppointments`: total de `agendamentos` do dia por tenant | todos exceto `cancelado` |
+| Agenda propria/vinculada | Agendamentos ativos do profissional logado no dia | `countTodayAppointmentsByProfessional` | todos exceto `cancelado` |
+| Agendamentos do dia | Total bruto de agendamentos com data de hoje, usado como visao operacional ampla | `listOperationalAppointments(...today).length` | todos, incluindo `cancelado` e `no_show` |
+| Aguardando atendente | Agendamentos que ainda dependem de confirmacao operacional | filtro em `listOperationalAppointments` | `pendente`, `pendente_atendente`, `suspeito` |
+| Concluidos hoje | Atendimentos efetivamente finalizados hoje | filtro em `listOperationalAppointments` | `concluido` |
+| Cancelados hoje | Agendamentos cancelados com data de hoje | filtro em `listOperationalAppointments` | `cancelado` |
+| No-show hoje | Agendamentos marcados como nao comparecimento hoje | filtro em `listOperationalAppointments` | `no_show` |
+| Em andamento agora | Atendimentos cuja janela de horario inclui o momento atual | `data_inicio <= now <= data_fim` | `pendente_cliente`, `confirmado` |
+| Taxa de comparecimento | Proporcao de atendimentos concluidos sobre comparecimento/no-show | `concluidos / (concluidos + no_show)` | `concluido`, `no_show` |
+| Ocupacao da agenda | Ocupacao operacional considerando profissionais com movimento no dia | `ativos hoje / (profissionais com agendamento no dia * 8)` | todos exceto `cancelado` |
+| WhatsApps enviados hoje | Mensagens WhatsApp enviadas no dia | `mensagens_whatsapp` do dia por `status_envio` | `enviado` |
+| WhatsApps pendentes hoje | Mensagens WhatsApp ainda pendentes no dia | `mensagens_whatsapp` do dia por `status_envio` | `pendente` |
+| Erros de WhatsApp hoje | Mensagens WhatsApp com falha no dia | `mensagens_whatsapp` do dia por `status_envio` | `erro` |
+| Criacao ate confirmacao | Tempo medio entre criacao e confirmacao no mes | media entre `created_at` e `confirmado_em` | registros com datas validas |
+| Confirmacao ate conclusao | Tempo medio entre confirmacao e conclusao no mes | media entre `confirmado_em` e `concluido_em` | registros com datas validas |
+| Lembretes operacionais enviados | Volume de lembretes operacionais detectados no ciclo | historico/status + WhatsApp contendo `reminder` | eventos/origens de lembrete |
+| Conclusoes automaticas | Conclusoes realizadas por automacao | `agendamento_status_historico` | `status_novo = concluido`, `origem = auto_completion` |
+
+---
+
 O dashboard.md pode ser tratado como um dos principais documentos estruturais do Bellory, porque ele representa:
 •	HUB operacional central
 •	camada de inteligência operacional
@@ -257,6 +386,12 @@ Evitar:
 •	excesso numérico
 •	excesso gráfico
 •	aparência analítica pesada
+
+Regra de consistência:
+•	O KPI "atendimentos do dia" e o bloco "Agenda do dia" devem usar a mesma base de agendamentos do tenant, para a mesma janela diária e com o mesmo filtro de status.
+•	A base operacional do dia considera agendamentos não excluídos logicamente e com status diferente de "cancelado".
+•	A "Agenda do dia" não deve aplicar limite artificial de preview quando for usada para validar o total do KPI; se houver 5 atendimentos válidos no dia, o KPI deve exibir 5 e a lista deve renderizar os mesmos 5 registros.
+•	Qualquer paginação futura precisa exibir também o total real e deixar explícito que a lista está paginada.
 ________________________________________
 13. Quick Actions
 Botões rápidos:

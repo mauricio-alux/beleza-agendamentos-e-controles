@@ -1944,3 +1944,159 @@ Gerar:
 •	Agenda enterprise-ready
 O usuário deve sentir:
 “O Bellory organiza e protege automaticamente os agendamentos sem complicar a experiência.”
+=====================================
+ADENDO5:
+Ajustes no apontamento dos horários de atendimentos
+
+Na tela de cadastro/configuração de equipe do SaaS Bellory existe a funcionalidade "Configurar horários" do profissional.
+
+Fluxo atual:
+- Tela:
+http://127.0.0.1:3001/equipe
+
+- Botão:
+"Configurar os horários"
+
+- Tela de configuração:
+http://127.0.0.1:3001/configuracoes/equipe/{profissionalId}/agenda
+
+Atualmente existem os campos:
+- Inicio manhã
+- Fim manhã
+- Inicio tarde
+- Fim tarde
+- Inicio intervalo
+- Fim intervalo
+
+PROBLEMA:
+A implementação atual presume que todos os períodos existirão obrigatoriamente.
+
+Porém, um profissional pode:
+- trabalhar apenas à tarde
+- trabalhar apenas pela manhã
+- não possuir intervalo
+- trabalhar em horário contínuo
+- possuir apenas um turno
+
+OBJETIVO:
+Permitir períodos opcionais e adaptar totalmente o motor de agendamento para trabalhar corretamente com horários parciais.
+
+==================================================================
+REGRAS DE NEGÓCIO
+==================================================================
+
+1) Campos vazios (NULL) significam:
+"profissional NÃO atende naquele período"
+
+Exemplo:
+inicio_manha = NULL
+fim_manha = NULL
+
+=> profissional não trabalha de manhã.
+
+==================================================================
+
+2) Regras obrigatórias de consistência
+
+Cenários válidos:
+- ambos preenchidos
+- ambos NULL
+
+Cenários inválidos:
+- início preenchido e fim vazio
+- fim preenchido e início vazio
+
+Aplicar para:
+- manhã
+- tarde
+- intervalo
+
+==================================================================
+
+3) Regras do intervalo
+
+Se:
+inicio_intervalo = NULL
+fim_intervalo = NULL
+
+=> profissional não possui intervalo.
+
+==================================================================
+
+4) Regras do motor de agendamento
+
+O cálculo de disponibilidade deve:
+- ignorar períodos NULL
+- gerar slots apenas em períodos válidos
+- bloquear horários fora dos períodos preenchidos
+- considerar:
+  - duração do serviço
+  - conflitos existentes
+  - tolerância
+  - horários do profissional
+  - horários inexistentes
+  - intervalo opcional
+
+==================================================================
+
+5) Casos válidos suportados
+
+O sistema deve suportar:
+
+- apenas manhã
+- apenas tarde
+- manhã e tarde
+- atendimento contínuo
+- sem intervalo
+- múltiplos formatos de jornada
+
+==================================================================
+
+6) Regras de UX
+
+Ao limpar um campo de início:
+- limpar automaticamente o campo de fim correspondente
+
+Ao limpar um campo de fim:
+- limpar automaticamente o campo de início correspondente
+
+Exibir mensagens claras de validação.
+
+==================================================================
+
+7) Validações obrigatórias
+
+Impedir salvamento quando:
+- existir início sem fim
+- existir fim sem início
+- horário inicial for maior que horário final
+
+==================================================================
+
+8) Banco de dados
+
+Permitir NULL nos campos:
+- inicio_manha
+- fim_manha
+- inicio_tarde
+- fim_tarde
+- inicio_intervalo
+- fim_intervalo
+
+==================================================================
+
+9) IMPORTANTE
+
+Refatorar também:
+- services
+- validações
+- cálculo de agenda
+- geração de slots
+- regras de disponibilidade
+
+Garantir compatibilidade com:
+- agendamento inteligente
+- IA futura
+- escalabilidade multi-tenant
+- campanhas automáticas
+- cálculo correto de ocupação

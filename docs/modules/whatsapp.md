@@ -1,3 +1,516 @@
+# Links de Campanha e Links Individuais
+
+## Assinatura institucional dinamica
+
+Mensagens destinadas ao cliente recebem automaticamente, depois da renderizacao
+do conteudo funcional e antes da gravacao em `mensagens_whatsapp`, a assinatura:
+
+`Mensagem automatica enviada pela plataforma {PLATFORM_NAME}.`
+
+O nome vem de `PLATFORM_NAME`, com compatibilidade temporaria para `APP_NAME`.
+A assinatura nao faz parte de `templates_mensagem` e o formatador impede que ela
+seja adicionada mais de uma vez. Mensagens operacionais internas destinadas ao
+salao nao recebem essa assinatura.
+
+WhatsApp, SMS, push e outros canais textuais usam somente texto. E-mail, HTML,
+portal, dashboard, web e PDF podem usar o formatador visual, que apresenta o
+logotipo de `PLATFORM_LOGO_URL` ao lado do texto institucional. A configuracao
+mantem compatibilidade com `APP_LOGO_URL`.
+
+No frontend, as variaveis publicas equivalentes sao
+`NEXT_PUBLIC_PLATFORM_NAME`, `NEXT_PUBLIC_PLATFORM_LOGO_URL` e
+`NEXT_PUBLIC_PLATFORM_WEBSITE`.
+
+Mensagens podem usar o link generico
+`/agendar/:slug?campanha=:campanha` ou o link individual
+`/agendar/:slug?tk=:token`.
+
+O link individual nao contem PII. A API autenticada
+`POST /clients/:id/booking-token` gera o token para integracoes de campanha e
+WhatsApp. A validade e configuravel e a reemissao revoga o token anterior do
+mesmo cliente e tenant.
+
+## Mensagens operacionais implementadas
+
+O modulo de Agenda ja prepara mensagens operacionais de WhatsApp para os
+principais eventos do atendimento. A partir da primeira versao do WhatsApp
+Operacional, a preparacao, envio e auditoria passam pela camada centralizada
+`CommunicationService`.
+
+Nesta etapa, o Bellory e o proprietario da integracao com a WhatsApp Business
+Cloud API. Tenants nao precisam possuir WABA propria, Meta Business Manager,
+templates proprios ou webhooks proprios. Toda comunicacao operacional usa a
+infraestrutura central do Bellory.
+
+Fluxo oficial:
+
+```text
+Modulo de negocio
+  -> evento operacional
+  -> CommunicationService
+  -> templates_mensagem (tenant especifico ou catalogo global ativo)
+  -> mensagens_whatsapp (fila/auditoria com idempotency_key)
+  -> whatsapp.process / processPendingWhatsAppMessages
+  -> WhatsApp MySaaS Provider
+  -> Meta Cloud API
+  -> webhook Meta
+  -> atualizacao de status em mensagens_whatsapp
+```
+
+Nenhum modulo de negocio deve chamar a Meta diretamente. A Agenda apenas emite
+eventos; o `CommunicationService` monta mensagens, escolhe destinatarios,
+registra logs e enfileira o envio em `mensagens_whatsapp`. A chamada externa ao
+provider acontece somente pelo processador da fila. Falhas de envio sao
+auditadas e nao interrompem o fluxo operacional.
+
+A duplicidade e bloqueada em duas camadas: consulta previa por
+tenant/agendamento/evento/destinatario e indice unico parcial em
+`mensagens_whatsapp.idempotency_key`. A chave usa tenant, evento, agendamento,
+destinatario, tipo de lembrete/tentativa e horario agendado quando existir.
+
+## Templates configuraveis e auditoria
+
+O fluxo operacional de WhatsApp usa `templates_mensagem` como catalogo
+configuravel de modelos por tenant e mantem `mensagens_whatsapp` como
+log/fila/auditoria dos envios.
+
+A manutencao de `templates_mensagem` e feita pelo MasterAdmin na area
+`/admin/comunicacao/templates`, dentro do modulo SaaS "Comunicacao". A tela
+permite criar templates globais (`tenant_id` vazio) ou especificos por tenant,
+editar conteudo, variaveis, status ativo, aprovacao no provider e metadados da
+Meta. Administradores de tenant nao possuem acesso a essa manutencao.
+
+Os campos de provider que nao existem como colunas fisicas em
+`templates_mensagem` ficam em `metadata`: `provider_template_name`, `language`,
+`categoria_provider`, `ultima_sincronizacao_provider` e `observacoes`.
+
+## Catalogo operacional interno
+
+A migration `20260709110000_operational_whatsapp_templates.sql` mantem o
+catalogo operacional essencial de WhatsApp em `templates_mensagem`. Os
+registros sao globais (`tenant_id = null`), `canal = whatsapp`,
+`tipo = operacional`, `ativo = true` e `aprovado_provider = false`.
+
+Esse catalogo existe para manutencao, visualizacao, simulacao, dry-run e
+geracao interna de mensagens antes da aprovacao pela Meta. Envio real com
+`WHATSAPP_DRY_RUN=false` continua bloqueado quando `aprovado_provider` nao for
+`true` ou quando `provider_template_name`/`language` nao estiverem preenchidos.
+
+Templates operacionais iniciais:
+
+| Template | Destino |
+| --- | --- |
+| `appointment_created` | Cliente |
+| `appointment_rescheduled` | Cliente |
+| `appointment_confirmed` | Cliente |
+| `appointment_cancelled` | Cliente |
+| `appointment_cancelled_by_client` | Cliente |
+| `appointment_cancelled_by_attendant` | Cliente |
+| `appointment_reminder_24h` | Cliente |
+| `appointment_reminder_2h` | Cliente |
+| `appointment_completed` | Cliente |
+| `appointment_no_show_client` | Cliente |
+| `appointment_cancelled_salon` | Salao |
+| `appointment_rescheduled_salon` | Salao |
+| `appointment_pending_attendant_operational` | Salao |
+| `appointment_pending_attendant_reminder_60m` | Salao |
+| `appointment_pending_attendant_reminder_30m` | Salao |
+| `appointment_no_show_salon` | Salao |
+
+Ao aprovar um template na Meta, o MasterAdmin deve atualizar o registro na tela
+`/admin/comunicacao/templates`, conferindo `provider_template_name`,
+`language = pt_BR`, `categoria_provider = Utility` e marcando
+`aprovado_provider = true`.
+
+## Templates para uso na Meta
+
+Todo registro de `templates_mensagem` com `canal = whatsapp` deve manter
+`conteudo` no formato oficial copiavel para o WhatsApp Manager da Meta, usando
+parametros posicionais: `{{1}}`, `{{2}}`, `{{3}}` e assim por diante. Os nomes
+semanticos continuam em `variaveis`, como lista ordenada.
+
+Mapeamento operacional base:
+
+| Variavel Bellory | Parametro Meta |
+| --- | --- |
+| `nome_cliente` | `{{1}}` |
+| `nome_salao` | `{{2}}` |
+| `nome_servico` | `{{3}}` |
+| `nome_profissional` | `{{4}}` |
+| `data_agendamento` | `{{5}}` |
+| `hora_agendamento` | `{{6}}` |
+| `motivo_cancelamento` | `{{7}}` |
+
+A correspondencia e posicional: `{{1}}` representa o primeiro item de
+`variaveis`, `{{2}}` o segundo, e assim sucessivamente. Essa ordem e parte do
+contrato funcional do template e deve ser conferida antes de alterar templates
+aprovados na Meta.
+
+Cada registro destinado a envio real pela Meta deve manter
+`metadata.provider_template_name`, `metadata.language`,
+`metadata.categoria_provider`, `metadata.provider_parameter_format =
+positional` e `metadata.provider_variable_mapping`. O campo
+`provider_variable_mapping` deve refletir exatamente a ordem de `variaveis`.
+
+`mensagens_whatsapp` deve guardar o snapshot renderizado que foi enviado e
+tambem os parametros usados no envio dentro de `payload.params` ou campo
+equivalente do payload. Assim, se `templates_mensagem` for alterada no futuro,
+o historico permanece fiel ao que foi efetivamente enviado.
+
+Catalogo operacional sugerido para aprovacao na Meta:
+
+| Template Meta | Categoria | Destino | Parametros |
+| --- | --- | --- | --- |
+| `appointment_cancelled_salon` | Utility | Salao | cliente, salao, servico, profissional, data, horario |
+| `appointment_rescheduled_salon` | Utility | Salao | cliente, salao, servico, profissional, nova data, novo horario |
+| `appointment_pending_attendant_operational` | Utility | Salao | cliente, servico, data, horario |
+| `appointment_pending_attendant_reminder_30m` | Utility | Salao | cliente, servico, data, horario |
+| `appointment_pending_attendant_reminder_60m` | Utility | Salao | cliente, servico, data, horario |
+| `appointment_no_show_salon` | Utility | Salao | cliente, servico, profissional, data, horario |
+| `appointment_created` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
+| `appointment_rescheduled` | Utility | Cliente | cliente, salao, servico, profissional, nova data, novo horario |
+| `appointment_confirmed` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
+| `appointment_cancelled` | Utility | Cliente | cliente, salao, servico, data, horario |
+| `appointment_cancelled_by_attendant` | Utility | Cliente | cliente, motivo, servico, profissional, data, horario |
+| `appointment_completed` | Utility | Cliente | cliente, salao, servico, profissional, data |
+| `appointment_reminder_24h` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
+| `appointment_reminder_2h` | Utility | Cliente | cliente, salao, servico, profissional, horario |
+
+Textos com acoes visiveis como `[Confirmar]`, `[Cancelar]`,
+`[Reagendar]` e `[Agendar Novamente]` representam marcadores conceituais.
+URLs, tokens, `cmd`, `tk` e identificadores tecnicos nao devem aparecer no
+corpo aprovado nem no snapshot textual. As acoes reais devem seguir no
+`payload.actions`, preparando a evolucao para botoes interativos da WhatsApp
+Business Platform.
+
+## Templates MasterAdmin / Plataforma
+
+Tambem existem templates de comunicacao do nivel SaaS/Plataforma, mantidos
+pelo MasterAdmin e separados dos templates operacionais dos tenants. Esses
+templates devem ser globais (`tenant_id = null`) em `public.templates_mensagem`
+e identificados em `metadata` com:
+
+- `escopo = platform`;
+- `owner = masteradmin`;
+- `categoria = plataforma`;
+- `language = pt_BR`;
+- `categoria_provider = Utility`;
+- `provider_template_name` igual ao nome do template aprovado/cadastrado na
+  Meta;
+- `aprovado_provider = false` inicialmente;
+- `ativo = true`.
+
+Usuarios de tenant nao podem manter esses templates. A manutencao deve ocorrer
+somente pelo MasterAdmin no modulo SaaS de Comunicacao. A existencia desses
+templates nao implica envio automatico; cada disparo depende de uma regra
+operacional explicita da plataforma.
+
+Catalogo inicial de plataforma:
+
+| Template | Tipo | Uso |
+| --- | --- | --- |
+| `master_tenant_created` | administrativo | Avisar dono do salao/autonomo que a conta foi criada. |
+| `master_trial_started` | administrativo | Avisar inicio do periodo de teste. |
+| `master_trial_ending` | administrativo | Avisar proximidade do fim do trial. |
+| `master_plan_activated` | financeiro | Confirmar ativacao do plano. |
+| `master_plan_suspended` | financeiro | Avisar suspensao temporaria do plano. |
+| `master_payment_pending` | financeiro | Avisar pendencia de pagamento. |
+| `master_payment_confirmed` | financeiro | Confirmar pagamento recebido. |
+| `master_support_opened` | suporte | Confirmar abertura de chamado. |
+| `master_support_updated` | suporte | Avisar atualizacao de chamado. |
+| `master_security_alert` | seguranca | Avisar evento relevante de seguranca. |
+| `master_whatsapp_provider_error` | sistema | Avisar MasterAdmin sobre falha no envio WhatsApp. |
+| `master_template_not_approved` | sistema | Avisar bloqueio por template nao aprovado no provider. |
+| `master_tenant_onboarding_incomplete` | administrativo | Avisar onboarding incompleto. |
+| `master_system_maintenance_notice` | sistema | Avisar manutencao programada. |
+
+Todos os corpos desse catalogo, por serem WhatsApp, tambem usam placeholders
+posicionais em `conteudo`. A legibilidade fica em `variaveis` e em
+`metadata.provider_variable_mapping`. Por exemplo, em `master_tenant_created`,
+`{{1}} = nome_responsavel` e `{{2}} = nome_empresa`.
+
+## Templates de Campanhas do SaaS
+
+O modulo de Campanhas usa um catalogo base de templates WhatsApp em
+`public.templates_mensagem`. Esses modelos sao separados dos templates
+operacionais e administrativos: eles existem para campanhas de relacionamento,
+retencao e marketing dos tenants.
+
+Classificacao padrao:
+
+- `canal = whatsapp`;
+- `tipo = marketing`;
+- `metadata.categoria = campanha`;
+- `metadata.escopo = tenant`;
+- `metadata.owner = tenant`;
+- `metadata.catalogo = campanhas_saas`;
+- `metadata.is_catalog_template = true`;
+- `metadata.language = pt_BR`;
+- `metadata.categoria_provider = Marketing`;
+- `aprovado_provider = false` inicialmente;
+- `ativo = true`.
+
+Embora o catalogo base seja mantido pelo SaaS, o uso final pertence ao tenant:
+cada salao/autonomo deve poder personalizar o conteudo antes de usar em uma
+campanha. A existencia desses templates nao dispara mensagens automaticamente.
+
+Catalogo inicial de campanhas:
+
+| Template | Uso |
+| --- | --- |
+| `campaign_promotion` | Promocao de servicos. |
+| `campaign_birthday` | Aniversario do cliente. |
+| `campaign_inactive_client` | Reativacao de clientes inativos. |
+| `campaign_return_reminder` | Sugestao de retorno. |
+| `campaign_new_service` | Novo servico disponivel. |
+| `campaign_new_professional` | Novo profissional. |
+| `campaign_holiday` | Datas comemorativas. |
+| `campaign_flash_sale` | Promocao relampago. |
+| `campaign_loyalty` | Programa de fidelidade. |
+| `campaign_package` | Pacotes promocionais. |
+| `campaign_seasonal` | Campanhas sazonais. |
+| `campaign_custom` | Template livre para campanhas manuais. |
+
+Todos os templates de campanha devem usar linguagem cordial, comercial e sem
+exagero promocional, para reduzir risco de rejeicao na Meta. Sempre que
+possivel, devem ter uma unica acao principal, como `[Agendar Agora]`, tratada
+como marcador conceitual no texto e resolvida operacionalmente em
+`payload.actions`.
+
+```text
+templates_mensagem
+  -> renderizacao com variaveis do atendimento
+  -> mensagens_whatsapp (snapshot final do envio)
+  -> provider whatsapp_mysaas
+  -> Meta Cloud API ou dry-run
+```
+
+`mensagens_whatsapp` nao possui FK obrigatoria para `templates_mensagem`.
+Essa decisao preserva o historico: mesmo que um template seja editado,
+desativado ou removido no futuro, o envio antigo continua com
+`template_nome`, `conteudo`, `tipo_evento`, `payload`, status e resposta do
+provider exatamente como foram gerados.
+
+Ao processar um evento, o `CommunicationService` procura um template ativo em
+`templates_mensagem` por:
+
+- `tenant_id` do atendimento;
+- `canal = whatsapp`;
+- `nome` igual ao `template_nome` esperado ou ao `tipo_evento`;
+- `ativo = true`;
+- `aprovado_provider = true` quando `WHATSAPP_DRY_RUN=false`.
+
+Quando encontra template valido, o conteudo posicional e renderizado usando a
+ordem de `variaveis`. Exemplo: `{{1}}` recebe o valor de `nome_cliente`,
+`{{2}}` recebe `nome_salao` ou o segundo item declarado no template, e assim
+por diante. O snapshot gerado em `mensagens_whatsapp` grava o texto final em
+`conteudo` e preserva em `payload`:
+
+- `params`;
+- `actions`;
+- `template_id`;
+- `template_source`;
+- `provider_template_name`;
+- `language`;
+- `provider`;
+- contexto operacional do evento.
+
+Se nao existir template ativo, ou se o template configurado expuser conteudo
+tecnico proibido, o sistema usa o fallback em codigo e registra aviso tecnico
+nos logs. O conteudo salvo em `mensagens_whatsapp.conteudo` deve continuar
+limpo e amigavel, sem `http://127.0.0.1`, `cmd=`, `tk=`, `token=`,
+`link_confirmar`, `link_cancelar` ou `link_reagendar`. Links e acoes ficam em
+`payload.actions`.
+
+O sender reaproveitavel `processPendingWhatsAppMessages` processa registros em
+`mensagens_whatsapp` com status `pendente`, `agendado` ou `retry`,
+`direcao=saida`, `ativo=true` e `deleted_at is null`. A reserva usa a funcao
+SQL `claim_pending_whatsapp_messages`, com `FOR UPDATE SKIP LOCKED`, muda o
+registro para `processando`, incrementa `tentativas` e evita que dois workers
+processem a mesma mensagem.
+
+Em sucesso, atualiza `status_envio` para `enviado`, grava
+`provider_message_id`, `enviado_em`, `updated_at`, `payload_provider` e a
+resposta do provider. Em falha transitoria, grava `status_envio=retry` e
+`proxima_tentativa_em` com backoff de 1m, 5m, 15m e 1h. Em falha definitiva ou
+limite de tentativas, grava `status_envio=erro`, `erro_envio`,
+`ultimo_erro_codigo`, `ultimo_erro_mensagem`, `updated_at` e detalhes tecnicos
+em `payload.provider_error`.
+
+Com `WHATSAPP_DRY_RUN=true`, o provider nao chama a Meta e retorna
+`provider_message_id` com prefixo `dry_`. Dry-run valida e processa a fila, mas
+nao simula `entregue` ou `lido`; esses estados dependem do webhook da Meta em
+envio real. Com `WHATSAPP_DRY_RUN=false`, o envio usa
+`WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_ACCESS_TOKEN`,
+`WHATSAPP_CLOUD_API_VERSION` e o nome aprovado em
+`payload.provider_template_name`.
+
+Em envio real (`WHATSAPP_DRY_RUN=false`), o sender/provider deve bloquear
+qualquer mensagem cujo template nao esteja aprovado na Meta. A mensagem pode
+ser criada em `mensagens_whatsapp`, mas antes da chamada externa o backend
+valida se o snapshot possui:
+
+- `payload.template_source = templates_mensagem`;
+- `payload.provider_approved = true`;
+- `payload.provider_template_name` preenchido;
+- `payload.language` preenchido, preferencialmente `pt_BR`.
+
+Se qualquer requisito falhar, a Cloud API nao deve ser chamada. O registro em
+`mensagens_whatsapp` deve ser atualizado para `status_envio=erro`, com
+`erro_envio = "Template não aprovado no provedor WhatsApp."`, preservando o
+payload original e adicionando `payload.provider_error` com o motivo tecnico do
+bloqueio. O fluxo operacional do agendamento nao deve ser interrompido por
+esse bloqueio.
+
+O webhook publico da Meta fica em:
+
+- `GET /public/webhooks/whatsapp`: validacao de assinatura com
+  `WHATSAPP_WEBHOOK_VERIFY_TOKEN`;
+- `POST /public/webhooks/whatsapp`: atualiza status por
+  `provider_message_id`, mapeando `sent`, `delivered`, `read` e `failed` para
+  os status internos.
+
+Para alertas operacionais destinados ao salao, o destinatario deve seguir a
+hierarquia: profissional vinculado ao agendamento, administrador ativo do
+tenant e, por fim, autonomo responsavel. Quando nenhum desses possuir telefone
+valido, o telefone do tenant e usado como fallback; se ainda assim nao houver
+telefone, a tentativa fica registrada com `status_envio=erro`.
+
+Eventos com template preparado:
+
+- `appointment.confirmed`: aceite do atendimento pelo profissional/operacao,
+  enviado ao cliente como confirmacao informativa. Ao emitir este evento, o
+  agendamento permanece em `pendente_cliente` (`Aguardando Cliente`) ate ser
+  concluido, cancelado, reagendado ou marcado como no-show. A mensagem exibe
+  apenas as opcoes amigaveis
+  `[Reagendar]` e `[Cancelar]`; URLs tecnicas, `cmd`, `tk` e token operacional
+  nao devem aparecer em `mensagens_whatsapp.conteudo`. As acoes ficam
+  registradas internamente em `payload.actions` com `action_type`,
+  `appointment_token`, `payload` e `expires_at`, preparando a futura migracao
+  para botoes interativos da WhatsApp Business API.
+  O conteudo renderizado deve seguir este padrao:
+
+```text
+Olá, {{nome_cliente}}!
+
+Seu atendimento foi confirmado com sucesso.
+
+📅 Data: {{data_agendamento}}
+
+🕒 Horário: {{hora_agendamento}}
+
+✂️ Serviço: {{nome_servico}}
+
+👩‍💼 Profissional: {{nome_profissional}}
+
+Estamos aguardando você.
+
+Caso precise alterar seu atendimento, utilize uma das opções abaixo:
+
+[Reagendar]
+
+[Cancelar]
+```
+
+- `appointment.pending_client`: solicitacao de confirmacao enviada ao cliente
+  quando o profissional/atendente aprova a solicitacao, mas a politica do
+  tenant ainda exige aceite final do cliente.
+- `appointment.pending_attendant`: alerta operacional imediato para
+  agendamento criado pelo cliente e ainda aguardando aceite do
+  salao/profissional. A mensagem deve exibir as acoes conceituais
+  `[Confirmar]` e `[Abrir Agenda]`, registradas internamente em
+  `payload.actions` com `action_type` `appointment.confirm` e `open_agenda`,
+  sempre vinculadas ao `appointment_token` e sem URL visivel no conteudo.
+- `appointment.pending_attendant_reminder_30m`: segundo alerta operacional,
+  emitido se o agendamento continuar em `pendente_atendente` apos 30 minutos.
+- `appointment.pending_attendant_reminder_60m`: terceiro alerta operacional,
+  emitido se o agendamento continuar em `pendente_atendente` apos 60 minutos.
+- `appointment.pending_attendant_reminder_2h`: ultimo alerta operacional, de
+  prioridade alta, quando faltar aproximadamente 2 horas para o atendimento e
+  o status ainda for `pendente_atendente`.
+- `appointment.rescheduled`: reagendamento com novo horario.
+- `appointment.cancelled`: cancelamento do atendimento.
+- `appointment.reminder_24h`: lembrete de 24 horas.
+- `appointment.reminder_2h`: lembrete de 2 horas.
+- `appointment.completed`: agradecimento/pos-atendimento.
+- `appointment.no_show`: registro de nao comparecimento.
+
+Para clientes, `appointment.no_show` usa o template
+`appointment_no_show_client`, com tom neutro e respeitoso, sem cobranca ou
+constrangimento. O conteudo mostra cliente, servico, data e horario, e exibe
+apenas o marcador `[Agendar Novamente]`; a acao real fica em
+`payload.actions` com `id= schedule_again`, `action_type=schedule_again` e
+`target=/agendar/{tenant_slug}`.
+
+Cancelamentos internos usam `appointment_cancelled_by_attendant` e exigem
+motivo obrigatorio antes da mudanca de status. O motivo informado deve aparecer
+no `conteudo` da mensagem ao cliente e tambem seguir no payload do evento. Se o
+cancelamento vier do proprio cliente via link operacional, a mensagem ao
+cliente usa `appointment_cancelled_by_client`, sem texto de motivo interno.
+O motivo generico `Cancelado pelo painel` nao deve ser usado como texto enviado
+ao cliente; o painel deve coletar um motivo operacional especifico em lista
+controlada e repassar esse valor para o evento `appointment.cancelled`.
+
+Todos os eventos da familia `appointment.pending_attendant*` seguem o mesmo
+padrao de acao operacional para o atendente: o texto salvo deve mostrar apenas
+as opcoes conceituais `[Confirmar]` e `[Abrir Agenda]`, sem URL, id interno,
+`cmd`, `tk` ou token visivel. Os dados acionaveis ficam em `payload.actions`,
+vinculados ao `appointment_token`, com `action_type` `appointment.confirm` e
+`open_agenda` para futura entrega como botoes interativos.
+
+Os links operacionais de confirmacao, cancelamento e reagendamento devem usar
+tokens de agendamento, sem expor `id` interno. Em ambiente local, os links
+devem apontar para o frontend publico configurado por `PUBLIC_APP_URL` ou
+`BOOKING_BASE_URL`, evitando URLs de backend em mensagens para clientes.
+Excecao: em `appointment.confirmed`, cancelar e reagendar devem ser tratados
+como acoes operacionais internas associadas ao token; o texto salvo em
+`conteudo` nao deve exibir URLs.
+
+Variaveis minimas dos templates:
+
+```text
+{{ nome_cliente }}
+{{ nome_salao }}
+{{ nome_profissional }}
+{{ nome_servico }}
+{{ data_agendamento }}
+{{ hora_agendamento }}
+{{ link_cancelar }}
+{{ link_reagendar }}
+{{ link_confirmar }}
+```
+
+O provider inicial e `whatsapp_mysaas`. Em ambiente sem credenciais Meta, ele
+opera em `dry_run`: registra a mensagem como enviada de forma simulada, sem
+chamar a Cloud API. Para envio real, configurar `WHATSAPP_CLOUD_API_ENABLED`,
+`WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_ACCESS_TOKEN` e
+`WHATSAPP_DRY_RUN=false`.
+
+## Auditoria e compatibilidade de migration
+
+Todo evento operacional suportado deve gerar tentativa de auditoria em
+`mensagens_whatsapp`, inclusive quando `WHATSAPP_DRY_RUN=true`. Em dry-run, o
+provider retorna `provider_message_id` com prefixo `dry_` e o registro deve
+terminar como `status_envio=enviado`, sem chamada externa para a Meta.
+
+A migration `20260617100000_whatsapp_operational_communication_logs.sql`
+adiciona os campos de auditoria estendida `profissional_id`, `tipo_evento` e
+`provider`. Enquanto essa migration nao estiver aplicada em um ambiente, o
+backend mantem fallback de compatibilidade: grava o log base de
+`mensagens_whatsapp` e preserva os dados estendidos dentro de `payload`.
+
+Durante validacoes em desenvolvimento, logs temporarios com o prefixo
+`[whatsapp-operational-debug]` podem indicar confirmacao recebida pela API de
+Agenda, evento operacional disparado, recipients resolvidos, tentativa de
+insert/update em `mensagens_whatsapp` e resultado do provider.
+
+Para registros legados de `appointment.confirmed` ja gravados com URLs no
+campo `conteudo`, a rotina de manutencao
+`backend/scripts/sanitize-confirmed-whatsapp-content.js` recompõe o texto
+amigavel, remove links visiveis de `payload.params`/`payload.links` e preserva
+o token operacional apenas em `payload.actions` e `payload.operational_context`.
+
+---
 
 O whatsapp.md é um dos módulos mais críticos e diferenciadores do Bellory, porque o WhatsApp NÃO é apenas um canal de comunicação no projeto.
 Ele é:

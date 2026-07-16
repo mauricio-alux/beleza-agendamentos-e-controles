@@ -1,399 +1,621 @@
-Essa é uma das decisões arquiteturais MAIS importantes do Bellory.
-O 004-multi-tenant.md define:
-•	como os dados serão isolados
-•	como o SaaS será escalável
-•	como a segurança será garantida
-•	como franquias futuras funcionarão
-•	como a IA manterá contexto separado
-•	como o Bellory poderá crescer sem colapsar operacionalmente
-Esse documento é a fundação do Bellory como SaaS real.
-Sem multi-tenant corretamente definido:
-•	o sistema vira aplicação monousuário
-•	segurança fica vulnerável
-•	IA mistura dados
-•	dashboards vazam informações
-•	escalabilidade futura se torna extremamente difícil
-O Bellory NÃO deve apenas “ter vários usuários”.
-Ele deve:
-•	isolar completamente cada operação
-•	tratar cada salão como ambiente independente
-•	garantir segurança contextual
-•	manter arquitetura tenant-aware desde o início
-Abaixo está a especificação consolidada profissional do ADR.
-________________________________________
-docs/decisions/004-multi-tenant.md
-# ADR-004 — Arquitetura Multi-Tenant
+# ADR-004 - Arquitetura Multi-Tenant
 
-# Status
+## Status
 
-ACEITO
-# Contexto
+Aceito.
 
-O Bellory foi concebido como:
-- plataforma SaaS
-- escalável
-- multi-cliente
-- preparada para franquias
-- preparada para IA
-- preparada para crescimento operacional
+## Contexto
 
-Durante a definição arquitetural do sistema foi identificado que:
+O Bellory e uma plataforma SaaS para o nicho de beleza. A arquitetura precisa suportar:
 
-Cada salão:
-- possui operação própria
-- possui clientes próprios
-- possui agenda própria
-- possui campanhas próprias
-- possui métricas próprias
+- multiplos saloes e operacoes independentes;
+- usuarios que podem participar de mais de um tenant;
+- administracao global da plataforma Bellory;
+- profissionais, autonomos, terceiros e clientes finais;
+- franquias, marketplace, campanhas globais e IA tenant-aware no futuro.
 
-Também foi identificado que:
-- dados não podem se misturar
-- IA não pode compartilhar contexto
-- campanhas devem ser isoladas
-- dashboards devem ser independentes
+O objetivo central e garantir isolamento operacional completo sem tornar a experiencia do usuario complexa. Internamente, o Bellory deve operar com arquitetura robusta de plataforma, memberships e RBAC. Externamente, o usuario do salao deve perceber apenas perfis simples e fluxos automaticos.
 
-# Problema
+## Decisao
 
-Definir:
-como o Bellory deve estruturar isolamento operacional entre clientes SaaS.
+O Bellory utiliza banco PostgreSQL compartilhado, com isolamento logico por `tenant_id` nas entidades operacionais.
 
-As opções consideradas foram:
+A identidade do usuario e global. O vinculo operacional com um salao nao fica mais conceitualmente preso a `usuarios.tenant_id`. O acesso operacional e representado por `tenant_memberships`.
 
-## Opção 1
-Banco separado por cliente.
+Em termos praticos:
 
-## Opção 2
-Schema separado por cliente.
+- `usuarios` representa identidade global;
+- `tenants` representa saloes ou operacoes independentes;
+- `tenant_memberships` representa o vinculo de um usuario com um tenant;
+- `roles`, `permissions` e `role_permissions` representam RBAC interno;
+- o tenant ativo da sessao define o contexto operacional;
+- MasterAdmin atua no contexto da plataforma, nao como administrador padrao de salao.
 
-## Opção 3
-Banco compartilhado com isolamento tenant-aware.
+## Camadas Arquiteturais
 
-# Decisão
+### Plataforma Bellory
 
-Foi decidido que:
+A plataforma Bellory e o nivel SaaS global.
 
-> O Bellory utilizará arquitetura multi-tenant baseada em tenant_id.
+Responsavel por:
 
-Com:
-- banco compartilhado
-- tabelas compartilhadas
-- isolamento lógico tenant-aware
+- tenants;
+- planos e assinaturas;
+- metricas SaaS;
+- campanhas globais;
+- templates reutilizaveis;
+- suporte operacional;
+- auditoria;
+- saude da plataforma.
 
-Toda entidade operacional deverá possuir:
-- tenant_id
-- ownership validation
-- escopo isolado
+O perfil principal dessa camada e `MasterAdmin`.
 
-# Motivação Estratégica
+O `MasterAdmin` nao deve operar agenda, equipe, servicos ou clientes de um tenant por padrao. Quando precisar acessar dados operacionais de um tenant, deve faze-lo em modo suporte/auditoria, com motivo explicito e log obrigatorio.
 
-A decisão foi tomada porque:
+### Tenant / Salao
 
-## 1. Escalabilidade
+Cada tenant representa uma operacao independente, normalmente um salao, studio, clinica estetica ou profissional autonomo com operacao propria.
 
-Banco compartilhado:
-- reduz custo operacional
-- simplifica infraestrutura
-- facilita crescimento SaaS
-- melhora manutenção
+Um tenant possui:
 
-## 2. Simplificação Operacional
+- configuracoes proprias;
+- agenda propria;
+- equipe propria;
+- servicos proprios;
+- clientes vinculados;
+- campanhas proprias;
+- metricas proprias;
+- assinatura/plano SaaS.
 
-Permite:
-- deploy único
-- infraestrutura única
-- observabilidade centralizada
-- monitoramento simplificado
+Toda entidade operacional deve ser tenant-aware.
 
-## 3. Performance e Evolução
+### Cliente Final
 
-Arquitetura tenant-aware facilita:
-- cache
-- filas
-- realtime
-- IA
-- APIs públicas
-- analytics futuros
+O cliente final nao deve ser tratado como administrador operacional.
 
-## 4. Preparação IA
+Clientes podem existir como cadastro global em `clientes`, com relacionamento por tenant em `cliente_tenants`.
 
-A IA dependerá:
-- contexto isolado
-- tenant context
-- ownership context
+Essa modelagem permite que a mesma pessoa seja cliente de mais de um salao sem misturar historico, recorrencia, campanhas ou contexto operacional.
 
-## 5. Crescimento Comercial
+Fluxos futuros de cliente final podem usar:
 
-A arquitetura permite:
-- múltiplos salões
-- franquias futuras
-- múltiplas unidades
-- expansão nacional
+- magic link;
+- WhatsApp;
+- token de acesso;
+- area `/cliente` ou `/minha-conta`.
 
-# Estrutura Tenant
+## Identidade, Memberships E Tenant Ativo
 
-Cada tenant representa:
+### usuarios
 
-- um salão
-- uma operação independente
-- um ambiente operacional isolado
+`usuarios` representa a identidade global do usuario Bellory.
 
-# Entidade Principal
+Um usuario pode:
 
-## tenants
+- ser `MasterAdmin` da plataforma;
+- pertencer a um ou mais tenants;
+- atuar com roles diferentes em tenants diferentes;
+- ser autonomo dono de uma operacao;
+- atuar como autonomo parceiro em tenant de terceiros;
+- futuramente participar de marketplace ou franquias.
 
-Tabela principal responsável por:
-- identificação tenant
-- configurações globais
-- plano
-- status
-- timezone
-- parâmetros operacionais
+`usuarios.tenant_id` nao deve ser tratado como dependencia estrutural obrigatoria. Qualquer uso remanescente deve ser considerado legado ou compatibilidade temporaria.
 
-# Estratégia de Isolamento
+### tenant_memberships
 
-Todo dado operacional deverá possuir:
+`tenant_memberships` e a entidade central de acesso operacional.
 
-```text id="tenant01"
-tenant_id
-________________________________________
-Entidades Obrigatórias Tenant-Aware
-Operacionais
-•	usuarios
-•	agendas
-•	clientes
-•	servicos
-•	campanhas
-•	cupons
-•	mensagens_whatsapp
-________________________________________
-Inteligência
-•	crm_interacoes
-•	ai_predictions
-•	ai_context
-________________________________________
-Analytics
-•	dashboard_metrics
-•	insights
-•	logs futuros
-________________________________________
-Ownership Validation
-Toda operação deverá validar:
-•	usuário pertence tenant
-•	recurso pertence tenant
-•	operação pertence tenant
-________________________________________
-Segurança
-Toda consulta backend deverá:
-•	filtrar tenant_id
-•	validar ownership
-•	impedir cross-tenant access
-Nunca confiar:
-•	apenas frontend
-•	apenas JWT sem validação tenant
-________________________________________
-Backend
-Toda lógica multi-tenant deverá existir:
-•	backend
-•	services
-•	repositories
-•	middleware
-Nunca apenas frontend.
-________________________________________
-Middleware Tenant
-O sistema deverá possuir:
-TenantMiddleware
-Responsável por:
-•	identificar tenant atual
-•	validar escopo
-•	anexar tenant context request
-________________________________________
-JWT Tenant-Aware
-O JWT deverá possuir:
-tenant_id
-user_id
-role
-________________________________________
-Repositories Tenant-Aware
-Todos repositories deverão:
-•	filtrar tenant_id
-•	impedir consultas globais
-________________________________________
-APIs Tenant-Aware
-Toda API deverá:
-•	consumir tenant context
-•	validar ownership
-•	operar contexto isolado
-________________________________________
-Frontend
-O frontend deverá:
-•	consumir contexto tenant
-•	carregar branding tenant futuro
-•	carregar permissões tenant
-Mas:
-•	isolamento real sempre backend
-________________________________________
-Branding Futuro
-Arquitetura preparada para:
-•	cores tenant
-•	logos tenant
-•	white-label futuro
-•	customização visual
-________________________________________
-Multi-Unidade Futuro
-Arquitetura preparada para:
-Estrutura futura
-tenant
- └── unidades
-      └── profissionais
-________________________________________
-Franquias Futuras
-Arquitetura preparada para:
-•	franquias
-•	grupos econômicos
-•	múltiplas unidades
-•	dashboards consolidados
-________________________________________
-IA Tenant-Aware
-Toda IA deverá:
-•	utilizar tenant context
-•	manter isolamento operacional
-•	impedir mistura dados
+Campos conceituais:
+
+- `usuario_id`;
+- `tenant_id`;
+- `role`;
+- `status`;
+- `profissional_id`;
+- `is_primary`;
+- `vinculo_tipo`;
+- `is_owner`;
+- `marketplace_enabled`;
+- `marketplace_profile`;
+- `metadata`.
+
+O membership define:
+
+- a qual tenant o usuario pertence;
+- qual perfil ele exerce naquele tenant;
+- se ele e dono da operacao;
+- se atua como membro interno;
+- se atua como parceiro/autonomo/terceiro;
+- qual profissional operacional esta vinculado a ele;
+- qual contexto deve orientar dashboard e permissoes.
+
+### Tenant Ativo Da Sessao
+
+Toda operacao tenant-aware deve possuir um tenant ativo.
+
+O tenant ativo pode vir de:
+
+- membership primario;
+- cabecalho futuro de troca de tenant;
+- selecao futura de contexto;
+- modo suporte/auditoria para `MasterAdmin`.
+
+O backend deve anexar ao request:
+
+- `usuario`;
+- `tenantId`;
+- `tenant`;
+- `membership`;
+- `tipoUsuario` contextual;
+- `permissionContext`.
+
+## Perfis Operacionais
+
+O Bellory utiliza perfis pre-definidos para manter a UX simples.
+
+Perfis principais:
+
+- `MasterAdmin`: administrador da plataforma Bellory;
+- `Administrador`: administrador operacional do tenant;
+- `Gerente`: gestao operacional do salao;
+- `Autonomo`: profissional independente, dono ou parceiro;
+- `Profissional`: profissional interno com agenda propria;
+- `Recepcionista`: agenda, clientes e confirmacoes;
+- `Financeiro`: faturamento e relatorios financeiros;
+- `Funcionario`: acesso operacional limitado;
+- `Terceiro`: prestador externo com acesso restrito;
+- `Cliente`: cliente final.
+
+O usuario final nao deve configurar permissoes tecnicas. O sistema atribui permissoes automaticamente com base no perfil e no membership.
+
+## Autonomo
+
+`Autonomo` nao e um simples funcionario.
+
+Ele pode:
+
+- possuir tenant proprio;
+- administrar sua operacao individual;
+- atender em casa, studio ou local proprio;
+- atuar dentro de saloes de terceiros;
+- ter agenda propria;
+- ter clientes proprios;
+- participar de multiplos tenants no futuro;
+- ser preparado para marketplace.
+
+O contexto do autonomo depende do membership:
+
+- `vinculo_tipo = owner`: dono da propria operacao;
+- `vinculo_tipo = partner`: atua em tenant de terceiro;
+- `marketplace_enabled = true`: preparado para exposicao futura em marketplace.
+
+Quando dono, o autonomo pode ter permissoes amplas sobre seu proprio tenant. Quando parceiro em tenant de terceiros, suas permissoes devem ser limitadas ao proprio contexto profissional.
+
+## MasterAdmin Nao E Administrador Do Salao
+
+Essa separacao e obrigatoria.
+
+`MasterAdmin`:
+
+- administra a plataforma Bellory;
+- acessa `/admin`;
+- visualiza metricas SaaS;
+- gerencia tenants, assinaturas, campanhas globais e auditoria;
+- nao opera tenants por padrao.
+
+`Administrador`:
+
+- administra um tenant especifico;
+- acessa dashboard operacional;
+- gerencia agenda, clientes, equipe, servicos, campanhas e configuracoes do salao;
+- nao acessa metricas globais da plataforma.
+
+Se `MasterAdmin` precisar acessar um tenant, deve usar modo suporte/auditoria.
+
+Modo suporte deve exigir:
+
+- tenant alvo;
+- motivo explicito;
+- log em `event_logs`;
+- contexto operacional temporario;
+- rastreabilidade.
+
+## RBAC
+
+O Bellory utiliza RBAC granular internamente, com UX simples externamente.
+
+Entidades:
+
+- `permissions`;
+- `roles`;
+- `role_permissions`;
+- `tenant_user_permissions` para customizacao futura.
+
+Permissoes seguem o padrao:
+
+```text
+recurso.acao
+```
+
+Exemplos:
+
+- `agenda.read`;
+- `agenda.write`;
+- `clientes.read`;
+- `clientes.write`;
+- `campanhas.manage`;
+- `financeiro.read`;
+- `equipe.manage`;
+- `platform.dashboard.read`;
+- `platform.support.access`;
+- `platform.audit.read`.
+
+O usuario do SaaS nao deve ver:
+
+- ACL tecnica;
+- matriz de permissoes;
+- checkboxes complexos;
+- regras internas do RBAC.
+
+O sistema controla automaticamente:
+
+- menus;
+- widgets;
+- dashboards;
+- rotas;
+- acoes permitidas;
+- visibilidade de modulos.
+
+## Dashboards Contextuais
+
+Dashboards dependem de:
+
+- role contextual;
+- membership;
+- tenant ativo;
+- permissoes;
+- vinculo profissional;
+- contexto de plataforma ou tenant.
+
+### Dashboard Da Plataforma
+
+Rota conceitual:
+
+```text
+/admin
+```
+
+Exibe:
+
+- MRR;
+- churn;
+- crescimento;
+- tenants ativos;
+- tenants em trial;
+- campanhas globais;
+- uso da plataforma;
+- saude operacional;
+- auditoria.
+
+### Dashboard Do Tenant
+
+Rota conceitual:
+
+```text
+/dashboard
+/tenant/dashboard
+```
+
+Exibe dados apenas do tenant ativo.
+
+### Dashboard Do Profissional, Funcionario E Terceiro
+
+Perfis limitados nao devem receber widgets administrativos.
+
+`Funcionario` visualiza:
+
+- agenda propria;
+- clientes proprios;
+- atendimentos;
+- comissao;
+- horarios.
+
+`Terceiro` visualiza:
+
+- agenda vinculada;
+- servicos autorizados;
+- ganhos proprios limitados.
+
+Se nao houver `profissional_id` no membership, o dashboard deve permanecer limitado e nao cair em metricas globais do tenant.
+
+### Dashboard Do Autonomo
+
+O dashboard do autonomo e hibrido:
+
+- agenda propria;
+- ganhos proprios;
+- campanhas proprias;
+- clientes proprios;
+- metricas pessoais;
+- contexto de owner ou partner;
+- preparacao para marketplace.
+
+## Middlewares
+
+### Auth Middleware
+
+Responsavel por:
+
+- validar token;
+- carregar usuario global;
+- carregar memberships;
+- selecionar tenant ativo;
+- montar role contextual;
+- montar `permissionContext`.
+
+### Tenant Middleware
+
+Responsavel por:
+
+- exigir tenant ativo para rotas operacionais;
+- validar membership ativo;
+- anexar tenant e membership ao request;
+- impedir acesso sem contexto operacional.
+
+### Platform Middleware
+
+Responsavel por:
+
+- permitir apenas `MasterAdmin`;
+- criar contexto de plataforma;
+- separar rotas `/admin` de rotas operacionais.
+
+### Permission Middleware
+
+Responsavel por:
+
+- aplicar `requirePermission()`;
+- validar permissoes granulares;
+- respeitar role, membership e tenant ativo.
+
+`requireRole()` pode continuar existindo para casos simples, mas autorizacao operacional deve preferir permissoes.
+
+## Banco De Dados
+
+Tecnologia:
+
+- PostgreSQL;
+- Supabase;
+- tabelas compartilhadas;
+- isolamento logico por tenant;
+- RLS como camada adicional;
+- service role no backend com filtros obrigatorios.
+
+Tabelas principais:
+
+- `usuarios`;
+- `tenants`;
+- `tenant_memberships`;
+- `permissions`;
+- `roles`;
+- `role_permissions`;
+- `tenant_user_permissions`;
+- `clientes`;
+- `cliente_tenants`;
+- `profissionais`;
+- `servicos`;
+- `agendamentos`;
+- `campanhas`;
+- `platform_campaigns`;
+- `event_logs`.
+
+Entidades operacionais devem possuir `tenant_id`.
+
+Entidades globais de plataforma podem nao possuir `tenant_id`, mas devem ser restritas por permissoes de plataforma.
+
+## RLS E Backend
+
+RLS no Supabase deve reforcar isolamento, mas o Bellory nao deve depender apenas de RLS.
+
+O backend deve:
+
+- filtrar por `tenant_id`;
+- validar ownership;
+- validar membership;
+- validar permissoes;
+- impedir consultas globais indevidas;
+- registrar operacoes sensiveis.
+
+Como o backend pode usar service role, qualquer repository operacional deve ser tenant-aware por padrao.
+
+## Repositories Tenant-Aware
+
+Todo repository operacional deve receber `tenantId` explicitamente.
+
+Padrao esperado:
+
+```text
+repository.operation(tenantId, ...)
+```
+
+Toda query operacional deve iniciar pelo escopo:
+
+```text
+.eq('tenant_id', tenantId)
+```
+
+Excecoes globais devem ser explicitas e restritas a contexto de plataforma.
+
+## Campanhas
+
+Existem dois contextos:
+
+### Campanhas Do Tenant
+
+Pertencem ao salao.
+
+Devem sempre possuir `tenant_id`.
+
+### Campanhas Globais Da Plataforma
+
+Pertencem ao Bellory.
+
+Podem existir em `platform_campaigns` para:
+
+- campanhas institucionais;
+- templates reutilizaveis;
+- campanhas globais opcionais;
+- comunicacoes da plataforma.
+
+Campanhas globais nao devem ser misturadas com campanhas operacionais do salao.
+
+## IA Tenant-Aware
+
+Toda IA futura deve receber contexto explicito:
+
+- tenant ativo;
+- usuario;
+- membership;
+- permissao;
+- recurso;
+- finalidade;
+- origem dos dados.
+
 Nunca permitir:
-•	aprendizado cruzado indevido
-•	vazamento contexto IA
-________________________________________
-WhatsApp Tenant-Aware
-Toda comunicação deverá:
-•	respeitar tenant
-•	utilizar branding tenant
-•	utilizar campanhas tenant
-________________________________________
-Dashboard Tenant-Aware
-Todo dashboard deverá:
-•	exibir apenas métricas tenant
-•	impedir agregações indevidas
-________________________________________
-CRM Tenant-Aware
-Clientes pertencem:
-•	exclusivamente ao tenant
-Nunca compartilhar:
-•	histórico
-•	campanhas
-•	recorrência
-________________________________________
-Agenda Tenant-Aware
-Toda Agenda deverá:
-•	pertencer tenant
-•	validar ownership
-•	validar escopo operacional
-________________________________________
-Estratégia Database
-Banco compartilhado:
-•	PostgreSQL
-•	Supabase
-•	índices tenant-aware
-________________________________________
-Índices Obrigatórios
-Toda tabela operacional deverá possuir índices:
-(tenant_id)
-(tenant_id, created_at)
-(tenant_id, status)
-________________________________________
-Queries
-Toda query deverá:
-•	iniciar tenant filter
-•	evitar scans globais
-•	otimizar isolamento
-________________________________________
-Observabilidade
-Logs futuros deverão possuir:
-tenant_id
-request_id
-user_id
-________________________________________
-Filas Futuras
-Filas deverão respeitar:
-•	tenant context
-•	isolamento processamento
-________________________________________
-Realtime Futuro
-Realtime deverá:
-•	separar canais tenant
-•	impedir broadcast global
-________________________________________
-Cache Futuro
-Cache deverá utilizar:
-•	tenant namespace
-Exemplo:
-tenant:{tenant_id}:dashboard
-________________________________________
-Storage Futuro
-Arquivos deverão respeitar:
-•	tenant folders
-•	tenant namespace
-Exemplo:
-/tenants/{tenant_id}/
-________________________________________
-Estratégia de Escalabilidade
-Arquitetura preparada para:
-•	milhares tenants
-•	crescimento horizontal
-•	workers
-•	filas
-•	microsserviços futuros
-________________________________________
-Estratégia de Segurança
-Nunca permitir:
-•	cross-tenant query
-•	vazamento dados
-•	mistura contexto IA
-•	mistura campanhas
-•	mistura dashboards
-________________________________________
-Estratégia de Auditoria
-Futuro suporte:
-•	audit logs
-•	trilha tenant-aware
-•	rastreabilidade operacional
-________________________________________
-Riscos Identificados
-Falha isolamento
-Maior risco:
-•	vazamento cross-tenant
-________________________________________
-Queries incorretas
-Consultas sem tenant_id:
-•	podem expor dados indevidos
-________________________________________
-Estratégia Mitigação
-Mitigar através:
-•	middleware obrigatório
-•	repositories tenant-aware
-•	linters futuros
-•	testes segurança
-•	validação ownership
-________________________________________
-Diretriz Arquitetural Final
-Todo módulo Bellory deverá ser:
-tenant-aware por padrão.
-Nunca:
-•	global-first
-•	monousuário
-•	parcialmente isolado
-________________________________________
-Resultado Esperado
-O Bellory deverá possuir:
-•	isolamento completo
-•	segurança operacional
-•	escalabilidade SaaS real
-•	IA contextual isolada
-•	franquias futuras suportadas
-________________________________________
-Decisão Final
-DECISÃO APROVADA:
-O Bellory utilizará arquitetura:
-•	multi-tenant
-•	tenant-aware
-•	banco compartilhado
-•	isolamento lógico por tenant_id
-•	ownership validation obrigatória
+
+- mistura de dados entre tenants;
+- aprendizado cruzado indevido;
+- recomendacoes com dados de outro salao;
+- campanhas geradas com contexto externo sem autorizacao.
+
+Dados globais para IA so podem ser usados quando anonimizados, agregados e autorizados.
+
+## Observabilidade E Auditoria
+
+Logs devem incluir, quando aplicavel:
+
+- `tenant_id`;
+- `usuario_id`;
+- `event_type`;
+- origem;
+- ip;
+- user agent;
+- payload contextual;
+- motivo em modo suporte.
+
+Eventos sensiveis:
+
+- acesso suporte;
+- alteracao de permissoes;
+- mudanca de assinatura;
+- criacao de campanhas globais;
+- publicacao de templates;
+- operacoes administrativas de plataforma.
+
+## Rotas Conceituais
+
+Separacao recomendada:
+
+```text
+/admin/*   -> plataforma Bellory
+/tenant/*  -> operacao tenant-aware
+/cliente/* -> cliente final
+```
+
+Rotas legadas podem continuar existindo durante transicao, mas devem respeitar os mesmos middlewares e permissoes.
+
+## Compatibilidade Futura
+
+A arquitetura fica preparada para:
+
+- multiplos tenants por usuario;
+- franquias;
+- grupos economicos;
+- multiplas unidades;
+- marketplace de profissionais;
+- autonomos parceiros;
+- suporte operacional auditado;
+- campanhas globais;
+- templates reutilizaveis;
+- IA tenant-aware;
+- dashboards dinamicos;
+- permissoes customizadas futuras;
+- storage tenant-aware;
+- cache com namespace por tenant;
+- filas tenant-aware;
+- realtime por canal de tenant.
+
+## Cache, Filas, Realtime E Storage
+
+Padroes futuros:
+
+```text
+cache: tenant:{tenant_id}:dashboard
+storage: /tenants/{tenant_id}/...
+realtime: tenant:{tenant_id}:agenda
+queue: tenant_id no payload de cada job
+```
+
+Eventos globais de plataforma devem usar namespace proprio:
+
+```text
+platform:admin
+platform:campaigns
+platform:audit
+```
+
+## Riscos
+
+Riscos principais:
+
+- query operacional sem `tenant_id`;
+- MasterAdmin atuando como admin de salao por engano;
+- usuario multi-tenant usando tenant errado;
+- dashboard exibindo metricas agregadas indevidas;
+- RBAC exposto de forma complexa ao usuario final;
+- IA misturando contexto de tenants;
+- campanhas globais confundidas com campanhas do tenant;
+- suporte sem auditoria.
+
+Mitigacoes:
+
+- tenant middleware obrigatorio;
+- platform middleware separado;
+- RBAC granular;
+- memberships contextuais;
+- logs de suporte;
+- repositories tenant-aware;
+- testes de cross-tenant;
+- dashboards por role e membership;
+- UX com perfis prontos.
+
+## Diretriz Final
+
+Todo modulo Bellory deve ser tenant-aware por padrao.
+
+Excecoes globais devem ser explicitamente platform-aware.
+
+O Bellory deve combinar:
+
+- arquitetura enterprise internamente;
+- operacao simples externamente;
+- seguranca contextual;
+- isolamento por tenant;
+- memberships como fonte de acesso operacional;
+- RBAC automatico por perfis prontos;
+- preparacao para marketplace, franquias, IA e campanhas globais.
+
+## Decisao Final
+
+O Bellory adota:
+
+- banco compartilhado PostgreSQL/Supabase;
+- isolamento logico por `tenant_id`;
+- usuarios globais;
+- acesso operacional via `tenant_memberships`;
+- separacao entre plataforma, tenant e cliente final;
+- RBAC interno robusto;
+- UX simples baseada em perfis prontos;
+- dashboards contextuais por role, membership e tenant ativo;
+- suporte/auditoria para acesso operacional de plataforma;
+- arquitetura preparada para escala SaaS real.

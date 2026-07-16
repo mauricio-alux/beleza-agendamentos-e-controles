@@ -1,3 +1,52 @@
+# Identificacao Progressiva em Links Publicos
+
+O CRM recebe clientes por links genericos de campanha e links individuais com
+token. O WhatsApp normalizado identifica o cliente dentro do tenant, evitando
+duplicacao no mesmo salao.
+
+O vinculo `cliente_tenants` registra primeiro e ultimo acesso. Tokens publicos
+sao aleatorios, expiram, permanecem associados ao tenant e sao armazenados
+somente como hash. Nome, telefone e email nunca devem compor a URL.
+
+Os eventos `acesso`, `identificacao`, `retorno` e `agendamento` alimentam a
+atribuicao de campanha e a futura analise de conversao.
+
+## Atualizacao por conclusao de atendimento
+
+Quando um agendamento confirmado e concluido, manualmente ou pela rotina de
+conclusao automatica da Agenda, o CRM passa a receber efeitos operacionais
+diretos:
+
+- `cliente_tenants.ultimo_atendimento` recebe a data/hora do atendimento.
+- `cliente_tenants.qtd_atendimentos` e incrementado.
+- `cliente_tenants.total_gasto` soma o valor do atendimento quando disponivel.
+- `cliente_tenants.metadata.last_completed_appointment` guarda o resumo do
+  ultimo atendimento concluido.
+- `cliente_historico_atendimentos` recebe ou atualiza um registro operacional
+  com chave unica por `tenant_id` e `agendamento_id`, contendo cliente,
+  profissional, servico, data, status, valor quando aplicavel e origem
+  `agenda`.
+- `crm_interacoes` recebe uma interacao `atendimento_concluido`.
+- `crm_scores` e atualizado para refletir compra/visita recente.
+
+Quando o atendimento confirmado e marcado como `no_show`, a Agenda cria o
+registro em `no_show_registros`, sincroniza
+`cliente_historico_atendimentos.status = no_show`, atualiza
+`cliente_tenants.data_ultimo_no_show` e `cliente_tenants.total_no_show`, grava
+interacao `no_show` no CRM e reduz o score operacional do cliente. No-show nao
+incrementa atendimento concluido nem valor gasto. O objetivo e preservar
+historico e permitir futuras regras de risco, lembrete, recuperacao e
+reputacao do cliente.
+
+Para bases que ja tinham agendamentos antes da criacao dessa tabela, a
+migration `20260702130000_backfill_client_operational_history.sql` preenche o
+historico legado de forma idempotente. Ela considera apenas agendamentos
+`concluido` e `no_show`, preserva `tenant_id`, usa o primeiro servico vinculado
+ao agendamento quando disponivel e ignora registros ja existentes pela chave
+`tenant_id + agendamento_id`.
+
+---
+
 O crm.md é um dos módulos mais estratégicos do Bellory porque ele representa a transformação da agenda em relacionamento contínuo.
 Esse é um ponto extremamente importante:
 A maioria dos pequenos salões usa:

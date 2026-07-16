@@ -280,8 +280,11 @@ id	UUID PK
 tenant_id	UUID FK
 cliente_id	UUID FK
 agenda_id	UUID FK
+profissional_id	UUID FK
 telefone_destino	VARCHAR(20)
 template_nome	VARCHAR(100)
+tipo_evento	VARCHAR(100)
+provider	VARCHAR(80)
 conteudo	TEXT
 status_envio	VARCHAR(30)
 provider_message_id	TEXT
@@ -289,6 +292,10 @@ enviado_em	TIMESTAMP
 erro_envio	TEXT
 payload	JSONB
 created_at	TIMESTAMP
+Observacao: `mensagens_whatsapp` tambem e o log de auditoria da camada
+centralizada `CommunicationService`. O provider inicial e `whatsapp_mysaas`.
+Falhas de envio devem ser registradas em `erro_envio` e `payload`, sem bloquear
+o fluxo de negocio que originou o evento.
 ________________________________________
 12. TABELA crm_interacoes
 Essa tabela é extremamente estratégica.

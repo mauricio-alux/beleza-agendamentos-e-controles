@@ -1,721 +1,360 @@
-O `onboarding.md` é extremamente estratégico no Bellory porque ele representa:
+# Modulo Onboarding
 
-* a transformação do usuário em cliente ativo
-* a primeira percepção de valor do SaaS
-* a redução de fricção operacional
-* a ativação rápida do salão
-* o início da automação invisível
+Este documento descreve como o modulo de onboarding funciona tecnicamente no Bellory. A visao funcional passo a passo fica em `docs/flows/onboarding.md`.
 
-Na prática:
-o onboarding é o momento em que o Bellory “monta o salão para o usuário”.
+## Responsabilidade
 
-Isso é um diferencial enorme no mercado brasileiro.
+O modulo de onboarding e responsavel por transformar um cadastro inicial em um tenant operacional minimo.
 
-O onboarding do Bellory NÃO deve parecer:
+Ele cria e conecta:
 
-* cadastro burocrático
-* ERP corporativo
-* configuração técnica
+- tenant;
+- usuario administrador;
+- membership;
+- assinatura trial;
+- configuracoes iniciais;
+- profissional padrao;
+- servicos iniciais;
+- vinculos `servico_especialidades`;
+- vinculos `profissional_servicos`;
+- escala semanal;
+- link publico;
+- progresso em `onboarding_steps`.
 
-Ele deve parecer:
+## Services Envolvidos
 
-* assistente inteligente
-* ativação guiada
-* experiência premium
-* automação amigável
+### Backend
 
-Abaixo está a especificação consolidada profissional do módulo.
+Arquivo principal:
 
----
+`backend/src/modules/onboarding/onboarding.service.js`
 
-# docs/modules/onboarding.md
+Responsabilidades principais:
 
-````md id="y81h7m"
-# Onboarding Module — Bellory
+- `createTenant`: orquestra a criacao completa do tenant a partir do cadastro inicial.
+- `createTenantStructure`: cria a estrutura operacional inicial do tenant.
+- `createInitialSettings`: cria configuracoes iniciais do tenant.
+- `createDefaultProfessional`: cria o profissional padrao vinculado ao admin.
+- `createDefaultServices`: cria os servicos iniciais do tenant.
+- `createDefaultServiceSpecialtyLinks`: cria vinculos iniciais em `servico_especialidades`.
+- `createProfessionalServiceLinks`: cria vinculos entre profissional padrao e servicos.
+- `createDefaultSchedule`: cria escala semanal inicial.
+- `createBookingLink`: cria link publico de agendamento.
+- `updateOnboardingStatus`: registra status das etapas.
+- `syncOnboardingServices`: sincroniza servicos alterados durante o onboarding.
+- `completeOnboarding`: marca onboarding como concluido.
+- `getStatus`: retorna progresso do onboarding.
+- `updateStep`: atualiza etapa especifica.
 
-# 1. Objetivo do Módulo
+Services externos usados:
 
-O módulo Onboarding é responsável por:
+- `planosService`: valida o plano escolhido.
+- `subscriptionService`: cria assinatura trial.
+- `tenantsRepository`: cria e atualiza tenant.
+- `usuariosRepository`: cria usuario administrador.
+- `membershipsRepository`: cria vinculo do usuario com o tenant.
+- `eventLogsService`: registra eventos operacionais.
+- `slug.service`: gera slug unico do tenant.
 
-- ativar rapidamente o salão
-- reduzir fricção operacional
-- guiar o usuário
-- configurar a estrutura inicial
-- transformar cadastro em operação real
+### Frontend
 
-O objetivo principal é:
-fazer o usuário começar a utilizar o Bellory em poucos minutos.
+Principais arquivos:
 
----
+- `frontend/src/app/onboarding/page.tsx`
+- `frontend/src/components/onboarding/OnboardingFlow.tsx`
+- `frontend/src/context/OnboardingProvider.tsx`
+- `frontend/src/services/onboarding.service.ts`
 
-# 2. Papel Estratégico
+Responsabilidades:
 
-O onboarding é responsável por:
+- carregar configuracoes do tenant;
+- exibir fluxo de ativacao;
+- salvar etapas;
+- sincronizar servicos;
+- concluir onboarding;
+- redirecionar para o dashboard apos conclusao.
 
-- primeira experiência operacional
-- percepção inicial de valor
-- ativação do tenant
-- criação da estrutura mínima operacional
-- aceleração da adoção do sistema
+## Repositories
 
-O onboarding NÃO deve parecer:
-- formulário corporativo
-- processo burocrático
-- configuração técnica
+Arquivo principal:
 
-Deve parecer:
-- assistente inteligente
-- configuração automática
-- ativação guiada
+`backend/src/modules/onboarding/onboarding.repository.js`
 
----
+Principais funcoes:
 
-# 3. Objetivo UX
+- `createConfiguracaoTenant`
+- `findConfiguracaoTenant`
+- `updateConfiguracaoTenant`
+- `createProfissional`
+- `findProfessionalByUser`
+- `createServicos`
+- `updateServico`
+- `findServicesByTenant`
+- `listSpecialties`
+- `replaceServicoEspecialidades`
+- `createProfissionalServicos`
+- `updateProfissionalServico`
+- `findProfessionalServices`
+- `createScales`
+- `findScalesByProfessional`
+- `createLinkAgendamento`
+- `findBookingLinkByTenant`
+- `upsertSteps`
+- `listSteps`
+- `updateStep`
 
-O usuário deve sentir:
+Outros repositories envolvidos:
 
-"O Bellory já está organizando meu salão para mim."
+- `tenants.repository`
+- `usuarios.repository`
+- `memberships.repository`
+- `settings.repository`, indiretamente via configuracoes posteriores;
+- repositories de subscription/plano, conforme fluxo de assinatura.
 
-A experiência deve transmitir:
-- acolhimento
-- simplicidade
-- modernidade
-- rapidez
-- automação inteligente
-- facilidade operacional
+## Endpoints
 
----
+Rotas do modulo:
 
-# 4. Público-Alvo
+`backend/src/routes/onboarding.routes.js`
 
-O módulo foi projetado para:
-- profissionais autônomos
-- pequenos salões
-- baixa maturidade tecnológica
-- usuários mobile-first
+Endpoints principais:
 
----
+| Metodo | Rota | Finalidade |
+| --- | --- | --- |
+| `GET` | `/onboarding/status` | Retorna progresso do onboarding do tenant atual. |
+| `PATCH` | `/onboarding/steps/:step` | Atualiza uma etapa especifica do onboarding. |
+| `POST` | `/onboarding/complete` | Marca o onboarding como concluido. |
 
-# 5. Conceito Arquitetural
+Endpoints relacionados usados durante o fluxo:
 
-O onboarding deve funcionar como:
+| Metodo | Rota | Finalidade |
+| --- | --- | --- |
+| `POST` | `/auth/register` ou fluxo equivalente de cadastro | Inicia cadastro e provisionamento. |
+| `GET` | `/tenant/settings` | Carrega configuracoes do tenant no frontend. |
+| `PATCH` | `/tenant/settings` | Atualiza configuracoes durante o fluxo. |
+| `GET` | `/services` | Lista servicos do tenant. |
+| `PATCH` | `/services/:id` | Atualiza servico e vinculos com especialidades. |
 
-- fluxo progressivo
-- step-by-step guiado
-- configuração incremental
-- ativação persistente
+## Payloads Principais
 
-O sistema deve:
-- salvar progresso automaticamente
-- permitir retomada futura
-- evitar perda de dados
-- minimizar atrito
+### Criacao de Tenant
 
----
+Entrada conceitual:
 
-# 6. Estrutura Frontend
-
-```text
-frontend/src/
-  app/
-    onboarding/
-  components/
-    onboarding/
-  hooks/
-  services/
-  context/
-````
-
----
-
-# 7. Estrutura Backend
-
-```text id="kv8zn6"
-backend/src/modules/onboarding/
+```json
+{
+  "tenant": {
+    "nome_fantasia": "Bellory Test Studio",
+    "razao_social": "Bellory LTDA",
+    "cpf_cnpj": "00000000000000",
+    "email": "contato@bellory.com",
+    "telefone": "+5511999999999",
+    "tipo_negocio": "salao",
+    "timezone": "America/Sao_Paulo"
+  },
+  "admin": {
+    "nome": "Marina Admin",
+    "telefone": "+5511999999999",
+    "tipo_usuario_operacional": "Administrador"
+  },
+  "plano_id": "uuid-do-plano",
+  "servicos_iniciais": [
+    {
+      "nome": "Corte de Cabelo",
+      "duracao_minutos": 45,
+      "preco": 80,
+      "categoria": "cabelo"
+    }
+  ]
+}
 ```
 
----
+### Atualizacao de Etapa
 
-# 8. Rota Principal
-
-```text id="5xvf1j"
-/onboarding
+```json
+{
+  "status": "concluido",
+  "metadata": {
+    "services": [
+      {
+        "nome": "Escova",
+        "duracao_minutos": 45,
+        "preco": 70,
+        "categoria": "cabelo"
+      }
+    ]
+  }
+}
 ```
 
----
+### Resposta de Status
 
-# 9. Fluxo Operacional
-
-## Fluxo principal
-
-1. usuário realiza login
-2. sistema verifica onboarding status
-3. usuário acessa onboarding
-4. etapas são preenchidas
-5. progresso é salvo automaticamente
-6. onboarding pode ser retomado
-7. onboarding é concluído
-8. usuário é redirecionado ao dashboard
-
----
-
-# 10. Objetivos Operacionais
-
-O onboarding deve ativar:
-
-* tenant
-* salão
-* configurações básicas
-* serviços iniciais
-* profissional administrador
-* parâmetros operacionais
-
----
-
-# 11. Persistência
-
-O sistema deve:
-
-* salvar automaticamente
-* recuperar progresso
-* permitir continuidade futura
-* manter consistência operacional
-
----
-
-# 12. Etapas do Onboarding
-
-## 1. Boas-vindas
-
-Objetivo:
-
-* acolher usuário
-* iniciar ativação
-
-Exibir:
-
-* nome usuário
-* nome salão
-* progresso inicial
-
-Mensagem:
-"Vamos configurar seu salão em poucos minutos."
-
----
-
-## 2. Informações do Salão
-
-Capturar:
-
-* nome fantasia
-* telefone
-* WhatsApp
-* cidade
-* estado
-* horário funcionamento
-
----
-
-## 3. Configuração Operacional
-
-Capturar:
-
-* intervalo padrão agenda
-* duração padrão serviços
-* moeda
-* timezone
-
----
-
-## 4. Serviços Iniciais
-
-Permitir:
-
-* selecionar serviços sugeridos
-* adicionar novos serviços
-
-Sugestões:
-
-* Corte
-* Escova
-* Manicure
-* Hidratação
-
----
-
-## 5. Profissional Administrador
-
-Exibir:
-
-* administrador principal
-* permissões
-* papel operacional
-
-Preparar:
-
-* expansão multi-profissional futura
-
----
-
-## 6. Finalização
-
-Exibir:
-
-* resumo configuração
-* status concluído
-* CTA final
-
-CTA:
-"Entrar no Bellory"
-
----
-
-# 13. Estrutura de Componentes
-
-## Estruturais
-
-* OnboardingLayout
-* OnboardingHeader
-* OnboardingSidebar
-* MobileStepIndicator
-
-## Navegação
-
-* OnboardingStepper
-* StepNavigation
-* OnboardingProgress
-
-## Conteúdo
-
-* WelcomeCard
-* SetupCard
-* CompletionCard
-
----
-
-# 14. Hook Frontend
-
-```text id="gwce4r"
-useOnboarding()
+```json
+{
+  "steps": [],
+  "total": 7,
+  "completed": 6,
+  "progress": 86
+}
 ```
 
-Responsável por:
+## Tabelas Utilizadas
 
-* carregar progresso
-* salvar etapas
-* recuperar onboarding
-* concluir onboarding
-* controlar loading
+### Identidade e Tenant
 
----
+- `tenants`
+- `usuarios`
+- `tenant_memberships`
 
-# 15. Service Frontend
+### Plano e Assinatura
 
-```text id="u4oqwf"
-onboarding.service.ts
-```
+- `planos`
+- `assinaturas`
 
-Responsável por:
+### Configuracoes
 
-* APIs
-* persistência
-* normalização payloads
-* tratamento erros
+- `configuracoes_tenant`
 
----
+### Operacao Inicial
 
-# 16. Context Frontend
+- `profissionais`
+- `servicos`
+- `profissional_servicos`
+- `servico_especialidades`
+- `especialidades`
+- `cargos`
+- `escalas_semanais`
+- `links_agendamento`
 
-```text id="ptv3wg"
-OnboardingProvider.tsx
-```
+### Progresso e Auditoria
 
-Responsável por:
+- `onboarding_steps`
+- `event_logs`
 
-* estado global onboarding
-* progresso atual
-* sincronização frontend
-* persistência operacional
+## Regras de Validacao
 
----
+### Tenant
 
-# 17. APIs Backend
+- Nao permitir criar novo tenant ativo para usuario que ja possui membership ativa.
+- Normalizar email.
+- Normalizar telefone para formato E.164 quando informado.
+- Gerar slug unico a partir do nome fantasia.
+- Criar tenant em status inicial `trial`.
 
-## Status onboarding
+### Plano e Assinatura
 
-```text id="lj3x9l"
-GET /onboarding/status
-```
+- Validar se o plano informado existe e esta disponivel.
+- Criar assinatura trial vinculada ao tenant.
 
----
+### Usuario Admin
 
-## Atualizar etapa
+- Criar usuario vinculado ao auth user.
+- Definir papel operacional inicial.
+- Criar membership ativa, primaria e owner.
 
-```text id="2w8v8e"
-PATCH /onboarding/steps/:step
-```
+### Servicos
 
----
+- Criar servicos informados no onboarding ou usar lista padrao.
+- A lista padrao vem da taxonomia oficial Bellory em `backend/src/constants/bellory-taxonomy.js`.
+- Nao duplicar servicos quando ja existem para o tenant.
+- Atualizar servicos por nome durante sincronizacao.
+- Inativar servicos removidos da selecao.
+- Gravar metadata de taxonomia nos servicos padrao, incluindo categoria oficial,
+  acao operacional e especialidades oficiais sugeridas.
 
-## Concluir onboarding
+### Vinculos `servico_especialidades`
 
-```text id="dcrvvf"
-POST /onboarding/complete
-```
+- Criar vinculos iniciais priorizando as especialidades oficiais informadas na metadata do servico.
+- Usar compatibilidade textual como fallback temporario para servicos customizados ou sem metadata oficial.
+- Respeitar `tenant_id`.
+- Nao duplicar combinacao `tenant_id + servico_id + especialidade_id`.
+- Permitir manutencao posterior pela area operacional de configuracoes.
 
----
+### Profissional Padrao
 
-## Configurações tenant
+- Criar profissional padrao somente se ainda nao existir para o usuario.
+- Vincular o profissional ao usuario administrador.
+- Marcar origem em metadata.
 
-```text id="shfww7"
-GET /tenant/settings
-```
+### Profissional x Servicos
 
----
+- Criar vinculos iniciais entre profissional padrao e servicos.
+- Nao duplicar vinculos existentes.
+- Atualizar duracao e preco na sincronizacao.
 
-## Atualizar tenant
+### Escala
 
-```text id="6t6t2p"
-PATCH /tenants/current
-```
+- Criar escala semanal padrao somente se ainda nao existir para o profissional.
+- Usar segunda a sexta, 09:00-18:00, intervalo 12:00-13:00.
 
----
+### Link Publico
 
-## Atualizar configurações
+- Criar link publico baseado no slug do tenant.
+- Reutilizar link existente quando ja houver link ativo de origem `onboarding`.
 
-```text id="83mjlwm"
-PATCH /tenants/current/settings
-```
+## Dependencias
 
----
+### Auth
 
-# 18. Salvamento Automático
+O onboarding depende de usuario autenticado e de `auth_user_id`.
 
-O onboarding deve:
+O fluxo usa a identidade autenticada para:
 
-* salvar silenciosamente
-* reduzir perda de progresso
-* evitar necessidade de confirmação constante
+- criar usuario interno;
+- impedir duplicidade de tenant ativo;
+- vincular membership;
+- registrar eventos.
 
----
+### Tenant
 
-# 19. Retomada de Fluxo
+Todas as entidades operacionais criadas no onboarding devem receber `tenant_id`.
 
-O sistema deve:
+Isso inclui:
 
-* identificar etapa atual
-* reabrir fluxo automaticamente
-* manter continuidade operacional
+- configuracoes;
+- profissional;
+- servicos;
+- vinculos;
+- escala;
+- link publico;
+- etapas.
 
----
+### Assinatura
 
-# 20. Navegação Protegida
+O onboarding cria assinatura trial antes de liberar operacao completa.
 
-O onboarding deve:
+Essa assinatura define o contexto comercial inicial do tenant e sera usada por middlewares de plano/assinatura.
 
-* exigir autenticação JWT
-* impedir acesso sem login
-* validar tenant
-* validar ownership
+### Servicos
 
----
+Servicos sao dados operacionais por tenant.
 
-# 21. UX/UI
+O onboarding cria um catalogo minimo para permitir que agenda, equipe e dashboard tenham dados iniciais.
 
-A experiência deve ser:
+### Equipe
 
-* elegante
-* leve
-* progressiva
-* extremamente intuitiva
-* acolhedora
+O profissional padrao permite que os servicos iniciais tenham executor operacional e escala.
 
-Inspirado em:
+Depois do onboarding, a equipe pode ser expandida na tela de equipe.
 
-* Stripe
-* Notion
-* Linear
-* Slack onboarding
+## Transacao e Rollback
 
----
+O fluxo de criacao tenta executar o provisionamento de forma coordenada.
 
-# 22. Mobile-First
+Se ocorrer erro depois da criacao do tenant, o sistema tenta executar rollback com exclusao definitiva do tenant criado.
 
-Priorizar:
+Isso reduz risco de tenants incompletos durante falhas de provisionamento.
 
-* uso vertical
-* poucos campos por etapa
-* navegação touch
-* progressão simples
-* baixa fricção
+## Pontos de Manutencao Futura
 
----
-
-# 23. Desktop
-
-Desktop deve:
-
-* utilizar sidebar elegante
-* visão clara progresso
-* visual premium clean
-
----
-
-# 24. Estilo Visual
-
-Utilizar:
-
-* cards modernos
-* glow discreto
-* gradientes suaves
-* glassmorphism leve
-* micro animações
-* transições suaves
-
-Evitar:
-
-* aparência formulário burocrático
-* excesso campos
-* poluição visual
-* excesso técnico
-
----
-
-# 25. Paleta Visual
-
-## Primária
-
-```text id="pv8hmn"
-#E26D7C
-```
-
-## Hover
-
-```text id="j3w5xa"
-#D85C6C
-```
-
-## Secundária
-
-```text id="8g2a59"
-#FFE8E2
-```
-
-## Destaque
-
-```text id="bs2dz0"
-#7B4BFF
-```
-
-## Accent
-
-```text id="c3l2ws"
-#FFB3C1
-```
-
-## Fundo
-
-```text id="lc2wdv"
-#FFFDFC
-```
-
-## Texto
-
-```text id="b03r33"
-#2B2B2B
-```
-
----
-
-# 26. Validações
-
-Validar:
-
-* nome obrigatório
-* WhatsApp válido
-* horário válido
-* serviço mínimo obrigatório
-* tenant válido
-
----
-
-# 27. Tratamento de Erros
-
-Nunca exibir:
-
-* stack traces
-* SQL errors
-* mensagens internas
-
-Exibir:
-
-* "Não foi possível salvar"
-* "Tente novamente"
-* "Conexão perdida"
-
----
-
-# 28. Estados Operacionais
-
-## Loading
-
-Exibir:
-
-* skeletons
-* shimmer
-* loading elegante
-
----
-
-## Empty State
-
-Exibir:
-
-* incentivo operacional
-* mensagens amigáveis
-
----
-
-## Error State
-
-Exibir:
-
-* feedback amigável
-* retry simples
-
----
-
-# 29. Integração Dashboard
-
-Após conclusão:
-
-* redirecionar dashboard
-* ativar experiência operacional
-
----
-
-# 30. Integração Agenda
-
-Configurar:
-
-* parâmetros iniciais agenda
-* horários padrão
-* duração serviços
-
----
-
-# 31. Integração Serviços
-
-Criar:
-
-* serviços iniciais
-* catálogo operacional mínimo
-
----
-
-# 32. Integração Auth
-
-Consumir:
-
-* JWT
-* sessão autenticada
-* tenant atual
-* usuário atual
-
----
-
-# 33. Integração AI Engine
-
-Futuro suporte para:
-
-* onboarding inteligente
-* sugestões automáticas
-* configuração assistida IA
-* recomendações operacionais
-
----
-
-# 34. Multi-Tenant
-
-Toda operação deve respeitar:
-
-* tenant_id
-* ownership
-* isolamento tenant
-
----
-
-# 35. Performance
-
-Priorizar:
-
-* baixo payload
-* salvamento incremental
-* carregamento rápido
-* recuperação eficiente
-
----
-
-# 36. Polling e Realtime
-
-## MVP Inicial
-
-Atualização via:
-
-* salvamento progressivo
-* sincronização simples
-
----
-
-## Futuro
-
-Preparar:
-
-* realtime sync
-* colaboração
-* onboarding assistido
-
----
-
-# 37. Segurança
-
-Garantir:
-
-* autenticação JWT
-* proteção rotas
-* ownership validation
-* validação tenant
-
-Nunca permitir:
-
-* acesso cross-tenant
-* alteração indevida
-
----
-
-# 38. Escalabilidade Futura
-
-Arquitetura preparada para:
-
-* onboarding multi-unidade
-* onboarding IA
-* onboarding contextual
-* templates nicho
-* automações setup
-* franquias
-* marketplace
-
----
-
-# 39. Objetivo Final
-
-O módulo Onboarding deve representar:
-
-* ativação inteligente
-* automação invisível
-* redução de fricção
-* profissionalização inicial
-
-O usuário deve sentir:
-
-"O Bellory já montou meu salão para mim."
+- Tornar a criacao inicial totalmente transacional no banco, se a infraestrutura permitir.
+- Extrair seed operacional para templates por tipo de negocio.
+- Permitir templates diferentes para salao, barbearia, estetica e manicure.
+- Reduzir fallback por inferencia textual depois que `servico_especialidades` estiver consolidada.
+- Normalizar dados legados criados antes da taxonomia oficial.
+- Criar testes automatizados de provisionamento completo.
+- Criar auditoria detalhada para cada entidade criada no onboarding.
+- Permitir onboarding multi-unidade/franquia.
+- Usar IA para sugerir servicos e especialidades com base no tipo de negocio.
+- Melhorar tratamento de inconsistencias quando uma etapa e refeita parcialmente.
+- Exibir no dashboard um resumo do que foi criado durante o onboarding.
