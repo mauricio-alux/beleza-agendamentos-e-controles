@@ -1,7 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { OnboardingHeader } from "@/components/onboarding/OnboardingHeader";
 import { OnboardingSidebar } from "@/components/onboarding/OnboardingSidebar";
 import { StepNavigation } from "@/components/onboarding/StepNavigation";
@@ -33,10 +34,7 @@ export function OnboardingLayout({ children }: OnboardingLayoutProps) {
         <section className="mx-auto flex w-full max-w-3xl flex-col gap-5 py-2 lg:py-4">
           <OnboardingHeader />
           {error ? (
-            <div className="flex gap-3 rounded-2xl border border-primary/25 bg-white/90 p-4 text-sm leading-6 text-foreground shadow-sm">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-none text-primary" />
-              <span>{error}</span>
-            </div>
+            <FeedbackMessage tone="error" message={error} />
           ) : null}
           <div className="animate-fade-up">{children}</div>
           <StepNavigation />

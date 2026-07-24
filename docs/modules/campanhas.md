@@ -430,6 +430,17 @@ disponibilizam modelos preparados para futura aprovacao na WhatsApp Business
 Platform, usando parametros posicionais (`{{1}}`, `{{2}}`, etc.) e linguagem
 comercial cordial.
 
+Templates promocionais do catalogo (`campaign_promotion` e
+`campaign_flash_sale`) usam blocos comerciais condicionais:
+
+* `beneficios_campanha`: linha(s) montada(s) a partir de `desconto`,
+  `valor_promocional` e/ou `brinde`;
+* `vigencia_campanha`: texto amigavel em pt-BR para `data_inicio` e
+  `data_fim`.
+
+Esses blocos devem ser omitidos quando nao houver valor real configurado, sem
+exibir `null`, `undefined`, placeholders ou rotulos vazios.
+
 ---
 
 # 20. Biblioteca Visual
@@ -876,9 +887,118 @@ Atualizacao 2026-07-14:
 * `promocao_servico` exige valor promocional positivo ou cupom valido;
 * cupons exibidos devem estar ativos, dentro da validade, com beneficio efetivo, com limite disponivel e respeitando restricao de servico;
 * o campo de servico da campanha deve usar `servicos` reais do tenant, nao texto livre;
-* `nome_servico`, `valor_promocional` e `validade_promocao` permanecem como parametros renderizados do template.
+* `nome_servico`, `beneficios_campanha` e `vigencia_campanha` sao os parametros preferenciais para templates promocionais novos;
+* `valor_promocional`, `valor_especial`, `desconto`, `brinde` e `validade_promocao` continuam suportados para compatibilidade com templates ja existentes;
+
+Atualizacao 2026-07-17:
+
+* campanha e uma entidade unica; o modo de entrega varia conforme a capacidade
+  WhatsApp do tenant;
+* tenants com WhatsApp Business API usam modo automatico, com mensagens
+  individuais, fila em `mensagens_whatsapp`, auditoria tecnica e status de
+  provider;
+* tenants com WhatsApp comum ou WhatsApp Business App sem Cloud API devem usar
+  modo assistido, em que o Bellory prepara texto, link publico de agendamento e
+  acoes de copiar/compartilhar/abrir WhatsApp;
+* o modo assistido pode orientar o uso de Lista de Transmissao, mas nao deve
+  registrar entrega/leitura/falha como se fosse envio automatico;
+* Listas de Transmissao so entregam para contatos que tenham salvo o numero do
+  profissional/salao, portanto servem melhor para clientes recorrentes do que
+  para prospeccao ampla.
+
+Atualizacao 2026-07-20:
+
+* primeiro convite para agendamento nao deve depender de importacao obrigatoria
+  de contatos nem de cadastro previo dos destinatarios como clientes;
+* primeiro convite e ativacao inicial assistida pelo WhatsApp App/Business App
+  do tenant, inclusive quando houver coexistencia App + Cloud API;
+* campanhas recorrentes continuam destinadas a clientes ja conhecidos pelo
+  Bellory, com segmentacao, templates, `campanha_envios`,
+  `mensagens_whatsapp`, `CommunicationService` e Cloud API quando aplicavel;
+* a existencia de Cloud API nao torna obrigatorio seu uso no primeiro convite;
+* coexistencia App + API nao concede ao Bellory acesso automatico aos contatos,
+  agenda, conversas ou Listas de Transmissao do aplicativo.
 
 Publico inicial sugerido por tipo:
+
+Atualizacao 2026-07-21:
+
+* campanhas passam a ter ciclo orientado por sugestao: IA/regras identificam
+  oportunidade, Bellory sugere, tenant aprova/rejeita e parametriza, Bellory
+  prepara ou executa, resultados alimentam nova analise;
+* tenant deixa de ser apenas criador principal e passa a ser aprovador e
+  parametrizador das campanhas sugeridas por IA ou MasterAdmin;
+* estrategia da campanha deve conter, no minimo, sugestao, aprovacao e
+  execucao;
+* campanhas sugeridas nao devem executar sem aprovacao quando dependerem de
+  oferta, desconto, periodo, publico ou autorizacao comercial do tenant;
+* campanha e canal permanecem separados: a campanha define regra, publico,
+  mensagem e estrategia; o canal define Cloud API, WhatsApp App, envio
+  assistido, envio pela infraestrutura do SaaS ou canais futuros;
+* ausencia de Cloud API propria nao implica automaticamente modo assistido: o
+  tenant pode escolher envio assistido, envio pela infraestrutura do SaaS
+  quando disponivel ou decisao a cada campanha.
+* destinatarios de campanha devem ser exclusivamente clientes finais do tenant;
+  usuarios internos do tenant, como Administrador, Funcionario, Autonomo e
+  Terceiro, sao inelegiveis mesmo que possuam telefone valido, historico,
+  agendamento, aniversario no periodo ou registro tambem em `clientes`;
+* a exclusao de usuario interno tem precedencia sobre qualquer criterio de
+  segmentacao e deve ser aplicada por `tenant_id`, permitindo que a mesma
+  pessoa seja inelegivel em um tenant onde atua internamente e elegivel em
+  outro onde e apenas cliente.
+
+Atualizacao 2026-07-22:
+
+* campanhas passam a declarar dimensoes separadas em `metadata`, sem exigir
+  migration imediata: `origem_campanha`, `tipo_publico`,
+  `natureza_campanha`, `status_campanha`, `status_processamento`,
+  `estrategia_envio`, `intervalo_envio_dias`, `prioridade_campanha` e
+  `cooldown_comercial_dias`;
+* campanhas comerciais de tenant/IA usam `tipo_publico = clientes` e continuam
+  excluindo usuarios internos do mesmo tenant;
+* a exclusao de usuarios internos tambem considera metadados de origem do
+  publico (`owner_role`, `tipo_usuario`, `role`, `user_role`) e vinculos por
+  `owner_user_id`/`responsible_profissional_id`, evitando que rascunhos e
+  previas usem Administrador, Funcionario, Autonomo ou Terceiro como
+  destinatario de exemplo;
+* campanhas de plataforma usam `tipo_publico = usuarios_saas` e resolvem
+  destinatarios em `usuarios`, inicialmente apenas `Administrador` e
+  `Autonomo`, sem criar registros artificiais em `clientes`;
+* campanhas promocionais exigem `data_inicio` e pelo menos um beneficio
+  (`desconto`, `valor_promocional` ou `brinde`) para aprovacao, agendamento ou
+  execucao;
+* beneficios e vigencia exibidos em preview e em `mensagens_whatsapp` devem vir
+  dos parametros aprovados da campanha, de `metadata.strategy.approval`, de
+  `parametros_template`, de `data_inicio`/`data_fim` e, quando aplicavel, do
+  cupom vinculado;
+* enquanto a campanha nao iniciou geracao/processamento, a previa deve buscar
+  o conteudo vigente em `templates_mensagem` pelo `template_id`; depois que
+  houver mensagem gerada, a previa deve usar o snapshot salvo em
+  `mensagens_whatsapp.conteudo`, congelando a versao efetivamente usada;
+* a renderizacao de campanha deve ser condicional: parametros inexistentes sao
+  omitidos junto com seus rotulos, sem gerar linhas comerciais vazias;
+* a aprovacao e idempotente apos `metadata.lifecycle_stage = approved`: nova
+  chamada ao endpoint nao altera parametros, status, destinatarios ou logs;
+* o payload para WhatsApp deve preservar a ordem determinada por
+  `metadata.provider_variable_mapping` quando ela existir; caso contrario, usa
+  a ordem declarada em `templates_mensagem.variaveis`;
+* `data_fim` permanece opcional, mas quando informada deve ser maior ou igual a
+  `data_inicio`;
+* alterar `data_fim` de uma campanha encerrada nao reativa automaticamente a
+  campanha; reativacao futura deve ser acao explicita;
+* o status comercial (`status_campanha`) nao deve ser confundido com o status
+  tecnico (`status_processamento`): uma campanha pode estar `EM_ANDAMENTO`
+  comercialmente e `CONCLUIDO` tecnicamente para o lote atual;
+* sugestoes de IA verificam campanha equivalente ativa/pendente e cooldown do
+  tipo antes de criar nova sugestao;
+* envio comercial aplica cooldown por cliente de 7 dias por padrao, sem afetar
+  comunicacoes operacionais de agenda;
+* `estrategia_envio = UNICO` e o padrao inicial, garantindo idempotencia por
+  tenant/campanha/cliente/template; `RECORRENTE` exige intervalo em dias e
+  `EVENTO` fica reservado para oportunidades acionadas por regra de negocio;
+* na UI, o status comercial deve aparecer como "Em andamento" quando a campanha
+  estiver ativa, e o processamento deve ser exibido separadamente quando
+  necessario.
 
 * `campanha_geral`: todos os clientes elegiveis;
 * `promocao_servico`: todos os clientes elegiveis;

@@ -1,24 +1,81 @@
+"use client";
+
 import Link from "next/link";
-import { CalendarCheck, CheckCircle2, XCircle } from "lucide-react";
+import { CalendarCheck, CheckCircle2, ClockAlert, UserX, XCircle } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CancellationReasonModal } from "@/components/agenda/CancellationReasonModal";
+import {
+  EarlyCompletionConfirmation,
+  isAppointmentScheduledForFuture
+} from "@/components/agenda/EarlyCompletionConfirmation";
 import { formatTime, toCurrency } from "@/components/agenda/date";
-import { canAttendantConfirm, canCancelAppointment, getAppointmentStatusLabel } from "@/components/agenda/status";
+import {
+  canAttendantConfirm,
+  canCancelAppointment,
+  canCompleteAppointment,
+  canMarkNoShowAppointment,
+  canMarkNoShowNow,
+  getAppointmentStatusLabel,
+  resolveAppointmentStatus
+} from "@/components/agenda/status";
 import type { Appointment } from "@/services/agenda.service";
 
 type AppointmentCardProps = {
   appointment: Appointment;
   onConfirm?: (id: string) => void;
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, motivo: string) => void;
+  onComplete?: (id: string, options?: { confirmarConclusaoAntecipada?: boolean }) => void;
+  onNoShow?: (id: string) => void;
 };
 
-export function AppointmentCard({ appointment, onConfirm, onCancel }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, onConfirm, onCancel, onComplete, onNoShow }: AppointmentCardProps) {
+  const [earlyCompletionCurrentAt, setEarlyCompletionCurrentAt] = useState<Date | null>(null);
+  const [showCancellationReason, setShowCancellationReason] = useState(false);
   const service = appointment.servicos?.[0];
   const intendedStatus = appointment.metadata?.intended_status;
+  const displayStatus = resolveAppointmentStatus(
+    appointment.status,
+    typeof intendedStatus === "string" ? intendedStatus : undefined
+  );
   const displayValue = firstPositiveNumber(
     appointment.valor_total,
     service?.valor_servico,
     service?.servico?.preco
   );
+  const intendedStatusValue = typeof intendedStatus === "string" ? intendedStatus : undefined;
+  const canNoShowByStatus = canMarkNoShowAppointment(appointment.status, intendedStatusValue);
+  const canNoShowAtCurrentTime = canMarkNoShowNow(appointment.status, appointment.data_inicio, intendedStatusValue);
+  const noShowUnavailableMessage = "Esta ação só fica disponível após o início do atendimento.";
+
+  function requestCompletion() {
+    if (!onComplete) return;
+
+    const now = new Date();
+    if (isAppointmentScheduledForFuture(appointment.data_inicio, now)) {
+      setEarlyCompletionCurrentAt(now);
+      return;
+    }
+
+    onComplete(appointment.id);
+  }
+
+  function requestCancellation() {
+    if (!onCancel) return;
+    setShowCancellationReason(true);
+  }
+
+  function confirmCancellation(motivo: string) {
+    if (!onCancel) return;
+    setShowCancellationReason(false);
+    onCancel(appointment.id, motivo);
+  }
+
+  function confirmEarlyCompletion() {
+    if (!onComplete) return;
+    setEarlyCompletionCurrentAt(null);
+    onComplete(appointment.id, { confirmarConclusaoAntecipada: true });
+  }
 
   return (
     <article className="rounded-[1.35rem] border border-border bg-white/90 p-4 shadow-sm transition hover:border-primary/35 hover:shadow-soft">
@@ -37,29 +94,75 @@ export function AppointmentCard({ appointment, onConfirm, onCancel }: Appointmen
           </div>
         </div>
         <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-primary">
-          {getAppointmentStatusLabel(typeof intendedStatus === "string" ? intendedStatus : appointment.status)}
+          {getAppointmentStatusLabel(displayStatus)}
         </span>
       </div>
+      {appointment.operational_alert ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <span className="inline-flex items-center gap-2 font-semibold">
+            <ClockAlert className="h-4 w-4" />
+            {appointment.operational_alert.message}
+          </span>
+          <span className="text-xs font-semibold uppercase">
+            {appointment.operational_alert.remaining_minutes > 0
+              ? `${appointment.operational_alert.remaining_minutes} min para conclusao automatica`
+              : "Conclusao automatica pendente"}
+          </span>
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-foreground">{toCurrency(displayValue)}</p>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
             <Link href={`/agenda/${appointment.id}`}>Ver</Link>
           </Button>
-          {canAttendantConfirm(appointment.status, typeof intendedStatus === "string" ? intendedStatus : undefined) && onConfirm ? (
+          {canAttendantConfirm(appointment.status, intendedStatusValue) && onConfirm ? (
             <Button type="button" variant="accent" onClick={() => onConfirm(appointment.id)}>
               <CheckCircle2 className="h-4 w-4" />
               Confirmar
             </Button>
           ) : null}
           {canCancelAppointment(appointment.status) && onCancel ? (
-            <Button type="button" variant="ghost" onClick={() => onCancel(appointment.id)}>
+            <Button type="button" variant="ghost" onClick={requestCancellation}>
               <XCircle className="h-4 w-4" />
               Cancelar
             </Button>
           ) : null}
+          {canCompleteAppointment(appointment.status, intendedStatusValue) && onComplete ? (
+            <Button type="button" variant="accent" onClick={requestCompletion}>
+              <CheckCircle2 className="h-4 w-4" />
+              Concluir Agora
+            </Button>
+          ) : null}
+          {canNoShowByStatus && onNoShow ? (
+            <span title={!canNoShowAtCurrentTime ? noShowUnavailableMessage : undefined}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => canNoShowAtCurrentTime && onNoShow(appointment.id)}
+                disabled={!canNoShowAtCurrentTime}
+                aria-label={!canNoShowAtCurrentTime ? `Cliente Nao Compareceu. ${noShowUnavailableMessage}` : undefined}
+              >
+                <UserX className="h-4 w-4" />
+                Cliente Nao Compareceu
+              </Button>
+            </span>
+          ) : null}
         </div>
       </div>
+      <CancellationReasonModal
+        open={showCancellationReason}
+        onClose={() => setShowCancellationReason(false)}
+        onConfirm={confirmCancellation}
+      />
+      {earlyCompletionCurrentAt ? (
+        <EarlyCompletionConfirmation
+          scheduledAt={appointment.data_inicio}
+          currentAt={earlyCompletionCurrentAt}
+          onCancel={() => setEarlyCompletionCurrentAt(null)}
+          onConfirm={confirmEarlyCompletion}
+        />
+      ) : null}
     </article>
   );
 }

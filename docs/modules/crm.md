@@ -4,12 +4,39 @@ O CRM recebe clientes por links genericos de campanha e links individuais com
 token. O WhatsApp normalizado identifica o cliente dentro do tenant, evitando
 duplicacao no mesmo salao.
 
+No fluxo de primeiro convite, contatos existentes no celular ou WhatsApp do
+tenant nao viram clientes automaticamente. O Bellory apenas disponibiliza
+mensagem e link publico para envio manual pelo tenant. O CRM passa a receber o
+cliente somente quando a pessoa acessa `/agendar/{tenant_slug}`, informa os
+dados necessarios ou usa identificacao valida, e cria/vincula o cadastro no
+tenant.
+
 O vinculo `cliente_tenants` registra primeiro e ultimo acesso. Tokens publicos
 sao aleatorios, expiram, permanecem associados ao tenant e sao armazenados
 somente como hash. Nome, telefone e email nunca devem compor a URL.
 
 Os eventos `acesso`, `identificacao`, `retorno` e `agendamento` alimentam a
 atribuicao de campanha e a futura analise de conversao.
+
+Campanhas tambem devem alimentar o CRM em eventos funcionais:
+
+- campanha sugerida;
+- campanha aprovada;
+- campanha rejeitada;
+- campanha preparada para envio assistido;
+- campanha executada;
+- campanha concluida;
+- campanha cancelada.
+
+Esses eventos preservam `tenant_id`, campanha, origem, modo de execucao e
+resultado tecnico quando existir. No modo assistido, o CRM nao deve assumir
+entrega ou leitura sem confirmacao tecnica.
+
+Para campanhas, CRM deve diferenciar cliente final de usuario interno. Um
+registro em `clientes` ou `cliente_tenants` nao basta para elegibilidade quando
+a mesma pessoa possui papel interno ativo no tenant da campanha. Administrador,
+Funcionario, Autonomo e Terceiro devem ser excluidos de campanhas desse tenant,
+mesmo quando tenham historico de atendimento ou dados comerciais suficientes.
 
 ## Atualizacao por conclusao de atendimento
 

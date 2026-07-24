@@ -77,11 +77,32 @@ async function updateTenantLink(tenantId, clienteId, payload) {
   return data;
 }
 
+async function findActiveBookingLink(tenantId, slug) {
+  let query = supabaseAdmin
+    .from('links_agendamento')
+    .select('id, slug')
+    .eq('tenant_id', tenantId)
+    .eq('ativo', true)
+    .eq('acesso_publico', true)
+    .is('deleted_at', null);
+
+  if (slug) query = query.ilike('slug', slug);
+
+  const { data, error } = await query
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
   listByTenant,
   findClientByPhone,
   createClient,
   updateClient,
   createTenantLink,
-  updateTenantLink
+  updateTenantLink,
+  findActiveBookingLink
 };

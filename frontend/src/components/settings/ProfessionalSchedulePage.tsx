@@ -7,14 +7,16 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { SettingsState } from "@/components/settings/SettingsState";
 import { WeeklyScheduleEditor } from "@/components/settings/WeeklyScheduleEditor";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { useAuth } from "@/hooks/useAuth";
 import { agendaService, type ProfessionalScheduleDay, type ProfessionalScheduleResponse } from "@/services/agenda.service";
 
 type ProfessionalSchedulePageProps = {
   professionalId: string;
+  backHref?: string;
 };
 
-export function ProfessionalSchedulePage({ professionalId }: ProfessionalSchedulePageProps) {
+export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" }: ProfessionalSchedulePageProps) {
   const { session, isLoading: isAuthLoading } = useAuth();
   const [data, setData] = useState<ProfessionalScheduleResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,7 +88,7 @@ export function ProfessionalSchedulePage({ professionalId }: ProfessionalSchedul
     <section className="space-y-5">
       <div className="rounded-[1.75rem] border border-white/80 bg-white/82 p-5 shadow-soft backdrop-blur-xl sm:p-6">
         <Button asChild variant="ghost">
-          <Link href="/configuracoes/equipe">
+          <Link href={backHref}>
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </Link>
@@ -99,9 +101,7 @@ export function ProfessionalSchedulePage({ professionalId }: ProfessionalSchedul
       </div>
 
       {(error || success) ? (
-        <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm font-semibold shadow-sm">
-          <span className={error ? "text-destructive" : "text-primary"}>{error || success}</span>
-        </div>
+        <FeedbackMessage tone={error ? "error" : "success"} message={error || success} />
       ) : null}
 
       <DashboardCard title="Horarios semanais" description="Configure dias trabalhados, manha, tarde e intervalos.">

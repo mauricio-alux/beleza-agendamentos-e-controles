@@ -8,6 +8,17 @@ Formato:
 /agendar/:slug?campanha=:campanha
 ```
 
+Esse link pode ser usado tanto em campanhas automaticas por WhatsApp Business
+API quanto em campanhas assistidas por WhatsApp comum/Business App. No fluxo
+assistido, o Bellory prepara texto e link para que o tenant envie manualmente,
+inclusive por Lista de Transmissao, mas a identificacao do cliente so acontece
+quando ele acessa o link e informa seus dados ou quando ja existe token valido.
+
+Para o primeiro convite, o link pode ser simplesmente `/agendar/:slug`, sem
+parametro de campanha. Esse convite e voltado a contatos que ainda podem estar
+fora da base do Bellory. O sistema nao deve criar clientes antecipadamente nem
+assumir que os destinatarios foram importados do celular do tenant.
+
 1. A pagina registra tenant, link, campanha, origem e sessao.
 2. O cliente informa nome e WhatsApp; email permanece opcional.
 3. O backend procura o telefone somente dentro do tenant atual.
@@ -82,6 +93,10 @@ Formato:
 - Apos qualquer identificacao bem-sucedida, `GET
   /public/booking/:slug/client/appointments/upcoming` deve ser chamado com o
   token resolvido para listar atendimentos futuros ativos.
+- Em campanhas assistidas por Lista de Transmissao, o link generico atribui a
+  origem da campanha, mas nao prova que uma mensagem foi entregue a um contato
+  especifico. Entrega e leitura continuam fora do alcance tecnico do Bellory
+  enquanto o envio for manual pelo aplicativo do usuario.
 
 ## APIs
 

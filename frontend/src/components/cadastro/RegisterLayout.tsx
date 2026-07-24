@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, CalendarCheck, MessageCircle, Sparkles, WandSparkles } from "lucide-react";
 import { ReactNode } from "react";
+import { APP_BRAND } from "@/config/app-brand";
 
 type RegisterLayoutProps = {
   children: ReactNode;
@@ -36,7 +37,7 @@ export function RegisterLayout({ children }: RegisterLayoutProps) {
                 Seu salao nasce pronto para crescer.
               </h2>
               <p className="text-lg leading-8 text-muted-foreground">
-                Crie sua conta e deixe o Bellory montar a primeira estrutura: tenant, admin, trial,
+                Crie sua conta e deixe o {APP_BRAND.appName} montar a primeira estrutura: tenant, admin, trial,
                 servicos iniciais e onboarding interno.
               </p>
             </div>

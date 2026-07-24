@@ -7,6 +7,12 @@ O payload persistido pode conter campanha, origem, sessao e link, mas nunca o
 token bruto. Token invalido, expirado ou emitido para outro tenant nao cria
 agendamento.
 
+O primeiro convite para agendamento pode chegar por WhatsApp App/Business App
+em modo assistido. Nesse caso, o Bellory nao conhece previamente o contato e
+nao exige que ele tenha sido importado ou cadastrado. O cadastro/vinculo como
+cliente acontece no primeiro acesso identificado ao link publico ou na criacao
+do agendamento, sempre dentro do tenant atual.
+
 ## Tela publica de agendamento
 
 A tela publica `/agendar/:slug` deve priorizar primeiro a identificacao do

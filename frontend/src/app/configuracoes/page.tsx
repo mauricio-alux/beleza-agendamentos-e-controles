@@ -3,7 +3,7 @@ import { SettingsHome } from "@/components/settings/SettingsHome";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Configuracoes | Bellory"
+  title: "Configuracoes"
 };
 
 export default function ConfiguracoesPage() {

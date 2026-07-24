@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import { LoadingButton } from "@/components/auth/LoadingButton";
 import { Button } from "@/components/ui/button";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { APP_BRAND } from "@/config/app-brand";
 
 export function StepNavigation() {
   const { currentStepIndex, steps, isSaving, goBack, goNext, completeOnboarding } = useOnboarding();
@@ -20,7 +21,7 @@ export function StepNavigation() {
       {isLast ? (
         <LoadingButton type="button" size="lg" isLoading={isSaving} onClick={completeOnboarding}>
           <CheckCircle2 className="h-4 w-4" />
-          Entrar no Bellory
+          Entrar no {APP_BRAND.appName}
         </LoadingButton>
       ) : (
         <LoadingButton type="button" size="lg" isLoading={isSaving} onClick={goNext}>

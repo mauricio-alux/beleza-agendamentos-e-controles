@@ -10,7 +10,8 @@ relacionamento e uma base futura para IA aplicada a operacao.
 - Backend: Node.js
 - Banco: Supabase/PostgreSQL
 - Autenticacao: Supabase Auth + JWT
-- Comunicacao: WhatsApp Business API centralizada no SaaS
+- Comunicacao: WhatsApp com modo automatico via Business API centralizada no
+  SaaS e modo assistido para WhatsApp comum/Business App
 
 ## Documentacao mestre
 
@@ -20,6 +21,14 @@ relacionamento e uma base futura para IA aplicada a operacao.
 - Fluxos funcionais: `docs/flows/`
 - Modulos: `docs/modules/`
 - Decisoes arquiteturais: `docs/decisions/`
+- Modos de entrega de campanhas WhatsApp:
+  `docs/decisions/014-campanhas-whatsapp-modos-de-entrega.md`
+- Primeiro convite via WhatsApp assistido:
+  `docs/flows/primeiro-convite-whatsapp.md`
+- Campanhas sugeridas por IA:
+  `docs/decisions/015-campanhas-sugeridas-por-ia.md`
+- Campanhas sugeridas por IA:
+  `docs/decisions/015-campanhas-sugeridas-por-ia.md`
 
 ## Status atual
 

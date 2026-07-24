@@ -7,8 +7,10 @@ import { OnboardingLayout } from "@/components/onboarding/OnboardingLayout";
 import { SetupCard } from "@/components/onboarding/SetupCard";
 import { WelcomeCard } from "@/components/onboarding/WelcomeCard";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { APP_BRAND } from "@/config/app-brand";
 import {
   SERVICE_CATEGORIES,
   SERVICE_CATEGORY_LABELS,
@@ -18,6 +20,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { cn } from "@/lib/utils";
+import { type PhoneCountry } from "@/utils/phone";
 
 export function OnboardingFlow() {
   const { currentStep } = useOnboarding();
@@ -36,6 +39,8 @@ export function OnboardingFlow() {
 
 function SalonStep() {
   const { data, updateData } = useOnboarding();
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
+  const [whatsappCountry, setWhatsappCountry] = useState<PhoneCountry>("BR");
 
   return (
     <SetupCard title="Informacoes do salao" description="Use os dados que seus clientes reconhecem no dia a dia.">
@@ -44,21 +49,29 @@ function SalonStep() {
           <Input
             value={data.nome_fantasia}
             onChange={(event) => updateData({ nome_fantasia: event.target.value })}
-            placeholder="Bellory Beauty Studio"
+            placeholder={`${APP_BRAND.appName} Beauty Studio`}
           />
         </Field>
         <Field label="Telefone">
-          <Input
+          <PhoneInput
             value={data.telefone}
-            onChange={(event) => updateData({ telefone: event.target.value })}
-            placeholder="(11) 99999-9999"
+            onChange={(value) => updateData({ telefone: value })}
+            country={phoneCountry}
+            onCountryChange={(country) => {
+              setPhoneCountry(country);
+              updateData({ telefone: "" });
+            }}
           />
         </Field>
         <Field label="WhatsApp">
-          <Input
+          <PhoneInput
             value={data.whatsapp}
-            onChange={(event) => updateData({ whatsapp: event.target.value })}
-            placeholder="(11) 99999-9999"
+            onChange={(value) => updateData({ whatsapp: value })}
+            country={whatsappCountry}
+            onCountryChange={(country) => {
+              setWhatsappCountry(country);
+              updateData({ whatsapp: "" });
+            }}
           />
         </Field>
         <Field label="Cidade">
@@ -100,7 +113,10 @@ function OperationStep() {
   return (
     <SetupCard title="Configuracao operacional" description="Defina a cadencia inicial da agenda. Voce pode ajustar depois.">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Intervalo padrao da agenda">
+        <Field
+          label="Intervalo padrao da agenda"
+          description="Define a distancia entre os horarios oferecidos na agenda online, como 09:00, 09:30 e 10:00."
+        >
           <select
             value={data.intervalo_agendamento}
             onChange={(event) => updateData({ intervalo_agendamento: Number(event.target.value) })}
@@ -112,7 +128,10 @@ function OperationStep() {
             <option value={60}>60 minutos</option>
           </select>
         </Field>
-        <Field label="Duracao padrao dos servicos">
+        <Field
+          label="Duracao padrao dos servicos"
+          description="Usada como sugestao inicial para novos servicos; cada servico ainda pode ter sua propria duracao."
+        >
           <select
             value={data.duracao_padrao_servico}
             onChange={(event) => updateData({ duracao_padrao_servico: Number(event.target.value) })}
@@ -146,6 +165,43 @@ function OperationStep() {
             <option value="America/Recife">America/Recife</option>
           </select>
         </Field>
+        <Field label="Como voce usa WhatsApp no negocio?" description="Essa resposta ajuda o Bellory a preparar campanhas do jeito certo.">
+          <select
+            value={data.whatsapp_usage_type}
+            onChange={(event) => updateData({ whatsapp_usage_type: event.target.value as typeof data.whatsapp_usage_type })}
+            className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          >
+            <option value="business_app">WhatsApp Business App</option>
+            <option value="messenger">WhatsApp Messenger</option>
+            <option value="cloud_api">WhatsApp Business Platform</option>
+            <option value="not_used">Ainda nao uso WhatsApp</option>
+          </select>
+        </Field>
+        <Field label="Como deseja enviar campanhas?" description="Voce ainda podera decidir por campanha depois.">
+          <select
+            value={data.campaign_execution_mode}
+            onChange={(event) => updateData({ campaign_execution_mode: event.target.value as typeof data.campaign_execution_mode })}
+            className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          >
+            <option value="tenant_assisted">Eu mesmo envio pelo meu WhatsApp</option>
+            <option value="saas_managed">Usar envio da plataforma quando disponivel</option>
+            <option value="choose_each_campaign">Decidir a cada campanha</option>
+          </select>
+        </Field>
+        {data.campaign_execution_mode !== "saas_managed" ? (
+          <Field label="Distribuicao manual preferida">
+            <select
+              value={data.manual_distribution_preference}
+              onChange={(event) => updateData({ manual_distribution_preference: event.target.value as typeof data.manual_distribution_preference })}
+              className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+            >
+              <option value="choose_each_campaign">Escolher a cada campanha</option>
+              <option value="broadcast_list">Lista de Transmissao</option>
+              <option value="manual_contacts">Envio manual para contatos</option>
+              <option value="other_whatsapp_method">Outro metodo do WhatsApp</option>
+            </select>
+          </Field>
+        ) : null}
       </div>
     </SetupCard>
   );
@@ -252,6 +308,7 @@ type ServiceEditorPayload = {
   categoria?: ServiceCategory | "";
   custom?: boolean;
   selected?: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 function ServiceInlineEditor({
@@ -285,7 +342,8 @@ function ServiceInlineEditor({
       preco: parseCurrency(price),
       categoria: category,
       custom: service.custom,
-      selected: service.selected
+      selected: service.selected,
+      metadata: service.metadata
     });
   }
 
@@ -399,16 +457,19 @@ function ProfessionalStep() {
 function Field({
   label,
   children,
-  className
+  className,
+  description
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  description?: string;
 }) {
   return (
     <div className={cn("space-y-2", className)}>
       <Label>{label}</Label>
       {children}
+      {description ? <p className="text-xs leading-5 text-muted-foreground">{description}</p> : null}
     </div>
   );
 }

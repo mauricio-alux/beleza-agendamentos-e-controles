@@ -6,12 +6,13 @@ import { ArrowRight, PlayCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoDemoSection } from "@/components/VideoDemoSection";
 import { VideoModal } from "@/components/VideoModal";
+import { APP_BRAND } from "@/config/app-brand";
 
 const heroVideo = {
   videoUrl: "/videos/bellory-hero-preview.mp4",
   fullVideoUrl: "/videos/bellory-demo-completo.mp4",
   thumbnailUrl: "/images/bellory-video-thumbnail.svg",
-  title: "Veja o Bellory em ação",
+  title: `Veja o ${APP_BRAND.appName} em ação`,
   subtitle: "Agenda, WhatsApp, clientes, campanhas e métricas em um fluxo simples para salões modernos."
 };
 
@@ -27,7 +28,7 @@ export function HeroSection() {
             Automatize seu salão e fidelize clientes com inteligência.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-            Bellory une agenda online, CRM, WhatsApp e automações em uma experiência leve,
+            {APP_BRAND.appName} une agenda online, CRM, WhatsApp e automações em uma experiência leve,
             moderna e elegante para profissionais da beleza.
           </p>
 
@@ -71,8 +72,8 @@ export function HeroSection() {
         onClose={() => setIsDemoOpen(false)}
         videoUrl={heroVideo.fullVideoUrl}
         thumbnailUrl={heroVideo.thumbnailUrl}
-        title="Demonstração completa do Bellory"
-        subtitle="Um tour curto para entender como o Bellory organiza agenda, clientes, WhatsApp e automações."
+        title={`Demonstração completa do ${APP_BRAND.appName}`}
+        subtitle={`Um tour curto para entender como o ${APP_BRAND.appName} organiza agenda, clientes, WhatsApp e automações.`}
       />
     </section>
   );

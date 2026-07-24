@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { APP_BRAND } from "@/config/app-brand";
 
 export function TopHeader() {
   const router = useRouter();
@@ -23,14 +24,14 @@ export function TopHeader() {
   }
 
   return (
-    <header className="flex flex-col gap-4 rounded-[1.75rem] border border-white/80 bg-white/78 p-4 shadow-soft backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">
-          {session?.tenant.nome_fantasia || "Bellory"}
+    <header className="flex min-w-0 items-center justify-between gap-3 rounded-[1.5rem] border border-white/80 bg-white/78 p-4 shadow-soft backdrop-blur-xl sm:rounded-[1.75rem] sm:p-4">
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-accent sm:text-xs sm:tracking-[0.18em]">
+          {session?.tenant?.nome_fantasia || APP_BRAND.appName}
         </p>
-        <h1 className="mt-1 text-xl font-bold text-foreground sm:text-2xl">Painel do salao</h1>
+        <h1 className="mt-1 truncate text-lg font-bold text-foreground sm:text-2xl">Painel do salao</h1>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-none items-center gap-2">
         <button
           type="button"
           className="hidden h-11 min-w-48 items-center gap-2 rounded-full border border-border bg-white/85 px-4 text-sm text-muted-foreground shadow-sm sm:flex"

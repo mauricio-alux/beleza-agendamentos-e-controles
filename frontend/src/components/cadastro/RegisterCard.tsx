@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { APP_BRAND } from "@/config/app-brand";
 
 type RegisterCardProps = {
   children: ReactNode;
@@ -12,7 +13,7 @@ export function RegisterCard({ children }: RegisterCardProps) {
         <BrandLogo />
         <div className="space-y-2">
           <h1 className="font-display text-3xl leading-tight text-foreground sm:text-4xl">
-            Crie sua conta Bellory
+            Crie sua conta {APP_BRAND.appName}
           </h1>
           <p className="text-sm leading-6 text-muted-foreground sm:text-base">
             Seu salao comeca com tenant, admin, trial e onboarding criados automaticamente.

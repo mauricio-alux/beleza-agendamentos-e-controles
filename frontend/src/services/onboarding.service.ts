@@ -1,4 +1,6 @@
 import type { AuthSession } from "@/services/auth.service";
+import { normalizeUserMessage } from "@/lib/messages";
+import { API_URL } from "@/config/app-brand";
 
 export type OnboardingStepName =
   | "tenant_created"
@@ -35,6 +37,7 @@ export type TenantSettings = {
   horario_inicio_padrao: string;
   horario_fim_padrao: string;
   intervalo_agendamento: number;
+  duracao_padrao_servico: number;
   fl_whatsapp_ativo: boolean;
   fl_agendamento_online: boolean;
   status_onboarding: string;
@@ -50,15 +53,27 @@ export type TenantSettings = {
   };
 };
 
+export type OnboardingService = {
+  id: string;
+  nome: string;
+  duracao_minutos: number;
+  preco: number;
+  categoria?: string | null;
+  ativo?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
 type ApiEnvelope<T> = {
   data?: T;
+  code?: string;
+  message?: string;
   error?: {
     code?: string;
     message?: string;
   };
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
+const REQUEST_TIMEOUT_MS = 10000;
 
 function friendlyError(status: number) {
   if (status === 401) {
@@ -78,24 +93,37 @@ function friendlyError(status: number) {
 
 async function request<T>(path: string, token: string, init: RequestInit = {}) {
   let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
         ...(init.headers || {})
       }
     });
-  } catch {
-    throw new Error("Conexao perdida. Tente novamente.");
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("A conexao com o servidor demorou demais. Tente novamente.");
+    }
+
+    throw new Error(`Nao foi possivel conectar ao servidor local em ${API_URL}. Verifique se o backend esta ativo.`);
   }
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
-    throw new Error(friendlyError(response.status));
+    throw new Error(normalizeUserMessage(
+      payload.message || payload.error?.message || friendlyError(response.status),
+      "error",
+      payload.code || payload.error?.code
+    ));
   }
 
   if (!payload.data) {
@@ -119,6 +147,10 @@ async function getStatus(session: AuthSession | null) {
 
 async function getTenantSettings(session: AuthSession | null) {
   return request<TenantSettings>("/tenant/settings", getToken(session));
+}
+
+async function listServices(session: AuthSession | null) {
+  return request<OnboardingService[]>("/services", getToken(session));
 }
 
 async function updateTenant(session: AuthSession | null, payload: Record<string, unknown>) {
@@ -157,6 +189,7 @@ async function complete(session: AuthSession | null) {
 export const onboardingService = {
   getStatus,
   getTenantSettings,
+  listServices,
   updateTenant,
   updateTenantSettings,
   updateStep,

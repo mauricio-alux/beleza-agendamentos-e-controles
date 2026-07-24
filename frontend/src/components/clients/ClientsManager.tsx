@@ -5,10 +5,12 @@ import { Mail, Phone, Plus, Search, UsersRound } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useAuth } from "@/hooks/useAuth";
 import { clientsService, type SalonClient } from "@/services/clients.service";
-import { formatPhone, normalizePhoneToE164 } from "@/utils/phone";
+import { formatStoredPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type ClientFormState = {
   nome: string;
@@ -40,6 +42,7 @@ export function ClientsManager() {
   const formRef = useRef<HTMLDivElement | null>(null);
   const [clients, setClients] = useState<SalonClient[]>([]);
   const [form, setForm] = useState<ClientFormState>(EMPTY_FORM);
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -141,7 +144,7 @@ export function ClientsManager() {
     try {
       const created = await clientsService.create(session, {
         nome: form.nome.trim(),
-        telefone: normalizePhoneToE164(form.telefone),
+        telefone: normalizePhoneToE164(form.telefone, phoneCountry),
         email: form.email.trim() || null,
         endereco: form.cep.replace(/\D/g, "").length === 8
           ? {
@@ -156,6 +159,7 @@ export function ClientsManager() {
       });
       setClients((current) => [created, ...current.filter((client) => client.id !== created.id)]);
       setForm(EMPTY_FORM);
+      setPhoneCountry("BR");
       setCepMessage("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nao foi possivel cadastrar o cliente.");
@@ -166,7 +170,7 @@ export function ClientsManager() {
 
   const filteredClients = clients.filter((client) => {
     const needle = query.toLowerCase();
-    return [client.nome, client.telefone, client.email || ""].some((value) => value.toLowerCase().includes(needle));
+    return [client.nome, client.telefone, formatStoredPhone(client.telefone), client.email || ""].some((value) => value.toLowerCase().includes(needle));
   });
 
   return (
@@ -179,11 +183,7 @@ export function ClientsManager() {
         </p>
       </div>
 
-      {error ? (
-        <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm font-semibold text-destructive shadow-sm">
-          {error}
-        </div>
-      ) : null}
+      {error ? <FeedbackMessage tone="error" message={error} /> : null}
 
       <DashboardCard title="Acoes rapidas" description="Atalhos para manter sua base organizada.">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -205,10 +205,14 @@ export function ClientsManager() {
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-[1.2fr_0.9fr_1fr_0.8fr_auto]">
               <Input value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} placeholder="Nome do cliente" />
-              <Input
+              <PhoneInput
                 value={form.telefone}
-                onChange={(event) => setForm({ ...form, telefone: formatPhone(event.target.value) })}
-                placeholder="(11) 99911-1774"
+                onChange={(value) => setForm({ ...form, telefone: value })}
+                country={phoneCountry}
+                onCountryChange={(country) => {
+                  setPhoneCountry(country);
+                  setForm({ ...form, telefone: "" });
+                }}
               />
               <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="email opcional" />
               <Input
@@ -277,7 +281,7 @@ export function ClientsManager() {
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <Phone className="h-3.5 w-3.5" />
-                          {client.telefone}
+                          {formatStoredPhone(client.telefone)}
                         </span>
                         {client.email ? (
                           <span className="inline-flex items-center gap-1">

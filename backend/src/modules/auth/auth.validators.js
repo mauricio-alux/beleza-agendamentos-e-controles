@@ -1,12 +1,16 @@
 const { z } = require('zod');
-const { SERVICE_CATEGORIES } = require('../../constants/service-categories');
+const { SERVICE_CATEGORIES, normalizeServiceCategory } = require('../../constants/service-categories');
+
+const officialCategorySchema = z.preprocess((value) => (
+  value === '' ? null : value === undefined ? value : normalizeServiceCategory(value)
+), z.enum(SERVICE_CATEGORIES).nullable().optional());
 
 const serviceSchema = z.object({
   nome: z.string().min(2).max(150),
   descricao: z.string().optional(),
   duracao_minutos: z.number().int().positive(),
   preco: z.number().nonnegative().default(0),
-  categoria: z.enum(SERVICE_CATEGORIES).nullable().optional(),
+  categoria: officialCategorySchema,
   percentual_comissao: z.number().min(0).max(100).optional()
 });
 
@@ -16,6 +20,7 @@ const registerSchema = z.object({
   senha: z.string().min(8),
   telefone: z.string().min(8).max(20).optional(),
   plano_id: z.string().uuid(),
+  tipo_usuario_operacional: z.enum(['Administrador', 'Autonomo']).default('Administrador'),
   tenant: z.object({
     nome_fantasia: z.string().min(2).max(150),
     razao_social: z.string().max(150).optional(),

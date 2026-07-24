@@ -74,17 +74,30 @@ async function hardDelete(id) {
 
 async function listByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
-    .from('usuarios')
-    .select('*')
+    .from('tenant_memberships')
+    .select('*, usuario:usuarios(*)')
     .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
     .order('created_at', { ascending: true });
 
   if (error) {
     throw error;
   }
 
-  return data;
+  return (data || [])
+    .filter((membership) => membership.usuario && !membership.usuario.deleted_at)
+    .map((membership) => ({
+      ...membership.usuario,
+      tenant_id: membership.tenant_id,
+      tipo_usuario: membership.role,
+      membership: {
+        id: membership.id,
+        tenant_id: membership.tenant_id,
+        role: membership.role,
+        status: membership.status,
+        profissional_id: membership.profissional_id,
+        is_primary: membership.is_primary
+      }
+    }));
 }
 
 module.exports = {

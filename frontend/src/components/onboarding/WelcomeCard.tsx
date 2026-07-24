@@ -4,6 +4,8 @@ import { CalendarCheck, Link2, MessageCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { SetupCard } from "@/components/onboarding/SetupCard";
+import { bookingPathLabel } from "@/lib/booking-link";
+import { APP_BRAND } from "@/config/app-brand";
 
 export function WelcomeCard() {
   const { session } = useAuth();
@@ -11,13 +13,13 @@ export function WelcomeCard() {
 
   const items = [
     { icon: CalendarCheck, label: "Agenda inicial preparada" },
-    { icon: Link2, label: `Link publico /agendar/${settings?.slug || session?.tenant.slug || "seu-salao"}` },
+    { icon: Link2, label: `Link publico ${bookingPathLabel(settings?.slug || session?.tenant?.slug)}` },
     { icon: MessageCircle, label: "WhatsApp pronto para ativacao futura" }
   ];
 
   return (
     <SetupCard
-      title={`Bem-vindo ao Bellory${session?.usuario.nome ? `, ${session.usuario.nome}` : ""}`}
+      title={`Bem-vindo ao ${APP_BRAND.appName}${session?.usuario.nome ? `, ${session.usuario.nome}` : ""}`}
       description="Vamos configurar seu salao em poucos minutos."
     >
       <div className="grid gap-3 sm:grid-cols-3">

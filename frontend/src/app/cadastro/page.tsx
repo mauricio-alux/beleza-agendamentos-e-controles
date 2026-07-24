@@ -4,8 +4,8 @@ import { RegisterForm } from "@/components/cadastro/RegisterForm";
 import { RegisterLayout } from "@/components/cadastro/RegisterLayout";
 
 export const metadata: Metadata = {
-  title: "Cadastro | Bellory",
-  description: "Crie sua conta Bellory e ative seu salao com trial, tenant e onboarding automaticos."
+  title: "Cadastro",
+  description: "Crie sua conta e ative seu salao com trial, tenant e onboarding automaticos."
 };
 
 export default function CadastroPage() {

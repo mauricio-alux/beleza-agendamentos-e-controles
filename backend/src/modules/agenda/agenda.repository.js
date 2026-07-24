@@ -1,6 +1,20 @@
 const { supabaseAdmin } = require('../../config/supabase');
+const { isAdministrativeProfessional } = require('../../constants/team-professional-roles');
 
 const ACTIVE_APPOINTMENT_STATUSES = ['pendente', 'pendente_atendente', 'pendente_cliente', 'confirmado', 'suspeito'];
+const APPOINTMENT_OPERATIONAL_SELECT = `
+  *,
+  cliente:clientes(*),
+  profissional:profissionais(*),
+  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+`;
+const APPOINTMENT_OPERATIONAL_SELECT_WITH_TENANT = `
+  *,
+  tenant:tenants(id, slug, nome_fantasia),
+  cliente:clientes(*),
+  profissional:profissionais(*),
+  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+`;
 
 function isMissingAdvancedScheduleTable(error) {
   return ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(error?.code);
@@ -10,17 +24,41 @@ function isMissingAgendaSecuritySchema(error) {
   return ['23514', '42703', 'PGRST204'].includes(error?.code);
 }
 
-async function listProfessionals(tenantId) {
-  const { data, error } = await supabaseAdmin
+function isMissingEmbeddedRelation(error) {
+  return ['PGRST200', 'PGRST201', 'PGRST204', 'PGRST205'].includes(error?.code);
+}
+
+async function listProfessionals(tenantId, profissionalId = null) {
+  let query = supabaseAdmin
     .from('profissionais')
-    .select('*')
+    .select(`
+      *,
+      profissional_servicos(
+        servico_id,
+        ativo,
+        deleted_at
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('ativo', true)
     .is('deleted_at', null)
     .order('ordem_exibicao', { ascending: true });
 
+  if (profissionalId) {
+    query = query.eq('id', profissionalId);
+  }
+
+  const { data, error } = await query;
+
   if (error) throw error;
-  return data;
+  return (data || [])
+    .filter((professional) => !isAdministrativeProfessional(professional.metadata?.tipo_usuario))
+    .map((professional) => ({
+      ...professional,
+      servico_ids: (professional.profissional_servicos || [])
+        .filter((link) => link.ativo !== false && !link.deleted_at)
+        .map((link) => link.servico_id)
+    }));
 }
 
 async function listServices(tenantId) {
@@ -33,6 +71,10 @@ async function listServices(tenantId) {
     .order('ordem_exibicao', { ascending: true });
 
   if (error) throw error;
+  if (data && isAdministrativeProfessional(data.metadata?.tipo_usuario)) {
+    return null;
+  }
+
   return data;
 }
 
@@ -269,6 +311,35 @@ async function replaceLegacyWeeklySchedule(tenantId, profissionalId, schedules) 
 }
 
 async function listAppointments(tenantId, filters = {}) {
+  let appointmentIdsByService = null;
+
+  if (filters.servico_id) {
+    const { data: serviceLinks, error: serviceLinkError } = await supabaseAdmin
+      .from('agendamento_servicos')
+      .select('agendamento_id')
+      .eq('tenant_id', tenantId)
+      .eq('servico_id', filters.servico_id)
+      .eq('ativo', true)
+      .is('deleted_at', null);
+
+    if (serviceLinkError) throw serviceLinkError;
+
+    appointmentIdsByService = [...new Set((serviceLinks || []).map((item) => item.agendamento_id).filter(Boolean))];
+
+    if (!appointmentIdsByService.length) {
+      return [];
+    }
+  }
+
+  console.log('[agenda-list-debug] repository filters', {
+    tenantId,
+    data_inicio: filters.data_inicio || null,
+    data_fim: filters.data_fim || null,
+    profissional_id: filters.profissional_id || null,
+    servico_id: filters.servico_id || null,
+    status: filters.status || null
+  });
+
   let query = supabaseAdmin
     .from('agendamentos')
     .select(`
@@ -284,6 +355,7 @@ async function listAppointments(tenantId, filters = {}) {
   if (filters.data_inicio) query = query.gte('data_inicio', filters.data_inicio);
   if (filters.data_fim) query = query.lt('data_inicio', filters.data_fim);
   if (filters.profissional_id) query = query.eq('profissional_id', filters.profissional_id);
+  if (appointmentIdsByService) query = query.in('id', appointmentIdsByService);
   if (filters.status) query = query.eq('status', filters.status);
 
   const { data, error } = await query;
@@ -307,6 +379,83 @@ async function findAppointmentById(tenantId, id) {
 
   if (error) throw error;
   return data;
+}
+
+async function findAppointmentByOperationalToken(token) {
+  let { data, error } = await supabaseAdmin
+    .from('agendamentos')
+    .select(APPOINTMENT_OPERATIONAL_SELECT_WITH_TENANT)
+    .eq('token_confirmacao', token)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (isMissingEmbeddedRelation(error)) {
+    const fallback = await supabaseAdmin
+      .from('agendamentos')
+      .select(APPOINTMENT_OPERATIONAL_SELECT)
+      .eq('token_confirmacao', token)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+  return data;
+}
+
+async function listUpcomingClientAppointments(tenantId, clientIds, nowIso) {
+  const normalizedClientIds = Array.isArray(clientIds) ? clientIds : [clientIds];
+  const filteredClientIds = [...new Set(normalizedClientIds.filter(Boolean))];
+
+  if (!filteredClientIds.length) return [];
+
+  let { data, error } = await supabaseAdmin
+    .from('agendamentos')
+    .select(APPOINTMENT_OPERATIONAL_SELECT_WITH_TENANT)
+    .eq('tenant_id', tenantId)
+    .in('cliente_id', filteredClientIds)
+    .gt('data_inicio', nowIso)
+    .is('deleted_at', null)
+    .order('data_inicio', { ascending: true });
+
+  if (isMissingEmbeddedRelation(error)) {
+    const fallback = await supabaseAdmin
+      .from('agendamentos')
+      .select(APPOINTMENT_OPERATIONAL_SELECT)
+      .eq('tenant_id', tenantId)
+      .in('cliente_id', filteredClientIds)
+      .gt('data_inicio', nowIso)
+      .is('deleted_at', null)
+      .order('data_inicio', { ascending: true });
+
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function listAutoCompletableAppointments(tenantId, cutoffIso, limit = 100) {
+  const { data, error } = await supabaseAdmin
+    .from('agendamentos')
+    .select(`
+      *,
+      cliente:clientes(*),
+      profissional:profissionais(*),
+      servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+    `)
+    .eq('tenant_id', tenantId)
+    .in('status', ['pendente_cliente', 'confirmado'])
+    .lte('data_fim', cutoffIso)
+    .is('deleted_at', null)
+    .order('data_fim', { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+  return data || [];
 }
 
 async function listConflicts(tenantId, profissionalId, startIso, endIso, ignoreAppointmentId = null) {
@@ -535,6 +684,276 @@ async function updateAppointment(tenantId, id, payload) {
   return data;
 }
 
+async function createNoShowRecord(payload) {
+  const { data, error } = await supabaseAdmin
+    .from('no_show_registros')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+function getPrimaryServiceContext(appointment) {
+  const serviceLink = appointment.servicos?.[0] || null;
+  const service = serviceLink?.servico || null;
+  const serviceId = serviceLink?.servico_id || service?.id || null;
+  const serviceName = serviceLink?.nome_servico || service?.nome || null;
+  const serviceValue = Number(appointment.valor_total || serviceLink?.valor_servico || service?.preco || 0);
+
+  return {
+    serviceLink,
+    service,
+    serviceId,
+    serviceName,
+    serviceValue
+  };
+}
+
+async function findClientAppointmentHistory(tenantId, appointmentId) {
+  const { data, error } = await supabaseAdmin
+    .from('cliente_historico_atendimentos')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('agendamento_id', appointmentId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function upsertClientAppointmentHistory(appointment, status, options = {}) {
+  const serviceContext = getPrimaryServiceContext(appointment);
+  const appointmentDate = appointment.data_inicio || new Date().toISOString();
+  const existing = await findClientAppointmentHistory(appointment.tenant_id, appointment.id);
+  const payload = {
+    tenant_id: appointment.tenant_id,
+    cliente_id: appointment.cliente_id,
+    agendamento_id: appointment.id,
+    profissional_id: appointment.profissional_id,
+    servico_id: serviceContext.serviceId,
+    status,
+    data_atendimento: appointmentDate,
+    valor_servico: serviceContext.serviceValue,
+    origem: options.origem || 'agenda',
+    metadata: {
+      ...(existing?.metadata || {}),
+      profissional_id: appointment.profissional_id,
+      servico_id: serviceContext.serviceId,
+      nome_servico: serviceContext.serviceName,
+      data_atendimento: appointmentDate,
+      valor_servico: serviceContext.serviceValue,
+      last_synced_at: new Date().toISOString()
+    },
+    ativo: true,
+    deleted_at: null
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('cliente_historico_atendimentos')
+    .upsert(payload, { onConflict: 'tenant_id,agendamento_id' })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    history: data,
+    existing,
+    serviceContext,
+    appointmentDate,
+    shouldIncrement: !existing || existing.status !== status
+  };
+}
+
+async function updateClientHistoryForCompletedAppointment(appointment) {
+  const now = new Date().toISOString();
+  const {
+    serviceContext,
+    appointmentDate,
+    shouldIncrement
+  } = await upsertClientAppointmentHistory(appointment, 'concluido', { origem: 'agenda' });
+  const { serviceLink, service, serviceId, serviceName, serviceValue: appointmentValue } = serviceContext;
+
+  const { data: link, error: linkError } = await supabaseAdmin
+    .from('cliente_tenants')
+    .select('*')
+    .eq('tenant_id', appointment.tenant_id)
+    .eq('cliente_id', appointment.cliente_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (linkError) throw linkError;
+
+  if (link) {
+    const metadata = {
+      ...(link.metadata || {}),
+      last_completed_appointment: {
+        appointment_id: appointment.id,
+        profissional_id: appointment.profissional_id,
+        servico_id: serviceId,
+        nome_servico: serviceName,
+        data_atendimento: appointmentDate,
+        valor_pago: appointmentValue
+      }
+    };
+    const totalValue = Number(link.total_valor_gasto ?? link.total_gasto ?? 0);
+    const totalCompleted = Number(link.total_atendimentos_concluidos ?? link.qtd_atendimentos ?? 0);
+
+    const { error } = await supabaseAdmin
+      .from('cliente_tenants')
+      .update({
+        ultimo_atendimento: appointmentDate,
+        data_ultimo_atendimento: appointmentDate,
+        total_gasto: Number(link.total_gasto || 0) + (shouldIncrement ? appointmentValue : 0),
+        total_valor_gasto: totalValue + (shouldIncrement ? appointmentValue : 0),
+        qtd_atendimentos: Number(link.qtd_atendimentos || 0) + (shouldIncrement ? 1 : 0),
+        total_atendimentos_concluidos: totalCompleted + (shouldIncrement ? 1 : 0),
+        servico_mais_recente: serviceId,
+        profissional_mais_recente: appointment.profissional_id,
+        metadata,
+        updated_at: now
+      })
+      .eq('id', link.id);
+
+    if (error) throw error;
+  }
+
+  if (!shouldIncrement) return;
+
+  const { error: interactionError } = await supabaseAdmin
+    .from('crm_interacoes')
+    .insert({
+      tenant_id: appointment.tenant_id,
+      cliente_id: appointment.cliente_id,
+      usuario_id: null,
+      agendamento_id: appointment.id,
+      tipo_interacao: 'atendimento_concluido',
+      descricao: `Atendimento concluido: ${serviceLink?.nome_servico || service?.nome || 'servico'}`,
+      origem: 'agenda',
+      score_relacionamento: 5,
+      metadata: {
+        profissional_id: appointment.profissional_id,
+        servico_id: serviceId,
+        data_atendimento: appointmentDate,
+        valor_pago: appointmentValue
+      }
+    });
+
+  if (interactionError) throw interactionError;
+
+  const { data: score, error: scoreError } = await supabaseAdmin
+    .from('crm_scores')
+    .select('*')
+    .eq('tenant_id', appointment.tenant_id)
+    .eq('cliente_id', appointment.cliente_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (scoreError) throw scoreError;
+
+  if (score) {
+    const { error } = await supabaseAdmin
+      .from('crm_scores')
+      .update({
+        score_relacionamento: Math.max(0, Number(score.score_relacionamento || 0) + 5),
+        ultima_compra_em: appointmentDate,
+        metadata: {
+          ...(score.metadata || {}),
+          last_completed_appointment_id: appointment.id
+        },
+        updated_at: now
+      })
+      .eq('id', score.id);
+
+    if (error) throw error;
+  } else {
+    const { error } = await supabaseAdmin
+      .from('crm_scores')
+      .insert({
+        tenant_id: appointment.tenant_id,
+        cliente_id: appointment.cliente_id,
+        score_relacionamento: 5,
+        ultima_compra_em: appointmentDate,
+        metadata: {
+          last_completed_appointment_id: appointment.id
+        }
+      });
+
+    if (error) throw error;
+  }
+}
+
+async function updateClientHistoryForNoShowAppointment(appointment) {
+  const now = new Date().toISOString();
+  const {
+    serviceContext,
+    appointmentDate,
+    shouldIncrement
+  } = await upsertClientAppointmentHistory(appointment, 'no_show', { origem: 'agenda' });
+  const { serviceId, serviceName } = serviceContext;
+
+  const { data: link, error: linkError } = await supabaseAdmin
+    .from('cliente_tenants')
+    .select('*')
+    .eq('tenant_id', appointment.tenant_id)
+    .eq('cliente_id', appointment.cliente_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (linkError) throw linkError;
+  if (!link) return { shouldIncrement };
+
+  const metadata = {
+    ...(link.metadata || {}),
+    last_no_show_appointment: {
+      appointment_id: appointment.id,
+      profissional_id: appointment.profissional_id,
+      servico_id: serviceId,
+      nome_servico: serviceName,
+      data_atendimento: appointmentDate
+    }
+  };
+
+  const { error } = await supabaseAdmin
+    .from('cliente_tenants')
+    .update({
+      data_ultimo_no_show: appointmentDate,
+      total_no_show: Number(link.total_no_show || 0) + (shouldIncrement ? 1 : 0),
+      servico_mais_recente: serviceId || link.servico_mais_recente || null,
+      profissional_mais_recente: appointment.profissional_id || link.profissional_mais_recente || null,
+      metadata,
+      updated_at: now
+    })
+    .eq('id', link.id);
+
+  if (error) throw error;
+
+  return { shouldIncrement };
+}
+
+async function recordNoShowInteraction(appointment, motivo = null) {
+  const { error } = await supabaseAdmin
+    .from('crm_interacoes')
+    .insert({
+      tenant_id: appointment.tenant_id,
+      cliente_id: appointment.cliente_id,
+      usuario_id: null,
+      agendamento_id: appointment.id,
+      tipo_interacao: 'no_show',
+      descricao: motivo || 'Cliente nao compareceu ao atendimento.',
+      origem: 'agenda',
+      score_relacionamento: -5,
+      metadata: {
+        profissional_id: appointment.profissional_id,
+        data_atendimento: appointment.data_inicio
+      }
+    });
+
+  if (error) throw error;
+}
+
 async function createStatusHistory(payload) {
   const { data, error } = await supabaseAdmin
     .from('agendamento_status_historico')
@@ -592,6 +1011,9 @@ module.exports = {
   replaceProfessionalSchedules,
   listAppointments,
   findAppointmentById,
+  findAppointmentByOperationalToken,
+  listUpcomingClientAppointments,
+  listAutoCompletableAppointments,
   listConflicts,
   listBlocks,
   findClientById,
@@ -600,6 +1022,11 @@ module.exports = {
   updateClientIdentity,
   createAppointment,
   updateAppointment,
+  createNoShowRecord,
+  upsertClientAppointmentHistory,
+  updateClientHistoryForCompletedAppointment,
+  updateClientHistoryForNoShowAppointment,
+  recordNoShowInteraction,
   createStatusHistory,
   listAppointmentsForAnalytics,
   countClientAppointmentsSince

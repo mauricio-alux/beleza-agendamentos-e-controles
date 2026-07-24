@@ -1,11 +1,15 @@
 import type { AuthSession, BelloryTenant, BelloryUser } from "@/services/auth.service";
 import type { BusinessType } from "@/constants/business-types";
+import { API_URL } from "@/config/app-brand";
 
 export type SettingsSectionId =
   | "profile"
   | "tenant"
   | "operation"
   | "services"
+  | "specialties"
+  | "role_specialties"
+  | "service_specialties"
   | "team"
   | "subscription"
   | "security"
@@ -41,6 +45,8 @@ export type SettingsOperation = {
   antecedencia_minima_minutos: number;
   janela_agendamento_dias: number;
   tolerancia_atraso_minutos: number;
+  tolerancia_intervalo_min: number;
+  tolerancia_fim_expediente_min: number;
   intervalo_padrao_minutos: number;
   evita_buracos_agenda: boolean;
   permite_cancelamento_cliente: boolean;
@@ -74,8 +80,6 @@ type ApiEnvelope<T> = {
     message?: string;
   };
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 
 export class SettingsApiError extends Error {
   status: number;

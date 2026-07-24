@@ -3,22 +3,26 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Eye, EyeOff, LockKeyhole, Mail, Phone, Store, UserRound } from "lucide-react";
+import { AlertCircle, BriefcaseBusiness, Eye, EyeOff, LockKeyhole, Mail, Store, UserRound } from "lucide-react";
 import { LoadingButton } from "@/components/cadastro/LoadingButton";
 import { PasswordStrength, getPasswordStrength } from "@/components/cadastro/PasswordStrength";
 import { RegisterProgress } from "@/components/cadastro/RegisterProgress";
 import { TermsCheckbox } from "@/components/cadastro/TermsCheckbox";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { APP_BRAND } from "@/config/app-brand";
 import { useRegister } from "@/hooks/useRegister";
 import { cn } from "@/lib/utils";
 import { RegisterError } from "@/services/register.service";
-import { formatPhone, isValidBrazilianPhone, normalizePhoneToE164 } from "@/utils/phone";
+import { isValidPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type FormErrors = {
   nome?: string;
   nome_salao?: string;
+  tipo_usuario_operacional?: string;
   email?: string;
   telefone?: string;
   senha?: string;
@@ -33,8 +37,10 @@ export function RegisterForm() {
   const { isLoadingPlans, isRegistering, error, setError, register } = useRegister();
   const [nome, setNome] = useState("");
   const [nomeSalao, setNomeSalao] = useState("");
+  const [tipoUsuarioOperacional, setTipoUsuarioOperacional] = useState<"Administrador" | "Autonomo">("Autonomo");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [senha, setSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -56,13 +62,17 @@ export function RegisterForm() {
       nextErrors.nome_salao = "Informe o nome do salao.";
     }
 
+    if (!["Administrador", "Autonomo"].includes(tipoUsuarioOperacional)) {
+      nextErrors.tipo_usuario_operacional = "Escolha seu perfil operacional.";
+    }
+
     if (!email.trim()) {
       nextErrors.email = "Informe seu email.";
     } else if (!emailRegex.test(email.trim())) {
       nextErrors.email = "Informe um email valido.";
     }
 
-    if (!isValidBrazilianPhone(telefone)) {
+    if (!isValidPhone(telefone, phoneCountry)) {
       nextErrors.telefone = "Informe um WhatsApp valido.";
     }
 
@@ -97,8 +107,9 @@ export function RegisterForm() {
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha,
-        telefone: normalizePhoneToE164(telefone),
-        nome_salao: nomeSalao.trim()
+        telefone: normalizePhoneToE164(telefone, phoneCountry),
+        nome_salao: nomeSalao.trim(),
+        tipo_usuario_operacional: tipoUsuarioOperacional
       });
       router.replace(redirectPath);
     } catch (err) {
@@ -115,15 +126,10 @@ export function RegisterForm() {
       <RegisterProgress isLoadingPlans={isLoadingPlans} isRegistering={isRegistering} />
 
       {error ? (
-        <div className="flex gap-3 rounded-2xl border border-primary/35 bg-secondary/80 p-4 text-sm leading-6 text-foreground shadow-sm">
-          <AlertCircle className="mt-0.5 h-5 w-5 flex-none text-primary" />
-          <span>
-            {error}{" "}
-            {Object.keys(errors).length ? (
-              <strong className="font-semibold text-primary">Revise os campos destacados abaixo.</strong>
-            ) : null}
-          </span>
-        </div>
+        <FeedbackMessage
+          tone="error"
+          message={`${error}${Object.keys(errors).length ? " Revise os campos destacados abaixo." : ""}`}
+        />
       ) : null}
 
       <div className="grid gap-4">
@@ -143,10 +149,29 @@ export function RegisterForm() {
             icon={Store}
             value={nomeSalao}
             onChange={(event) => setNomeSalao(event.target.value)}
-            placeholder="Bellory Beauty Studio"
+            placeholder={`${APP_BRAND.appName} Beauty Studio`}
             autoComplete="organization"
             invalid={Boolean(errors.nome_salao)}
           />
+        </Field>
+
+        <Field label={`Como voce vai usar o ${APP_BRAND.appName}?`} error={errors.tipo_usuario_operacional}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <RoleOption
+              value="Autonomo"
+              selectedValue={tipoUsuarioOperacional}
+              onChange={setTipoUsuarioOperacional}
+              title="Autonomo"
+              description="Comeco sozinho e posso montar equipe depois."
+            />
+            <RoleOption
+              value="Administrador"
+              selectedValue={tipoUsuarioOperacional}
+              onChange={setTipoUsuarioOperacional}
+              title="Administrador"
+              description="Ja tenho ou vou gerenciar uma equipe."
+            />
+          </div>
         </Field>
 
         <Field label="Email" error={errors.email}>
@@ -163,14 +188,14 @@ export function RegisterForm() {
         </Field>
 
         <Field label="WhatsApp" error={errors.telefone}>
-          <IconInput
-            icon={Phone}
-            type="tel"
-            inputMode="tel"
+          <PhoneInput
             value={telefone}
-            onChange={(event) => setTelefone(formatPhone(event.target.value))}
-            placeholder="(11) 99999-9999"
-            autoComplete="tel"
+            onChange={setTelefone}
+            country={phoneCountry}
+            onCountryChange={(country) => {
+              setPhoneCountry(country);
+              setTelefone("");
+            }}
             invalid={Boolean(errors.telefone)}
           />
         </Field>
@@ -273,6 +298,49 @@ function IconInput({
         {...props}
       />
     </div>
+  );
+}
+
+function RoleOption({
+  value,
+  selectedValue,
+  onChange,
+  title,
+  description
+}: {
+  value: "Administrador" | "Autonomo";
+  selectedValue: "Administrador" | "Autonomo";
+  onChange: (value: "Administrador" | "Autonomo") => void;
+  title: string;
+  description: string;
+}) {
+  const selected = value === selectedValue;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(value)}
+      className={cn(
+        "flex min-h-24 items-start gap-3 rounded-[1.15rem] border bg-white p-4 text-left transition",
+        selected
+          ? "border-primary bg-secondary/55 shadow-[0_0_0_4px_rgba(226,109,124,0.12)]"
+          : "border-border hover:border-primary/45 hover:bg-secondary/25"
+      )}
+      aria-pressed={selected}
+    >
+      <span
+        className={cn(
+          "grid h-10 w-10 flex-none place-items-center rounded-full",
+          selected ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+        )}
+      >
+        <BriefcaseBusiness className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-foreground">{title}</span>
+        <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
+      </span>
+    </button>
   );
 }
 

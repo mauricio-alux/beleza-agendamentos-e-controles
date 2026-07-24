@@ -30,6 +30,79 @@ O link individual nao contem PII. A API autenticada
 WhatsApp. A validade e configuravel e a reemissao revoga o token anterior do
 mesmo cliente e tenant.
 
+## Modos oficiais de operacao para campanhas
+
+O Bellory deve tratar a entrega de campanhas WhatsApp como uma capacidade do
+tenant, nao como uma entidade de campanha separada.
+
+| Capacidade do tenant | Modo Bellory | Comportamento |
+| --- | --- | --- |
+| WhatsApp Business API/Cloud API disponivel | Automatico | Gera mensagens individuais, registra `campanha_envios`, enfileira em `mensagens_whatsapp` e acompanha status tecnico. |
+| WhatsApp Business App sem Cloud API | Assistido | Gera mensagem e link, permite copiar/compartilhar/abrir WhatsApp e orienta uso de Lista de Transmissao. |
+| WhatsApp Messenger comum | Assistido | Mesmo fluxo assistido, respeitando as limitacoes do aplicativo comum. |
+
+No modo assistido, o Bellory nao envia a mensagem pela Meta nem deve prometer
+entrega, leitura, falha ou webhook. O sistema pode registrar que a campanha foi
+preparada e, se houver acao explicita do usuario, que o envio manual foi
+confirmado pelo usuario.
+
+Listas de Transmissao possuem uma limitacao importante: a entrega ocorre apenas
+para contatos que tenham salvo o numero do profissional ou salao na agenda do
+celular. Esse modo tende a funcionar melhor para clientes recorrentes e nao
+substitui WhatsApp Business API nem midia paga para prospeccao de novos
+clientes.
+
+## Primeiro convite x relacionamento continuo
+
+O primeiro convite para agendamento e um fluxo de ativacao inicial, diferente
+das campanhas recorrentes.
+
+No primeiro convite, o destinatario pode existir apenas nos contatos ou no
+WhatsApp do tenant. Ele ainda nao precisa estar cadastrado no Bellory. O fluxo
+preferencial e assistido:
+
+```text
+Bellory prepara mensagem + link publico
+  -> tenant copia/compartilha/abre WhatsApp
+  -> tenant envia manualmente pelo WhatsApp App/Business App
+  -> contato acessa /agendar/{tenant_slug}
+  -> Bellory identifica ou solicita dados
+  -> cliente passa a existir no tenant
+```
+
+Tenants que possuem WhatsApp Business App + Cloud API em coexistencia tambem
+podem usar esse fluxo assistido para o primeiro convite. A existencia de Cloud
+API nao obriga uso da API nesse momento, porque a base de contatos do aplicativo
+nao fica automaticamente disponivel para o Bellory.
+
+A Cloud API permanece indicada para relacionamento continuo, quando o Bellory
+ja conhece os destinatarios e pode aplicar regras de template aprovado,
+consentimento, opt-out, segmentacao, `mensagens_whatsapp` e auditoria tecnica.
+
+## Campanhas sugeridas e modos de execucao
+
+A ausencia de Cloud API propria do tenant nao significa que toda campanha deva
+ser assistida. A preferencia do tenant deve orientar a execucao:
+
+- envio assistido pelo WhatsApp do tenant;
+- envio pela infraestrutura WhatsApp do SaaS, quando disponivel;
+- decisao a cada campanha.
+
+No envio pela infraestrutura do SaaS, a mensagem deve identificar o salao ou
+profissional responsavel pela comunicacao e a plataforma configurada por
+ambiente, como `{PLATFORM_NAME}`. Nao fixar "Bellory" em codigo ou template
+quando o branding centralizado ja existir.
+
+Antes de envio real, manter as validacoes: campanha aprovada, parametros
+obrigatorios, destinatario elegivel, telefone valido, consentimento quando
+exigido, ausencia de opt-out, template adequado e template aprovado quando
+`WHATSAPP_DRY_RUN=false`.
+
+Antes de criar `campanha_envios` ou `mensagens_whatsapp`, o destinatario deve
+ter passado pela elegibilidade central de campanhas. Usuarios internos do tenant
+nao devem gerar mensagens de campanha em dry-run, modo assistido ou envio real.
+O motivo operacional recomendado e `usuario_interno_tenant`.
+
 ## Mensagens operacionais implementadas
 
 O modulo de Agenda ja prepara mensagens operacionais de WhatsApp para os
@@ -277,6 +350,19 @@ possivel, devem ter uma unica acao principal, como `[Agendar Agora]`, tratada
 como marcador conceitual no texto e resolvida operacionalmente em
 `payload.actions`.
 
+Para campanhas promocionais, os templates internos devem preferir blocos
+condicionais em vez de linhas fixas para cada beneficio:
+
+- `beneficios_campanha`: renderiza somente os beneficios configurados
+  (`desconto`, `valor_promocional` e/ou `brinde`);
+- `vigencia_campanha`: renderiza `data_inicio` e `data_fim` em formato
+  brasileiro (`DD/MM/AAAA`), sem inventar data final quando ela nao existir.
+
+O preview de campanha e o snapshot final em `mensagens_whatsapp.conteudo`
+usam a mesma regra de renderizacao. Campos sem valor devem ser omitidos junto
+com seus rotulos, sem expor `null`, `undefined`, placeholders ou linhas vazias
+indevidas.
+
 ```text
 templates_mensagem
   -> renderizacao com variaveis do atendimento
@@ -314,6 +400,24 @@ por diante. O snapshot gerado em `mensagens_whatsapp` grava o texto final em
 - `language`;
 - `provider`;
 - contexto operacional do evento.
+
+Em campanhas, os parametros enviados ao provider devem seguir
+`metadata.provider_variable_mapping` quando esse mapeamento existir. Isso evita
+alterar silenciosamente a ordem de templates ja cadastrados ou aprovados na
+Meta. Se um template aprovado precisar receber novos blocos opcionais, deve ser
+tratado como nova versao/submissao de template no WhatsApp Manager.
+
+Para a tela de campanhas, a previa acompanha o template vigente de
+`templates_mensagem` enquanto a campanha ainda nao iniciou processamento. A
+partir da geracao de mensagens, o conteudo exibido deve vir do snapshot em
+`mensagens_whatsapp.conteudo`, impedindo que uma edicao posterior do template
+altere retroativamente uma campanha ja preparada ou enviada.
+
+Em campanhas com `tipo_publico = clientes`, o destinatario de exemplo da
+previa deve vir somente do motor de elegibilidade de clientes finais. O backend
+deve excluir usuarios internos do tenant tambem quando essa origem aparece em
+metadados de teste/importacao, como `owner_role`, `owner_user_id` ou
+`responsible_profissional_id`.
 
 Se nao existir template ativo, ou se o template configurado expuser conteudo
 tecnico proibido, o sistema usa o fallback em codigo e registra aviso tecnico

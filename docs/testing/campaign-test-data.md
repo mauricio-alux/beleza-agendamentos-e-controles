@@ -170,3 +170,14 @@ npm run campaign-test:cleanup -- --confirm-campaign-test-cleanup
 ```
 
 Sem o argumento `--confirm-campaign-test-cleanup`, a limpeza e bloqueada.
+
+Para reiniciar o ciclo transacional completo de campanhas de um tenant de
+teste, incluindo campanhas criadas manualmente ou sugeridas pela IA/regra sem o
+marcador `campaign_test_seed_2026`, use o script SQL dedicado no Supabase:
+
+```text
+database/scripts/cleanup-campaigns.sql
+```
+
+Detalhes de seguranca, tabelas processadas e criterios de preservacao estao em
+`docs/testing/cleanup-campaigns.md`.

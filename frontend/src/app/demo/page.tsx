@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { DashboardMockup } from "@/components/dashboard-mockup";
 import { Button } from "@/components/ui/button";
+import { APP_BRAND } from "@/config/app-brand";
 
 export default function DemoPage() {
   return (
@@ -15,7 +16,9 @@ export default function DemoPage() {
         </Button>
         <div className="mx-auto mt-8 max-w-3xl text-center">
           <p className="eyebrow">Demonstração</p>
-          <h1 className="mt-5 font-display text-4xl sm:text-5xl">Prévia visual do dashboard Bellory</h1>
+          <h1 className="mt-5 font-display text-4xl sm:text-5xl">
+            Prévia visual do dashboard {APP_BRAND.appName}
+          </h1>
         </div>
         <div className="mt-10">
           <DashboardMockup />

@@ -3,7 +3,7 @@ import { ClientsManager } from "@/components/clients/ClientsManager";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Clientes | Bellory"
+  title: "Clientes"
 };
 
 export default function ClientesPage() {

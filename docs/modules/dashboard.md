@@ -47,6 +47,9 @@ Os endpoints legados `GET /dashboard/kpis`, `GET /dashboard/activity` e
 | Profissionais | Maior ocupacao | `agendamentos` + `profissionais` | concluidos no mes por profissional |
 | WhatsApp | Enviadas, pendentes, erros | `mensagens_whatsapp.status_envio` | mensagens do tenant criadas no dia |
 | WhatsApp | Eventos | `mensagens_whatsapp.tipo_evento` | agrupamento por evento/template |
+| Campanhas | Sugestoes pendentes | `campanhas.metadata.lifecycle_stage` | campanhas do tenant com sugestao aguardando aprovacao |
+| Campanhas | Aprovadas/preparadas | `campanhas.status` + `metadata.lifecycle_stage` | campanhas aprovadas, agendadas ou preparadas para envio assistido |
+| Campanhas | Destinatarios elegiveis | motor de audiencia de campanhas | somente clientes finais; usuarios internos sao excluidos por tenant |
 | Operacional | Tempo ate confirmacao | `agendamentos.created_at`, `confirmado_em` | media em minutos |
 | Operacional | Confirmacao ate conclusao | `agendamentos.confirmado_em`, `concluido_em` | media em minutos |
 | Operacional | Conclusoes automaticas | `agendamento_status_historico` | status `concluido` com origem `auto_completion` |

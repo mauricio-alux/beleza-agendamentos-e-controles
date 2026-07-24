@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ProfessionalScheduleDay } from "@/services/agenda.service";
@@ -72,6 +73,24 @@ export function WeeklyScheduleEditor({ schedules, isSaving, onSave }: WeeklySche
     setDays((current) => current.map((day) => (day.weekday === weekday ? { ...day, ...payload } : day)));
   }
 
+  function updatePairedTime(
+    weekday: number,
+    startKey: keyof ProfessionalScheduleDay,
+    endKey: keyof ProfessionalScheduleDay,
+    changedKey: keyof ProfessionalScheduleDay,
+    value: string
+  ) {
+    if (value) {
+      updateDay(weekday, { [changedKey]: value } as Partial<ProfessionalScheduleDay>);
+      return;
+    }
+
+    updateDay(weekday, {
+      [startKey]: null,
+      [endKey]: null
+    } as Partial<ProfessionalScheduleDay>);
+  }
+
   function validate() {
     for (const day of days) {
       if (!day.is_working) continue;
@@ -118,11 +137,7 @@ export function WeeklyScheduleEditor({ schedules, isSaving, onSave }: WeeklySche
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error ? (
-        <div className="rounded-2xl border border-destructive/20 bg-white px-4 py-3 text-sm font-semibold text-destructive">
-          {error}
-        </div>
-      ) : null}
+      {error ? <FeedbackMessage tone="error" message={error} /> : null}
 
       <div className="grid gap-3">
         {days.map((day) => (
@@ -138,7 +153,21 @@ export function WeeklyScheduleEditor({ schedules, isSaving, onSave }: WeeklySche
                 <input
                   type="checkbox"
                   checked={day.is_working}
-                  onChange={(event) => updateDay(day.weekday, { is_working: event.target.checked })}
+                  onChange={(event) =>
+                    updateDay(day.weekday, {
+                      is_working: event.target.checked,
+                      ...(event.target.checked
+                        ? {}
+                        : {
+                            work_start_morning: null,
+                            work_end_morning: null,
+                            work_start_afternoon: null,
+                            work_end_afternoon: null,
+                            break_start: null,
+                            break_end: null
+                          })
+                    })
+                  }
                   className="h-5 w-5 rounded border-border accent-primary"
                 />
                 Trabalha
@@ -146,14 +175,51 @@ export function WeeklyScheduleEditor({ schedules, isSaving, onSave }: WeeklySche
             </div>
 
             {day.is_working ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <TimeField label="Inicio manha" value={day.work_start_morning} onChange={(value) => updateDay(day.weekday, { work_start_morning: value })} />
-                <TimeField label="Fim manha" value={day.work_end_morning} onChange={(value) => updateDay(day.weekday, { work_end_morning: value })} />
-                <TimeField label="Inicio tarde" value={day.work_start_afternoon} onChange={(value) => updateDay(day.weekday, { work_start_afternoon: value })} />
-                <TimeField label="Fim tarde" value={day.work_end_afternoon} onChange={(value) => updateDay(day.weekday, { work_end_afternoon: value })} />
-                <TimeField label="Inicio intervalo" value={day.break_start} onChange={(value) => updateDay(day.weekday, { break_start: value })} />
-                <TimeField label="Fim intervalo" value={day.break_end} onChange={(value) => updateDay(day.weekday, { break_end: value })} />
-              </div>
+              <>
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                  Deixe um periodo vazio quando o profissional nao atende naquele turno. Intervalo tambem e opcional.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <TimeField
+                    label="Inicio manha"
+                    value={day.work_start_morning}
+                    onChange={(value) =>
+                      updatePairedTime(day.weekday, "work_start_morning", "work_end_morning", "work_start_morning", value)
+                    }
+                  />
+                  <TimeField
+                    label="Fim manha"
+                    value={day.work_end_morning}
+                    onChange={(value) =>
+                      updatePairedTime(day.weekday, "work_start_morning", "work_end_morning", "work_end_morning", value)
+                    }
+                  />
+                  <TimeField
+                    label="Inicio tarde"
+                    value={day.work_start_afternoon}
+                    onChange={(value) =>
+                      updatePairedTime(day.weekday, "work_start_afternoon", "work_end_afternoon", "work_start_afternoon", value)
+                    }
+                  />
+                  <TimeField
+                    label="Fim tarde"
+                    value={day.work_end_afternoon}
+                    onChange={(value) =>
+                      updatePairedTime(day.weekday, "work_start_afternoon", "work_end_afternoon", "work_end_afternoon", value)
+                    }
+                  />
+                  <TimeField
+                    label="Inicio intervalo"
+                    value={day.break_start}
+                    onChange={(value) => updatePairedTime(day.weekday, "break_start", "break_end", "break_start", value)}
+                  />
+                  <TimeField
+                    label="Fim intervalo"
+                    value={day.break_end}
+                    onChange={(value) => updatePairedTime(day.weekday, "break_start", "break_end", "break_end", value)}
+                  />
+                </div>
+              </>
             ) : null}
           </section>
         ))}

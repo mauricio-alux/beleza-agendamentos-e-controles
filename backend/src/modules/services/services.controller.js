@@ -2,7 +2,20 @@ const servicesService = require('./services.service');
 const { servicePayloadSchema, updateServiceSchema } = require('./services.validators');
 
 async function list(req, res) {
-  const data = await servicesService.list(req.tenantId);
+  const especialidadeIds = String(req.query.especialidade_ids || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const data = await servicesService.list(req.tenantId, { especialidadeIds });
+  return res.json({ data });
+}
+
+async function listCompatibleSpecialties(req, res) {
+  const data = await servicesService.resolveCompatibleSpecialties(req.tenantId, {
+    nome: req.query.nome,
+    categoria: req.query.categoria
+  });
+
   return res.json({ data });
 }
 
@@ -25,6 +38,7 @@ async function remove(req, res) {
 
 module.exports = {
   list,
+  listCompatibleSpecialties,
   create,
   update,
   remove

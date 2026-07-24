@@ -1,4 +1,5 @@
 import type { AuthSession } from "@/services/auth.service";
+import { API_URL } from "@/config/app-brand";
 
 export type DashboardSubscription = {
   assinatura?: {
@@ -37,6 +38,10 @@ export type DashboardRoleConfig = {
     canViewCampaigns: boolean;
     canViewSaasMetrics: boolean;
     canManageAppointments: boolean;
+    canViewAdministrativeMetrics?: boolean;
+    isScopedProfessionalDashboard?: boolean;
+    isAutonomoHybridDashboard?: boolean;
+    isAutonomoOwner?: boolean;
   };
 };
 
@@ -87,6 +92,7 @@ export type DashboardSnapshot = {
   tenantStatus: string;
   roleConfig: DashboardRoleConfig;
   subscription: DashboardSubscription | null;
+  operational?: DashboardOperational | null;
   kpis: {
     revenueToday: number;
     activeClients: number;
@@ -102,7 +108,24 @@ export type DashboardSnapshot = {
       atendimentosHoje: string;
       tenantsAtivos: string | null;
       tenantsTrial: string | null;
+      comissaoHoje?: string;
+      horariosConfigurados?: string;
+      servicosAutorizados?: string;
+      ganhosLimitados?: string;
+      ganhosProprios?: string;
+      metricasPessoais?: string;
     };
+  };
+  dashboardScope?: {
+    tenantId: string | null;
+    membershipId: string | null;
+    profissionalId: string | null;
+    scopedProfessional: boolean;
+    autonomoContext?: {
+      vinculoTipo: string | null;
+      isOwner: boolean;
+      marketplaceReady: boolean;
+    } | null;
   };
   agenda: {
     today: DashboardAppointment[];
@@ -120,6 +143,75 @@ export type DashboardSnapshot = {
   };
 };
 
+export type DashboardOperationalRanking = {
+  label: string;
+  value: number;
+};
+
+export type DashboardOperational = {
+  generatedAt: string;
+  cacheTtlMs: number;
+  filters: {
+    period: string;
+    monthPeriod: string;
+    tenantId: string;
+    profissionalId: string | null;
+    scopedProfessional: boolean;
+  };
+  overview: {
+    scheduledToday: number;
+    activeToday: number;
+    confirmedToday: number;
+    completedToday: number;
+    cancellationsToday: number;
+    noShowToday: number;
+    inProgressToday: number;
+    attendedClientsToday: number;
+    newClientsMonth: number;
+    recurringClientsMonth: number;
+    attendanceRate: number;
+    noShowRate: number;
+    occupancyRate: number;
+    pendingConfirmation: number;
+    whatsappErrorsToday: number;
+  };
+  agenda: {
+    today: DashboardAppointment[];
+    tomorrowCount: number;
+    next: DashboardAppointment[];
+    statusCounts: DashboardOperationalRanking[];
+  };
+  clients: {
+    newThisMonth: number;
+    recurringThisMonth: number;
+    withNoShowThisMonth: number;
+  };
+  services: {
+    mostPerformed: DashboardOperationalRanking[];
+    revenue: DashboardOperationalRanking[];
+  };
+  professionals: {
+    mostOccupied: DashboardOperationalRanking[];
+    cancellations: DashboardOperationalRanking[];
+    noShow: DashboardOperationalRanking[];
+  };
+  whatsapp: {
+    sent: number;
+    pending: number;
+    delivered: number;
+    read: number;
+    errors: number;
+    byStatus: DashboardOperationalRanking[];
+    byEvent: DashboardOperationalRanking[];
+  };
+  operational: {
+    averageConfirmationMinutes: number;
+    averageConfirmationToCompletionMinutes: number;
+    remindersSent: number;
+    automaticCompletions: number;
+  };
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: {
@@ -127,8 +219,6 @@ type ApiEnvelope<T> = {
     message?: string;
   };
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 
 async function request<T>(path: string, token: string, signal?: AbortSignal) {
   let response: Response;
@@ -170,6 +260,7 @@ function normalizeSnapshot(snapshot: DashboardSnapshot): DashboardSnapshot {
       notifications: snapshot.activity?.notifications || [],
       campaigns: snapshot.activity?.campaigns || []
     },
+    operational: snapshot.operational || null,
     realtime: {
       strategy: "polling",
       intervalMs: snapshot.realtime?.intervalMs || 60000,

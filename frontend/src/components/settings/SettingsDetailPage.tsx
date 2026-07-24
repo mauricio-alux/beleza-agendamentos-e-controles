@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
+import { ServicesManager } from "@/components/services/ServicesManager";
 import { OperationalSettingsForm } from "@/components/settings/OperationalSettingsForm";
 import { SettingsShell } from "@/components/settings/SettingsShell";
 import { SettingsState } from "@/components/settings/SettingsState";
@@ -10,6 +11,7 @@ import { TenantProfileForm } from "@/components/settings/TenantProfileForm";
 import { TeamSettingsBridge } from "@/components/settings/TeamSettingsBridge";
 import { UserProfileForm } from "@/components/settings/UserProfileForm";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { useSettings } from "@/hooks/useSettings";
 import type { SettingsSectionId } from "@/services/settings.service";
 
@@ -29,6 +31,18 @@ const DETAILS = {
   services: {
     title: "Servicos do salao",
     description: "Cadastre duracao, preco e categoria dos servicos oferecidos."
+  },
+  specialties: {
+    title: "Especialidades",
+    description: "Uso operacional das especialidades no salao."
+  },
+  role_specialties: {
+    title: "Cargos x Especialidades",
+    description: "Especialidades disponiveis por cargo."
+  },
+  service_specialties: {
+    title: "Servicos x Especialidades",
+    description: "Vinculos entre servicos e especialidades."
   },
   team: {
     title: "Horarios da equipe",
@@ -93,11 +107,12 @@ export function SettingsDetailPage({ section }: SettingsDetailPageProps) {
         </Button>
 
         {(error || successMessage) ? (
-          <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm font-semibold shadow-sm">
-            <span className={error ? "text-destructive" : "text-primary"}>{error || successMessage}</span>
-          </div>
+          <FeedbackMessage tone={error ? "error" : "success"} message={error || successMessage} />
         ) : null}
 
+        {section === "services" ? (
+          <ServicesManager embedded />
+        ) : (
         <DashboardCard title={detail.title} description={detail.description}>
           {section === "profile" ? (
             <UserProfileForm profile={summary.profile} isSaving={isSaving} onSave={saveProfile} />
@@ -113,40 +128,11 @@ export function SettingsDetailPage({ section }: SettingsDetailPageProps) {
 
           {section === "team" ? <TeamSettingsBridge /> : null}
 
-          {section === "services" ? <ServicesSettingsBridge /> : null}
-
           {!["profile", "tenant", "operation", "team", "services"].includes(section) ? <SettingsModuleBridge section={section} /> : null}
         </DashboardCard>
+        )}
       </div>
     </SettingsShell>
-  );
-}
-
-function ServicesSettingsBridge() {
-  const benefits = [
-    "Duracao usada no calculo da agenda",
-    "Preco usado em faturamento e KPIs",
-    "Categoria usada em campanhas e relatorios"
-  ];
-
-  return (
-    <div className="space-y-5">
-      <p className="text-sm leading-6 text-muted-foreground">
-        Organize os servicos oferecidos pelo seu negocio para que o Bellory calcule horarios, acompanhe resultados e
-        prepare a operacao para campanhas futuras.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {benefits.map((benefit) => (
-          <div key={benefit} className="flex min-h-20 items-start gap-3 rounded-2xl border border-white/80 bg-white/90 p-4 shadow-sm">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-primary" />
-            <span className="text-sm font-semibold leading-5 text-foreground">{benefit}</span>
-          </div>
-        ))}
-      </div>
-      <Button asChild variant="outline">
-        <Link href="/servicos">Gerenciar servicos</Link>
-      </Button>
-    </div>
   );
 }
 

@@ -9,7 +9,12 @@ import {
   type OnboardingStepName,
   type TenantSettings
 } from "@/services/onboarding.service";
-import type { ServiceCategory } from "@/constants/service-categories";
+import { BELLORY_OFFICIAL_SERVICES } from "@/constants/bellory-taxonomy";
+import { normalizeServiceCategory, type ServiceCategory } from "@/constants/service-categories";
+import { validateServiceTaxonomyName } from "@/utils/taxonomy-validator";
+import { getErrorMessage } from "@/lib/messages";
+import { getNationalPhone, normalizePhoneToE164 } from "@/utils/phone";
+import { APP_BRAND } from "@/config/app-brand";
 
 export type OnboardingStepId =
   | "welcome"
@@ -33,6 +38,7 @@ export type OnboardingServiceItem = {
   categoria?: ServiceCategory | "";
   selected: boolean;
   custom?: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 export type OnboardingFormData = {
@@ -47,6 +53,9 @@ export type OnboardingFormData = {
   duracao_padrao_servico: number;
   moeda: string;
   timezone: string;
+  whatsapp_usage_type: "cloud_api" | "business_app" | "messenger" | "not_used";
+  campaign_execution_mode: "tenant_assisted" | "saas_managed" | "choose_each_campaign";
+  manual_distribution_preference: "broadcast_list" | "manual_contacts" | "other_whatsapp_method" | "choose_each_campaign";
   services: OnboardingServiceItem[];
 };
 
@@ -72,12 +81,36 @@ type OnboardingContextValue = {
   refresh: () => Promise<void>;
 };
 
-const defaultServices: OnboardingServiceItem[] = [
-  { nome: "Corte", duracao_minutos: 45, preco: 0, categoria: "cabelo", selected: true },
-  { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "cabelo", selected: true },
-  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "manicure", selected: true },
-  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "tratamento", selected: true }
-];
+const TAXONOMY_VERSION = "bellory_taxonomy_v1";
+
+const defaultServiceDurationByName: Record<string, number> = {
+  "Corte de Cabelo": 45,
+  Escova: 45,
+  Coloracao: 90,
+  Hidratacao: 60,
+  Barba: 45,
+  Manicure: 60,
+  Pedicure: 60,
+  Maquiagem: 90,
+  "Limpeza de Pele": 60,
+  Massagem: 60,
+  "Design de Sobrancelhas": 30,
+  "Extensao de Cilios": 120
+};
+
+const defaultServices: OnboardingServiceItem[] = BELLORY_OFFICIAL_SERVICES.map((service) => ({
+  nome: service.name,
+  duracao_minutos: defaultServiceDurationByName[service.name] || 60,
+  preco: 0,
+  categoria: normalizeServiceCategory(service.categoryKey),
+  selected: true,
+  metadata: {
+    taxonomy_version: TAXONOMY_VERSION,
+    taxonomy_category_key: service.categoryKey,
+    acao_servico: service.action,
+    especialidades_oficiais: service.specialties
+  }
+}));
 
 export const onboardingSteps: OnboardingStepDefinition[] = [
   {
@@ -113,7 +146,7 @@ export const onboardingSteps: OnboardingStepDefinition[] = [
   {
     id: "completion",
     title: "Finalizacao",
-    description: "Tudo pronto para entrar no Bellory.",
+    description: `Tudo pronto para entrar no ${APP_BRAND.appName}.`,
     backendStep: "onboarding_completed"
   }
 ];
@@ -130,14 +163,13 @@ const initialData: OnboardingFormData = {
   duracao_padrao_servico: 45,
   moeda: "BRL",
   timezone: "America/Sao_Paulo",
+  whatsapp_usage_type: "business_app",
+  campaign_execution_mode: "tenant_assisted",
+  manual_distribution_preference: "choose_each_campaign",
   services: defaultServices
 };
 
 export const OnboardingContext = createContext<OnboardingContextValue | null>(null);
-
-function onlyDigits(value: string) {
-  return value.replace(/\D/g, "");
-}
 
 function validateStep(step: OnboardingStepDefinition, data: OnboardingFormData) {
   if (step.id === "salon") {
@@ -145,7 +177,7 @@ function validateStep(step: OnboardingStepDefinition, data: OnboardingFormData) 
       return "Informe o nome fantasia do salao.";
     }
 
-    if (data.whatsapp && onlyDigits(data.whatsapp).length < 10) {
+    if (data.whatsapp && getNationalPhone(data.whatsapp).length < 10) {
       return "Informe um WhatsApp valido.";
     }
 
@@ -165,6 +197,21 @@ function validateStep(step: OnboardingStepDefinition, data: OnboardingFormData) 
 
     if (invalidService) {
       return "Revise nome, duracao e preco dos servicos selecionados.";
+    }
+
+    const invalidTaxonomyService = data.services
+      .filter((service) => service.selected)
+      .map((service) => ({
+        service,
+        validation: validateServiceTaxonomyName(service.nome)
+      }))
+      .find((item) => !item.validation.valid);
+
+    if (invalidTaxonomyService) {
+      const suggestions = invalidTaxonomyService.validation.suggestions?.length
+        ? ` Sugestao: ${invalidTaxonomyService.validation.suggestions.join(", ")}.`
+        : "";
+      return `${invalidTaxonomyService.validation.message}${suggestions}`;
     }
   }
 
@@ -198,6 +245,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         onboardingService.getStatus(session),
         onboardingService.getTenantSettings(session)
       ]);
+      const tenantServices = await onboardingService.listServices(session).catch(() => []);
 
       setStatus(nextStatus);
       setSettings(nextSettings);
@@ -209,7 +257,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
       setData((current) => ({
         ...current,
-        nome_fantasia: nextSettings.nome_fantasia || session.tenant.nome_fantasia || current.nome_fantasia,
+        nome_fantasia: nextSettings.nome_fantasia || session.tenant?.nome_fantasia || current.nome_fantasia,
         telefone: nextSettings.raw?.tenant?.telefone || session.usuario.telefone || current.telefone,
         whatsapp: nextSettings.raw?.tenant?.telefone || session.usuario.telefone || current.whatsapp,
         cidade: String(nextSettings.raw?.tenant?.endereco?.cidade || current.cidade),
@@ -217,8 +265,23 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         horario_inicio_padrao: nextSettings.horario_inicio_padrao || current.horario_inicio_padrao,
         horario_fim_padrao: nextSettings.horario_fim_padrao || current.horario_fim_padrao,
         intervalo_agendamento: nextSettings.intervalo_agendamento || current.intervalo_agendamento,
+        duracao_padrao_servico: nextSettings.duracao_padrao_servico || current.duracao_padrao_servico,
         moeda: nextSettings.moeda || current.moeda,
-        timezone: nextSettings.timezone || current.timezone
+        timezone: nextSettings.timezone || current.timezone,
+        whatsapp_usage_type: (nextSettings.raw?.tenant?.configuracoes?.campaign_whatsapp as Record<string, string> | undefined)?.usage_type as OnboardingFormData["whatsapp_usage_type"] || current.whatsapp_usage_type,
+        campaign_execution_mode: (nextSettings.raw?.tenant?.configuracoes?.campaign_whatsapp as Record<string, string> | undefined)?.execution_mode as OnboardingFormData["campaign_execution_mode"] || current.campaign_execution_mode,
+        manual_distribution_preference: (nextSettings.raw?.tenant?.configuracoes?.campaign_whatsapp as Record<string, string> | undefined)?.manual_distribution_preference as OnboardingFormData["manual_distribution_preference"] || current.manual_distribution_preference,
+        services: tenantServices.length
+          ? tenantServices.map((service) => ({
+              nome: service.nome,
+              duracao_minutos: service.duracao_minutos || current.duracao_padrao_servico,
+              preco: Number(service.preco || 0),
+              categoria: normalizeServiceCategory(service.categoria),
+              selected: service.ativo !== false,
+              custom: Boolean(service.categoria && !defaultServices.some((item) => item.nome === service.nome)),
+              metadata: service.metadata
+            }))
+          : current.services
       }));
 
       const firstPendingIndex = onboardingSteps.findIndex((step) => {
@@ -227,7 +290,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       });
       setCurrentStepIndex(firstPendingIndex >= 0 ? firstPendingIndex : 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar o onboarding.");
+      setError(getErrorMessage(err, "Nao foi possivel carregar o onboarding."));
     } finally {
       setIsLoading(false);
     }
@@ -282,7 +345,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                 nome: normalized,
                 duracao_minutos: service.duracao_minutos || current.duracao_padrao_servico,
                 preco: service.preco || 0,
-                categoria: service.categoria || "",
+                categoria: normalizeServiceCategory(service.categoria),
                 selected: service.selected ?? true,
                 custom: true
               }
@@ -318,7 +381,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         if (step.id === "salon") {
           await onboardingService.updateTenant(session, {
             nome_fantasia: data.nome_fantasia,
-            telefone: onlyDigits(data.telefone || data.whatsapp),
+            telefone: data.telefone || data.whatsapp ? normalizePhoneToE164(data.telefone || data.whatsapp) : "",
             endereco: {
               ...(settings?.raw?.tenant?.endereco || {}),
               cidade: data.cidade,
@@ -344,7 +407,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                 horario_inicio_padrao: data.horario_inicio_padrao,
                 horario_fim_padrao: data.horario_fim_padrao,
                 intervalo_agendamento: data.intervalo_agendamento,
-                duracao_padrao_servico: data.duracao_padrao_servico
+                duracao_padrao_servico: data.duracao_padrao_servico,
+                campaign_whatsapp: {
+                  usage_type: data.whatsapp_usage_type,
+                  has_own_cloud_api: data.whatsapp_usage_type === "cloud_api",
+                  execution_mode: data.campaign_execution_mode,
+                  manual_distribution_preference: data.manual_distribution_preference,
+                  configured_during: "onboarding"
+                }
               }
             }),
             onboardingService.updateTenantSettings(session, {
@@ -364,12 +434,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                 ? {
                     services: data.services
                       .filter((service) => service.selected)
-                      .map(({ nome, duracao_minutos, preco, categoria, custom }) => ({
+                      .map(({ nome, duracao_minutos, preco, categoria, custom, metadata }) => ({
                         nome,
                         duracao_minutos,
                         preco,
                         categoria: categoria || null,
-                        custom: Boolean(custom)
+                        custom: Boolean(custom),
+                        metadata
                       }))
                   }
                 : undefined
@@ -387,7 +458,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
         return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Nao foi possivel salvar. Tente novamente.");
+        setError(getErrorMessage(err, "Nao foi possivel salvar. Tente novamente."));
         return false;
       } finally {
         setIsSaving(false);
@@ -428,7 +499,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       await onboardingService.complete(session);
       router.replace(process.env.NEXT_PUBLIC_DASHBOARD_PATH || "/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel concluir. Tente novamente.");
+      setError(getErrorMessage(err, "Nao foi possivel concluir. Tente novamente."));
     } finally {
       setIsSaving(false);
     }

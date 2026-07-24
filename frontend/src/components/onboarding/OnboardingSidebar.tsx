@@ -1,6 +1,7 @@
 import { BrandLogo } from "@/components/brand-logo";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { OnboardingStepper } from "@/components/onboarding/OnboardingStepper";
+import { APP_BRAND } from "@/config/app-brand";
 
 type OnboardingSidebarProps = {
   progress: number;
@@ -17,7 +18,7 @@ export function OnboardingSidebar({ progress }: OnboardingSidebarProps) {
             Vamos montar seu salao em poucos minutos.
           </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            O Bellory ja criou a base operacional. Agora vamos deixar tudo com a cara do seu atendimento.
+            O {APP_BRAND.appName} ja criou a base operacional. Agora vamos deixar tudo com a cara do seu atendimento.
           </p>
         </div>
         <OnboardingProgress progress={progress} />

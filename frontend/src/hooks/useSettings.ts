@@ -117,7 +117,8 @@ export function useSettings() {
       setAuthenticatedSession({
         ...session,
         tenant: {
-          ...session.tenant,
+          ...(session.tenant || {}),
+          id: tenant.id,
           nome_fantasia: tenant.nome_fantasia,
           slug: tenant.slug,
           status: tenant.status,

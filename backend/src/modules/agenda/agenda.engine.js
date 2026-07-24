@@ -31,24 +31,43 @@ function isInsideInterval(start, end, interval) {
   return start >= interval.start && end <= interval.end;
 }
 
-function subtractBreaks(workIntervals, schedule, date) {
+function getBoundedMinutes(value, fallback = 0, max = 60) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return fallback;
+  return Math.min(max, Math.max(0, Math.trunc(numberValue)));
+}
+
+function getScheduleBreak(schedule, date) {
   if (!schedule.hora_intervalo_inicio || !schedule.hora_intervalo_fim) {
-    return workIntervals;
+    return null;
   }
 
-  const breakStart = dateAtTime(date, schedule.hora_intervalo_inicio);
-  const breakEnd = dateAtTime(date, schedule.hora_intervalo_fim);
+  return {
+    start: dateAtTime(date, schedule.hora_intervalo_inicio),
+    end: dateAtTime(date, schedule.hora_intervalo_fim)
+  };
+}
 
-  return workIntervals.flatMap((interval) => {
-    if (!rangesOverlap(interval.start, interval.end, breakStart, breakEnd)) {
-      return [interval];
-    }
+function isSlotAllowedByBreak(start, end, scheduleBreak, toleranceMinutes) {
+  if (!scheduleBreak || !rangesOverlap(start, end, scheduleBreak.start, scheduleBreak.end)) {
+    return true;
+  }
 
-    return [
-      interval.start < breakStart ? { start: interval.start, end: breakStart } : null,
-      breakEnd < interval.end ? { start: breakEnd, end: interval.end } : null
-    ].filter(Boolean);
-  });
+  if (start >= scheduleBreak.start) {
+    return false;
+  }
+
+  const toleratedBreakEnd = addMinutes(scheduleBreak.start, toleranceMinutes);
+  const maxAllowedEnd = toleratedBreakEnd < scheduleBreak.end ? toleratedBreakEnd : scheduleBreak.end;
+  return end <= maxAllowedEnd;
+}
+
+function isSlotAllowedByWorkEnd(start, end, workEnd, toleranceMinutes) {
+  if (start >= workEnd) {
+    return false;
+  }
+
+  return end <= addMinutes(workEnd, toleranceMinutes);
 }
 
 function getBusyRanges(appointments = [], blocks = []) {
@@ -81,16 +100,21 @@ function generateAvailability({
 }) {
   const slotInterval = settings?.intervalo_padrao_minutos || DEFAULT_SLOT_INTERVAL;
   const minAdvance = settings?.antecedencia_minima_minutos ?? DEFAULT_MIN_ADVANCE;
+  const breakTolerance = getBoundedMinutes(settings?.tolerancia_intervalo_min, 0, 60);
+  const workEndTolerance = getBoundedMinutes(settings?.tolerancia_fim_expediente_min, 0, 60);
   const earliest = addMinutes(now, minAdvance);
   const busyRanges = getBusyRanges(appointments, blocks);
 
   const workIntervals = schedules.flatMap((schedule) => {
-    const interval = {
-      start: dateAtTime(date, schedule.hora_inicio),
-      end: dateAtTime(date, schedule.hora_fim)
-    };
+    if (!schedule.hora_inicio || !schedule.hora_fim) {
+      return [];
+    }
 
-    return subtractBreaks([interval], schedule, date);
+    return [{
+      start: dateAtTime(date, schedule.hora_inicio),
+      end: dateAtTime(date, schedule.hora_fim),
+      break: getScheduleBreak(schedule, date)
+    }];
   });
 
   if (!workIntervals.length) {
@@ -105,7 +129,7 @@ function generateAvailability({
   for (const interval of workIntervals) {
     for (
       let cursor = new Date(interval.start);
-      addMinutes(cursor, durationMinutes) <= interval.end;
+      cursor < interval.end;
       cursor = addMinutes(cursor, slotInterval)
     ) {
       const start = new Date(cursor);
@@ -115,7 +139,15 @@ function generateAvailability({
         continue;
       }
 
-      if (!isInsideInterval(start, end, interval)) {
+      if (!isInsideInterval(start, start, interval)) {
+        continue;
+      }
+
+      if (!isSlotAllowedByBreak(start, end, interval.break, breakTolerance)) {
+        continue;
+      }
+
+      if (!isSlotAllowedByWorkEnd(start, end, interval.end, workEndTolerance)) {
         continue;
       }
 

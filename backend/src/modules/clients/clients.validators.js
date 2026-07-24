@@ -15,6 +15,11 @@ const clientSchema = z.object({
   aceita_campanhas: z.boolean().optional()
 }).strict();
 
+const bookingTokenSchema = z.object({
+  slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9-]+$/i).optional()
+}).strict();
+
 module.exports = {
-  clientSchema
+  clientSchema,
+  bookingTokenSchema
 };

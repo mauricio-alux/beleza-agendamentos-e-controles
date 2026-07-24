@@ -1,0 +1,57 @@
+const {
+  BELLORY_OFFICIAL_OPERATIONAL_CARGOS,
+  BELLORY_OFFICIAL_ADMINISTRATIVE_CARGOS,
+  normalizeTaxonomyKey
+} = require('./bellory-taxonomy');
+
+const PROFESSIONAL_CARGO_CATEGORIES = {
+  OPERATIONAL: 'operacional',
+  ADMINISTRATIVE: 'administrativo'
+};
+
+const TEAM_ROLE_CARGO_CATEGORIES = {
+  Administrador: [PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL],
+  Autonomo: [PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL],
+  Funcionario: [PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL],
+  Terceiro: [PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL],
+  'Profissional Adm': [PROFESSIONAL_CARGO_CATEGORIES.ADMINISTRATIVE]
+};
+
+const OPERATIONAL_PROFESSIONAL_CARGOS = BELLORY_OFFICIAL_OPERATIONAL_CARGOS.map((cargo) => cargo.name);
+
+const ADMINISTRATIVE_PROFESSIONAL_CARGOS = BELLORY_OFFICIAL_ADMINISTRATIVE_CARGOS;
+
+const OPERATIONAL_CARGO_NAME_SET = new Set(OPERATIONAL_PROFESSIONAL_CARGOS.map(normalizeTaxonomyKey));
+const ADMINISTRATIVE_CARGO_NAME_SET = new Set(ADMINISTRATIVE_PROFESSIONAL_CARGOS.map(normalizeTaxonomyKey));
+
+function getCargoCategoriesForTeamRole(role) {
+  return TEAM_ROLE_CARGO_CATEGORIES[role] || TEAM_ROLE_CARGO_CATEGORIES.Funcionario;
+}
+
+function getCategoryForCargoName(cargoName) {
+  const normalizedName = normalizeTaxonomyKey(cargoName);
+
+  if (ADMINISTRATIVE_CARGO_NAME_SET.has(normalizedName)) {
+    return PROFESSIONAL_CARGO_CATEGORIES.ADMINISTRATIVE;
+  }
+
+  if (OPERATIONAL_CARGO_NAME_SET.has(normalizedName)) {
+    return PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL;
+  }
+
+  return PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL;
+}
+
+function canTeamRoleUseCargoCategory(role, category) {
+  return getCargoCategoriesForTeamRole(role).includes(category || PROFESSIONAL_CARGO_CATEGORIES.OPERATIONAL);
+}
+
+module.exports = {
+  PROFESSIONAL_CARGO_CATEGORIES,
+  TEAM_ROLE_CARGO_CATEGORIES,
+  OPERATIONAL_PROFESSIONAL_CARGOS,
+  ADMINISTRATIVE_PROFESSIONAL_CARGOS,
+  getCargoCategoriesForTeamRole,
+  getCategoryForCargoName,
+  canTeamRoleUseCargoCategory
+};

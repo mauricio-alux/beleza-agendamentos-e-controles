@@ -10,14 +10,16 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { LoadingButton } from "@/components/auth/LoadingButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useAgenda } from "@/hooks/useAgenda";
-import { formatPhone, normalizePhoneToE164 } from "@/utils/phone";
+import { normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 export function NewAppointmentForm() {
   const agenda = useAgenda();
   const [selectedSlot, setSelectedSlot] = useState("");
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientPhoneCountry, setClientPhoneCountry] = useState<PhoneCountry>("BR");
   const [clientEmail, setClientEmail] = useState("");
   const [cep, setCep] = useState("");
   const [uf, setUf] = useState("");
@@ -90,7 +92,7 @@ export function NewAppointmentForm() {
       data_inicio: selectedSlot,
       cliente: {
         nome: clientName.trim(),
-        telefone: normalizePhoneToE164(clientPhone),
+        telefone: normalizePhoneToE164(clientPhone, clientPhoneCountry),
         email: clientEmail.trim() || undefined,
         endereco: cep.replace(/\D/g, "").length === 8
           ? {
@@ -114,6 +116,7 @@ export function NewAppointmentForm() {
       setSelectedSlot("");
       setClientName("");
       setClientPhone("");
+      setClientPhoneCountry("BR");
       setClientEmail("");
       setCep("");
       setUf("");
@@ -177,10 +180,14 @@ export function NewAppointmentForm() {
                 <Input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Nome do cliente" />
               </Field>
               <Field label="WhatsApp">
-                <Input
+                <PhoneInput
                   value={clientPhone}
-                  onChange={(event) => setClientPhone(formatPhone(event.target.value))}
-                  placeholder="(11) 99911-1774"
+                  onChange={setClientPhone}
+                  country={clientPhoneCountry}
+                  onCountryChange={(country) => {
+                    setClientPhoneCountry(country);
+                    setClientPhone("");
+                  }}
                 />
               </Field>
               <Field label="Email">

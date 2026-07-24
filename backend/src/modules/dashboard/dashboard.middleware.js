@@ -1,7 +1,17 @@
 const { forbidden } = require('../../utils/errors');
 
 function dashboardMiddleware(req, res, next) {
-  if (!req.tenantId || !req.usuario) {
+  const role = req.tipoUsuario || req.usuario?.tipo_usuario;
+
+  if (!req.usuario) {
+    return next(forbidden('Dashboard user context is required'));
+  }
+
+  if (role === 'MasterAdmin' && !req.supportContext) {
+    return next(forbidden('Platform admins must use the platform dashboard'));
+  }
+
+  if (!req.tenantId && role !== 'MasterAdmin') {
     return next(forbidden('Dashboard tenant context is required'));
   }
 
@@ -10,7 +20,9 @@ function dashboardMiddleware(req, res, next) {
     tenant: req.tenant,
     user: req.usuario,
     userId: req.usuario.id,
-    role: req.tipoUsuario || req.usuario.tipo_usuario
+    role,
+    membership: req.membership,
+    memberships: req.memberships || []
   };
 
   return next();

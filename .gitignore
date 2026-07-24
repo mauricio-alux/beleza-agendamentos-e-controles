@@ -1,0 +1,34 @@
+# Node
+node_modules/
+
+# Next.js
+.next/
+frontend/.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Cache / build
+*.tsbuildinfo
+supabase/.temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / temporary
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.codex-logs/
+
+# Backups locais
+BACKUP-*/
+backup/

@@ -89,6 +89,20 @@ async function updateProfissionalServico(tenantId, id, payload) {
   return data;
 }
 
+async function updateProfissionalServicoByService(tenantId, profissionalId, servicoId, payload) {
+  const { data, error } = await supabaseAdmin
+    .from('profissional_servicos')
+    .update(payload)
+    .eq('tenant_id', tenantId)
+    .eq('profissional_id', profissionalId)
+    .eq('servico_id', servicoId)
+    .is('deleted_at', null)
+    .select();
+
+  if (error) throw error;
+  return data || [];
+}
+
 async function findServicesByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('servicos')
@@ -100,6 +114,53 @@ async function findServicesByTenant(tenantId) {
 
   if (error) throw error;
   return data;
+}
+
+async function listSpecialties() {
+  const { data, error } = await supabaseAdmin
+    .from('especialidades')
+    .select('*, cargo:cargos(*)')
+    .eq('ativo', true)
+    .is('deleted_at', null);
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function replaceServicoEspecialidades(tenantId, serviceId, specialtyIds = []) {
+  const now = new Date().toISOString();
+
+  const { error: deleteError } = await supabaseAdmin
+    .from('servico_especialidades')
+    .update({
+      ativo: false,
+      deleted_at: now
+    })
+    .eq('tenant_id', tenantId)
+    .eq('servico_id', serviceId)
+    .is('deleted_at', null);
+
+  if (deleteError) throw deleteError;
+
+  const uniqueIds = [...new Set(specialtyIds.filter(Boolean))];
+  if (!uniqueIds.length) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('servico_especialidades')
+    .upsert(
+      uniqueIds.map((especialidadeId) => ({
+        tenant_id: tenantId,
+        servico_id: serviceId,
+        especialidade_id: especialidadeId,
+        ativo: true,
+        deleted_at: null
+      })),
+      { onConflict: 'tenant_id,servico_id,especialidade_id' }
+    )
+    .select();
+
+  if (error) throw error;
+  return data || [];
 }
 
 async function createProfissionalServicos(payloads) {
@@ -210,8 +271,11 @@ module.exports = {
   createServicos,
   updateServico,
   findServicesByTenant,
+  listSpecialties,
+  replaceServicoEspecialidades,
   createProfissionalServicos,
   updateProfissionalServico,
+  updateProfissionalServicoByService,
   findProfessionalServices,
   createLinkAgendamento,
   findBookingLinkByTenant,

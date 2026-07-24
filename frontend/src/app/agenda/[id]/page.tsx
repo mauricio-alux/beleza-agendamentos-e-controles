@@ -3,7 +3,7 @@ import { AppointmentDetail } from "@/components/agenda/AppointmentDetail";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Agendamento | Bellory"
+  title: "Agendamento"
 };
 
 export default async function AgendamentoDetalhePage({ params }: { params: Promise<{ id: string }> }) {

@@ -1,18 +1,23 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
 import {
   SERVICE_CATEGORIES,
   SERVICE_CATEGORY_LABELS,
   SERVICE_DURATION_OPTIONS,
+  normalizeServiceCategory,
   type ServiceCategory
 } from "@/constants/service-categories";
+import type { AuthSession } from "@/services/auth.service";
 import { useAuth } from "@/hooks/useAuth";
 import { servicesService, type SalonService, type SalonServicePayload } from "@/services/services.service";
+import { teamService, type TeamRole, type TeamSpecialty } from "@/services/team.service";
+import { getErrorMessage } from "@/lib/messages";
 
 type ServiceFormState = {
   nome: string;
@@ -20,17 +25,21 @@ type ServiceFormState = {
   customDuration: string;
   preco: string;
   categoria: ServiceCategory | "";
+  especialidade_ids: string[];
 };
+
+const DEFAULT_SERVICE_PRICE = "R$ 80,00";
 
 const EMPTY_FORM: ServiceFormState = {
   nome: "",
   duracao_minutos: 45,
   customDuration: "",
-  preco: "",
-  categoria: ""
+  preco: DEFAULT_SERVICE_PRICE,
+  categoria: "",
+  especialidade_ids: []
 };
 
-export function ServicesManager() {
+export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
   const { session } = useAuth();
   const [services, setServices] = useState<SalonService[]>([]);
   const [form, setForm] = useState<ServiceFormState>(EMPTY_FORM);
@@ -50,7 +59,7 @@ export function ServicesManager() {
       const data = await servicesService.list(session);
       setServices(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar os servicos.");
+      setError(getErrorMessage(err, "Nao foi possivel carregar os servicos."));
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +75,8 @@ export function ServicesManager() {
       duracao_minutos: state.duracao_minutos === 0 ? Number(state.customDuration) : state.duracao_minutos,
       preco: parseCurrency(state.preco),
       categoria: state.categoria || null,
-      permite_online: true
+      permite_online: true,
+      especialidade_ids: state.especialidade_ids
     };
   }
 
@@ -82,7 +92,7 @@ export function ServicesManager() {
       setServices((current) => [...current, created]);
       setForm(EMPTY_FORM);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel criar o servico.");
+      setError(getErrorMessage(err, "Nao foi possivel criar o servico."));
     } finally {
       setIsSaving(false);
     }
@@ -95,11 +105,23 @@ export function ServicesManager() {
     setError("");
 
     try {
-      const updated = await servicesService.update(session, id, toPayload(editingForm));
+      const payload = toPayload(editingForm);
+
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[services:update]", {
+          service_id: id,
+          nome: editingForm.nome,
+          categoria: editingForm.categoria,
+          especialidade_ids: editingForm.especialidade_ids,
+          payload
+        });
+      }
+
+      const updated = await servicesService.update(session, id, payload);
       setServices((current) => current.map((service) => (service.id === id ? updated : service)));
       setEditingId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel atualizar o servico.");
+      setError(getErrorMessage(err, "Nao foi possivel atualizar o servico."));
     } finally {
       setIsSaving(false);
     }
@@ -115,7 +137,7 @@ export function ServicesManager() {
       await servicesService.remove(session, id);
       setServices((current) => current.filter((service) => service.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel remover o servico.");
+      setError(getErrorMessage(err, "Nao foi possivel remover o servico."));
     } finally {
       setIsSaving(false);
     }
@@ -128,12 +150,18 @@ export function ServicesManager() {
       duracao_minutos: SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as never) ? service.duracao_minutos : 0,
       customDuration: SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as never) ? "" : String(service.duracao_minutos),
       preco: formatCurrency(service.preco),
-      categoria: service.categoria || ""
+      categoria: normalizeServiceCategory(
+        service.categoria
+        || service.taxonomy_category_key
+        || (service.metadata?.taxonomy_category_key as string | undefined)
+      ),
+      especialidade_ids: service.especialidade_ids || []
     });
   }
 
   return (
     <section className="space-y-5">
+      {!embedded ? (
       <div className="rounded-[1.75rem] border border-white/80 bg-white/82 p-5 shadow-soft backdrop-blur-xl sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Catalogo operacional</p>
         <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Servicos do salao</h1>
@@ -141,16 +169,25 @@ export function ServicesManager() {
           Cadastre nome, duracao, preco e categoria para alimentar agenda, KPIs e campanhas futuras.
         </p>
       </div>
-
-      {error ? (
-        <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm font-semibold text-destructive shadow-sm">
-          {error}
-        </div>
       ) : null}
 
-      <DashboardCard title="Novo servico" description="Comece simples. Voce pode ajustar depois.">
-        <ServiceForm form={form} setForm={setForm} onSubmit={handleCreate} submitLabel="Adicionar" isSaving={isSaving} />
-      </DashboardCard>
+      {error ? (
+        <FeedbackMessage tone="error" message={error} />
+      ) : null}
+
+      {!editingId ? (
+        <DashboardCard title="Novo servico" description="Comece simples. Voce pode ajustar depois.">
+          <ServiceForm
+            session={session}
+            form={form}
+            setForm={setForm}
+            onSubmit={handleCreate}
+            submitLabel="Adicionar"
+            isSaving={isSaving}
+            existingServices={services}
+          />
+        </DashboardCard>
+      ) : null}
 
       <DashboardCard title="Servicos cadastrados" description="Duracao e preco ja impactam a agenda e os indicadores.">
         {isLoading ? (
@@ -169,6 +206,10 @@ export function ServicesManager() {
                     }}
                     submitLabel="Salvar"
                     isSaving={isSaving}
+                    session={session}
+                    existingServices={services}
+                    excludedServiceId={service.id}
+                    editingService={service}
                     onCancel={() => setEditingId(null)}
                   />
                 ) : (
@@ -177,8 +218,19 @@ export function ServicesManager() {
                       <h2 className="text-base font-bold text-foreground">{service.nome}</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {service.duracao_minutos} min · {formatCurrency(service.preco)}
-                        {service.categoria ? ` · ${SERVICE_CATEGORY_LABELS[service.categoria]}` : ""}
+                        {normalizeServiceCategory(service.categoria) ? ` · ${SERVICE_CATEGORY_LABELS[normalizeServiceCategory(service.categoria) as ServiceCategory]}` : ""}
                       </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(service.especialidades || []).length ? (
+                          service.especialidades?.map((specialty) => (
+                            <span key={specialty.id} className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-primary">
+                              {specialty.nome}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs font-semibold text-muted-foreground">Sem especialidades vinculadas.</span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button type="button" variant="outline" size="icon" onClick={() => startEdit(service)} aria-label="Editar servico">
@@ -204,45 +256,403 @@ export function ServicesManager() {
 }
 
 function ServiceForm({
+  session,
   form,
   setForm,
   onSubmit,
   submitLabel,
   isSaving,
+  existingServices,
+  excludedServiceId,
+  editingService,
   onCancel
 }: {
+  session: AuthSession | null;
   form: ServiceFormState;
-  setForm: (form: ServiceFormState) => void;
+  setForm: Dispatch<SetStateAction<ServiceFormState>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
   isSaving: boolean;
+  existingServices: SalonService[];
+  excludedServiceId?: string;
+  editingService?: SalonService;
   onCancel?: () => void;
 }) {
+  const [compatibleSpecialties, setCompatibleSpecialties] = useState<TeamSpecialty[]>([]);
+  const [roles, setRoles] = useState<TeamRole[]>([]);
+  const [isLoadingSpecialties, setIsLoadingSpecialties] = useState(false);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const [isCreatingSpecialty, setIsCreatingSpecialty] = useState(false);
+  const [specialtyError, setSpecialtyError] = useState("");
+  const [customSpecialtyError, setCustomSpecialtyError] = useState("");
+  const [customSpecialtyName, setCustomSpecialtyName] = useState("");
+  const [customSpecialtyRoleId, setCustomSpecialtyRoleId] = useState("");
+  const hasCompatibilityContext = form.nome.trim().length >= 2 && Boolean(form.categoria);
+  const isOriginalEditContext = Boolean(
+    editingService
+    && normalizeComparableName(editingService.nome) === normalizeComparableName(form.nome)
+    && normalizeServiceCategory(editingService.categoria) === form.categoria
+  );
+  const hasDuplicateService = hasCompatibilityContext && existingServices.some((service) => (
+    service.id !== excludedServiceId
+    && normalizeComparableName(service.nome) === normalizeComparableName(form.nome)
+    && normalizeServiceCategory(service.categoria) === form.categoria
+  ));
+  const canSubmitService = hasCompatibilityContext
+    && !hasDuplicateService
+    && !isLoadingSpecialties
+    && !specialtyError
+    && form.especialidade_ids.length > 0
+    && compatibleSpecialties.length > 0
+    && !isSaving;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!canSubmitService) {
+      event.preventDefault();
+      return;
+    }
+
+    onSubmit(event);
+  }
+
+  useEffect(() => {
+    if (!session) return;
+
+    if (!hasCompatibilityContext) {
+      setCompatibleSpecialties([]);
+      setSpecialtyError("");
+      setIsLoadingSpecialties(false);
+      setForm((current) => (
+        current.especialidade_ids.length ? { ...current, especialidade_ids: [] } : current
+      ));
+      return;
+    }
+
+    if (isOriginalEditContext && editingService) {
+      const linkedSpecialties = editingService.especialidades || [];
+      const linkedIds = new Set(linkedSpecialties.map((specialty) => specialty.id));
+      setCompatibleSpecialties(linkedSpecialties);
+      setSpecialtyError("");
+      setIsLoadingSpecialties(false);
+      setForm((current) => {
+        const persistedIds = current.especialidade_ids.filter((id) => linkedIds.has(id));
+        return persistedIds.length === current.especialidade_ids.length
+          ? current
+          : { ...current, especialidade_ids: persistedIds };
+      });
+      return;
+    }
+
+    let isActive = true;
+    setIsLoadingSpecialties(true);
+    setSpecialtyError("");
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const data = await servicesService.listCompatibleSpecialties(session, {
+          nome: form.nome.trim(),
+          categoria: form.categoria
+        });
+
+        if (!isActive) return;
+
+        const nextSpecialties = data || [];
+        const allowedIds = new Set(nextSpecialties.map((specialty) => specialty.id));
+
+        setCompatibleSpecialties(nextSpecialties);
+        setForm((current) => {
+          const filteredIds = current.especialidade_ids.filter((id) => allowedIds.has(id));
+          return filteredIds.length === current.especialidade_ids.length
+            ? current
+            : { ...current, especialidade_ids: filteredIds };
+        });
+      } catch (err) {
+        if (!isActive) return;
+        setCompatibleSpecialties([]);
+        setSpecialtyError(getErrorMessage(err, "Nao foi possivel carregar especialidades compativeis."));
+      } finally {
+        if (isActive) {
+          setIsLoadingSpecialties(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    editingService,
+    form.nome,
+    form.categoria,
+    hasCompatibilityContext,
+    isOriginalEditContext,
+    session,
+    setForm
+  ]);
+
+  useEffect(() => {
+    if (!session || !hasCompatibilityContext) return;
+
+    let isActive = true;
+    setIsLoadingRoles(true);
+
+    teamService
+      .listRoles(session, "Funcionario")
+      .then((data) => {
+        if (!isActive) return;
+        const operationalRoles = (data || []).filter((role) => role.categoria_profissional !== "administrativo");
+        setRoles(operationalRoles);
+        setCustomSpecialtyRoleId((current) => current || operationalRoles[0]?.id || "");
+      })
+      .catch((err) => {
+        if (isActive) setCustomSpecialtyError(getErrorMessage(err, "Nao foi possivel carregar cargos operacionais."));
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingRoles(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [hasCompatibilityContext, session]);
+
+  async function handleCreateCustomSpecialty() {
+    if (!session || !form.categoria || !customSpecialtyRoleId || !customSpecialtyName.trim()) return;
+
+    setIsCreatingSpecialty(true);
+    setCustomSpecialtyError("");
+
+    try {
+      const specialty = await teamService.createSpecialty(session, {
+        cargo_id: customSpecialtyRoleId,
+        nome: customSpecialtyName.trim(),
+        taxonomy_category_key: form.categoria
+      });
+
+      setCompatibleSpecialties((current) => {
+        const exists = current.some((item) => item.id === specialty.id);
+        return exists ? current : [...current, specialty];
+      });
+      setForm((current) => ({
+        ...current,
+        especialidade_ids: current.especialidade_ids.includes(specialty.id)
+          ? current.especialidade_ids
+          : [...current.especialidade_ids, specialty.id]
+      }));
+      setCustomSpecialtyName("");
+    } catch (err) {
+      setCustomSpecialtyError(getErrorMessage(err, "Nao foi possivel criar a especialidade customizada."));
+    } finally {
+      setIsCreatingSpecialty(false);
+    }
+  }
+
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_1fr_auto_auto]">
-      <Input value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} placeholder="Nome do servico" />
-      <DurationField form={form} setForm={setForm} />
-      <Input value={form.preco} onChange={(event) => setForm({ ...form, preco: formatCurrencyInput(event.target.value) })} placeholder="R$ 80,00" />
-      <CategoryField value={form.categoria} onChange={(categoria) => setForm({ ...form, categoria })} />
-      <Button type="submit" variant="accent" disabled={isSaving}>
-        {submitLabel === "Salvar" ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-        {isSaving ? "Salvando..." : submitLabel}
-      </Button>
-      {onCancel ? (
-        <Button type="button" variant="ghost" size="icon" onClick={onCancel} aria-label="Cancelar edicao">
-          <X className="h-4 w-4" />
+    <form onSubmit={handleSubmit} className="grid gap-4">
+      <div className="grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_1fr_auto_auto]">
+        <Input
+          value={form.nome}
+          onChange={(event) => {
+            setCompatibleSpecialties([]);
+            setSpecialtyError("");
+            setForm((current) => ({ ...current, nome: event.target.value, especialidade_ids: [] }));
+          }}
+          placeholder="Nome do servico"
+        />
+        <DurationField form={form} setForm={setForm} />
+        <Input
+          value={form.preco}
+          onChange={(event) => setForm((current) => ({ ...current, preco: formatCurrencyInput(event.target.value) }))}
+          placeholder={DEFAULT_SERVICE_PRICE}
+        />
+        <CategoryField
+          value={form.categoria}
+          onChange={(categoria) => {
+            setCompatibleSpecialties([]);
+            setSpecialtyError("");
+            setForm((current) => ({ ...current, categoria, especialidade_ids: [] }));
+          }}
+        />
+        <Button type="submit" variant="accent" disabled={!canSubmitService}>
+          {submitLabel === "Salvar" ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {isSaving ? "Salvando..." : submitLabel}
         </Button>
-      ) : null}
+        {onCancel ? (
+          <Button type="button" variant="ghost" size="icon" onClick={onCancel} aria-label="Cancelar edicao">
+            <X className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
+      {hasDuplicateService ? (
+        <FeedbackMessage tone="error" message="Já existe um serviço ativo com este nome e categoria." />
+      ) : !hasCompatibilityContext ? (
+        <FeedbackMessage tone="info" message="Informe nome e categoria para carregar especialidades compativeis." />
+      ) : isLoadingSpecialties ? (
+        <FeedbackMessage tone="info" message="Carregando especialidades compativeis..." />
+      ) : specialtyError ? (
+        <FeedbackMessage tone="error" message={specialtyError} />
+      ) : compatibleSpecialties.length ? (
+        <>
+          <SpecialtyPicker
+            specialties={compatibleSpecialties}
+            selectedIds={form.especialidade_ids}
+            onToggle={(specialtyId) => {
+              setForm((current) => {
+                const selected = current.especialidade_ids.includes(specialtyId);
+                return {
+                  ...current,
+                  especialidade_ids: selected
+                    ? current.especialidade_ids.filter((id) => id !== specialtyId)
+                    : [...current.especialidade_ids, specialtyId]
+                };
+              });
+            }}
+          />
+          {!form.especialidade_ids.length ? (
+            <FeedbackMessage tone="warning" message="Selecione ao menos uma especialidade para salvar este servico." />
+          ) : null}
+          <CustomSpecialtyCreator
+            name={customSpecialtyName}
+            roleId={customSpecialtyRoleId}
+            roles={roles}
+            isLoadingRoles={isLoadingRoles}
+            isSaving={isCreatingSpecialty}
+            error={customSpecialtyError}
+            onNameChange={setCustomSpecialtyName}
+            onRoleChange={setCustomSpecialtyRoleId}
+            onCreate={handleCreateCustomSpecialty}
+          />
+        </>
+      ) : (
+        <>
+          <FeedbackMessage tone="warning" message="Nenhuma especialidade compativel encontrada. Crie uma especialidade customizada vinculada a esta categoria oficial." />
+          <CustomSpecialtyCreator
+            name={customSpecialtyName}
+            roleId={customSpecialtyRoleId}
+            roles={roles}
+            isLoadingRoles={isLoadingRoles}
+            isSaving={isCreatingSpecialty}
+            error={customSpecialtyError}
+            onNameChange={setCustomSpecialtyName}
+            onRoleChange={setCustomSpecialtyRoleId}
+            onCreate={handleCreateCustomSpecialty}
+          />
+        </>
+      )}
     </form>
   );
 }
 
-function DurationField({ form, setForm }: { form: ServiceFormState; setForm: (form: ServiceFormState) => void }) {
+function CustomSpecialtyCreator({
+  name,
+  roleId,
+  roles,
+  isLoadingRoles,
+  isSaving,
+  error,
+  onNameChange,
+  onRoleChange,
+  onCreate
+}: {
+  name: string;
+  roleId: string;
+  roles: TeamRole[];
+  isLoadingRoles: boolean;
+  isSaving: boolean;
+  error: string;
+  onNameChange: (value: string) => void;
+  onRoleChange: (value: string) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-2xl border border-dashed border-primary/25 bg-primary/5 p-3">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Especialidade customizada</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Use quando o servico pertencer a categoria oficial, mas a tecnica ainda nao existir no catalogo do salao.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <Input
+          value={name}
+          onChange={(event) => onNameChange(event.target.value)}
+          placeholder="Ex.: Trancista"
+        />
+        <select
+          value={roleId}
+          onChange={(event) => onRoleChange(event.target.value)}
+          disabled={isLoadingRoles}
+          className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+        >
+          <option value="">{isLoadingRoles ? "Carregando cargos..." : "Cargo operacional"}</option>
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>{role.nome}</option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCreate}
+          disabled={isSaving || !name.trim() || !roleId}
+        >
+          <Plus className="h-4 w-4" />
+          {isSaving ? "Criando..." : "Criar"}
+        </Button>
+      </div>
+      {error ? <FeedbackMessage tone="error" message={error} /> : null}
+    </div>
+  );
+}
+
+function SpecialtyPicker({
+  specialties,
+  selectedIds,
+  onToggle
+}: {
+  specialties: TeamSpecialty[];
+  selectedIds: string[];
+  onToggle: (specialtyId: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-primary/15 bg-white/85 p-3 shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Especialidades vinculadas</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        Marque quais especialidades podem executar este servico.
+      </p>
+      {specialties.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {specialties.map((specialty) => {
+            const selected = selectedIds.includes(specialty.id);
+            return (
+              <button
+                key={specialty.id}
+                type="button"
+                onClick={() => onToggle(specialty.id)}
+                className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground shadow-blush"
+                    : "border-border bg-white text-muted-foreground hover:border-primary/40 hover:text-primary"
+                }`}
+              >
+                {specialty.cargo?.nome ? `${specialty.cargo.nome} - ` : ""}{specialty.nome}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">Nenhuma especialidade cadastrada para vincular.</p>
+      )}
+    </div>
+  );
+}
+
+function DurationField({ form, setForm }: { form: ServiceFormState; setForm: Dispatch<SetStateAction<ServiceFormState>> }) {
   return (
     <div className="grid gap-2">
       <select
         value={form.duracao_minutos}
-        onChange={(event) => setForm({ ...form, duracao_minutos: Number(event.target.value) })}
+        onChange={(event) => setForm((current) => ({ ...current, duracao_minutos: Number(event.target.value) }))}
         className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
       >
         {SERVICE_DURATION_OPTIONS.map((option) => (
@@ -255,7 +665,7 @@ function DurationField({ form, setForm }: { form: ServiceFormState; setForm: (fo
           type="number"
           min={1}
           value={form.customDuration}
-          onChange={(event) => setForm({ ...form, customDuration: event.target.value })}
+          onChange={(event) => setForm((current) => ({ ...current, customDuration: event.target.value }))}
           placeholder="75 min"
         />
       ) : null}
@@ -270,7 +680,7 @@ function CategoryField({ value, onChange }: { value: ServiceCategory | ""; onCha
       onChange={(event) => onChange(event.target.value as ServiceCategory | "")}
       className="h-12 w-full rounded-2xl border border-input bg-white/90 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
     >
-      <option value="">Categoria opcional</option>
+      <option value="">Categoria oficial</option>
       {SERVICE_CATEGORIES.map((category) => (
         <option key={category} value={category}>{SERVICE_CATEGORY_LABELS[category]}</option>
       ))}
@@ -289,4 +699,13 @@ function formatCurrency(value: number) {
 
 function formatCurrencyInput(value: string) {
   return formatCurrency(parseCurrency(value));
+}
+
+function normalizeComparableName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }

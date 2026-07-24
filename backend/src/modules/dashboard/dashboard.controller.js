@@ -5,6 +5,11 @@ async function summary(req, res) {
   return res.json({ data });
 }
 
+async function details(req, res) {
+  const data = await dashboardService.getDetails(req.dashboardContext);
+  return res.json({ data });
+}
+
 async function kpis(req, res) {
   const data = await dashboardService.getKpis(req.dashboardContext);
   return res.json({ data });
@@ -22,6 +27,7 @@ async function agendaPreview(req, res) {
 
 module.exports = {
   summary,
+  details,
   kpis,
   activity,
   agendaPreview

@@ -26,8 +26,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setSession(authService.getStoredSession());
-    setIsLoading(false);
+    let active = true;
+
+    async function hydrateSession() {
+      const storedSession = authService.getStoredSession();
+
+      if (!storedSession) {
+        if (active) setIsLoading(false);
+        return;
+      }
+
+      if (active) setSession(storedSession);
+
+      try {
+        const freshContext = await authService.me(storedSession.access_token);
+        const nextSession = {
+          ...storedSession,
+          ...freshContext
+        };
+
+        authService.saveSession(nextSession);
+        if (active) setSession(nextSession);
+      } catch {
+        if (!storedSession.refresh_token) {
+          authService.clearSession();
+          if (active) setSession(null);
+          return;
+        }
+
+        try {
+          const refreshedSession = await authService.refreshToken(storedSession.refresh_token);
+          if (active) setSession(refreshedSession);
+        } catch {
+          authService.clearSession();
+          if (active) setSession(null);
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+
+    hydrateSession();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const login = useCallback(async (input: LoginInput) => {

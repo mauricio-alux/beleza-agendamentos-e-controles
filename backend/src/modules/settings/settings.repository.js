@@ -13,7 +13,6 @@ async function findUsuarioById(tenantId, usuarioId) {
     .from('usuarios')
     .select('*')
     .eq('id', usuarioId)
-    .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .maybeSingle();
 
@@ -26,7 +25,6 @@ async function updateUsuario(tenantId, usuarioId, payload) {
     .from('usuarios')
     .update(payload)
     .eq('id', usuarioId)
-    .eq('tenant_id', tenantId)
     .select()
     .single();
 

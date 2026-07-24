@@ -2,6 +2,7 @@ const env = require('../../config/env');
 const { AppError } = require('../../utils/errors');
 const planosService = require('../planos/planos.service');
 const usuariosRepository = require('../usuarios/usuarios.repository');
+const membershipsRepository = require('../memberships/memberships.repository');
 const eventLogsService = require('../event-logs/eventLogs.service');
 const subscriptionRepository = require('./subscription.repository');
 
@@ -75,8 +76,17 @@ async function assertNoExistingTrial(tenantId, email) {
   }
 
   const usuario = await usuariosRepository.findByEmail(email);
-  if (usuario?.tenant_id && usuario.tenant_id !== tenantId) {
-    const otherSubscription = await subscriptionRepository.findCurrentByTenant(usuario.tenant_id);
+  if (!usuario) {
+    return;
+  }
+
+  const memberships = await membershipsRepository.listByUsuario(usuario.id);
+  const otherMembership = memberships.find((membership) => (
+    membership.tenant_id !== tenantId && membership.status === 'ativo'
+  ));
+
+  if (otherMembership) {
+    const otherSubscription = await subscriptionRepository.findCurrentByTenant(otherMembership.tenant_id);
     if (otherSubscription?.status === 'trial') {
       throw new AppError('Email ja utilizou trial em outro tenant', 409, 'TRIAL_ALREADY_USED');
     }

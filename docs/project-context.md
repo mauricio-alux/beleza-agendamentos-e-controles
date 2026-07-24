@@ -11,8 +11,9 @@ CRM, campanhas, dashboard e IA.
 - Backend: Node.js
 - Banco: Supabase/PostgreSQL
 - Autenticacao: Supabase Auth + JWT
-- Comunicacao: WhatsApp Business API centralizada no SaaS, com fallback
-  operacional por mensagens registradas
+- Comunicacao: WhatsApp Business API centralizada no SaaS para modo automatico,
+  com modo assistido para tenants que usam WhatsApp comum ou WhatsApp Business
+  App sem Cloud API
 
 ## Fluxo principal
 
@@ -42,6 +43,14 @@ alinhadas ate `20260714100000`.
   recuperacao de agendamentos futuros e confirmacao extra para conclusao manual
 - ETAPA-8.1.4.1: Comunicacao SaaS MasterAdmin para manutencao de
   `templates_mensagem` globais ou por tenant
+- ADR-014: Campanhas WhatsApp devem variar por modo de entrega do tenant:
+  automatico via Business API ou assistido via WhatsApp comum/Business App com
+  suporte operacional a Lista de Transmissao
+- Fluxo de primeiro convite via WhatsApp assistido documentado em
+  `docs/flows/primeiro-convite-whatsapp.md`
+- ADR-015: Campanhas deixam de depender apenas da criacao manual e passam a
+  seguir ciclo de sugestao por IA/regras, aprovacao do tenant,
+  parametrizacao, execucao e analise de resultados
 
 ## Proxima etapa recomendada
 
@@ -73,5 +82,18 @@ Premium Vibrante Controlado:
 - Taxonomia oficial Bellory e fonte principal para categorias, servicos,
   cargos e especialidades.
 - WhatsApp e canal operacional, nao funil principal neste momento.
+- Campanha e entidade unica; o modo de entrega muda conforme a capacidade
+  WhatsApp do tenant.
+- WhatsApp comum/Business App pode ser atendido por modo assistido, mas sem
+  prometer envio automatico, entrega, leitura ou webhook.
+- Primeiro convite e ativacao inicial: nao exigir importacao de contatos nem
+  cadastro previo; criar/vincular cliente apenas no primeiro acesso identificado
+  ou agendamento publico.
+- Tenants com WhatsApp Business App + Cloud API em coexistencia tambem podem
+  usar o modo assistido para o primeiro convite.
+- Campanhas sugeridas por IA ou MasterAdmin exigem aprovacao e parametrizacao
+  do tenant antes de oferta comercial ou execucao.
+- Separar campanha de canal: campanha define estrategia/publico/mensagem; canal
+  define forma de entrega e rastreabilidade.
 - Nao criar frontend pesado estilo ERP; priorizar simplicidade para publico com
   baixa maturidade digital.

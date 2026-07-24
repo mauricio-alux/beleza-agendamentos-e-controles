@@ -73,6 +73,8 @@ Responsabilidades:
 - sincronizar servicos;
 - concluir onboarding;
 - redirecionar para o dashboard apos conclusao.
+- exibir, na conclusao, a mensagem de primeiro convite com link publico e
+  acoes de copiar, compartilhar e abrir WhatsApp.
 
 ## Repositories
 
@@ -292,6 +294,40 @@ Entrada conceitual:
 - Criar link publico baseado no slug do tenant.
 - Reutilizar link existente quando ja houver link ativo de origem `onboarding`.
 
+### Primeiro convite assistido
+
+- Apos o link publico existir, o onboarding deve permitir que o tenant convide
+  seus clientes atuais para agendar online.
+- A experiencia deve apresentar mensagem pronta, link publico, copiar mensagem,
+  copiar link, compartilhar e abrir WhatsApp quando tecnicamente possivel.
+- O texto da interface deve evitar termos tecnicos como Cloud API, provider,
+  template_id, endpoint, payload, lead ou audience.
+- O envio da primeira mensagem acontece no WhatsApp App/Business App do tenant.
+- O Bellory nao deve ler contatos, importar agenda, criar Lista de Transmissao
+  ou confirmar entrega/leitura dessa primeira mensagem.
+- Tenants com WhatsApp Business App + Cloud API em coexistencia tambem podem
+  usar esse fluxo assistido; a API nao e obrigatoria para ativacao inicial.
+
+### Preferencias de campanhas WhatsApp
+
+Durante o onboarding, o tenant deve informar de forma simples:
+
+- como usa WhatsApp no negocio: Business Platform/Cloud API, Business App,
+  Messenger ou ainda nao usa;
+- como prefere enviar campanhas: ele mesmo pelo WhatsApp, envio pela plataforma
+  quando disponivel ou decidir a cada campanha;
+- se escolher envio manual, qual distribuicao costuma usar: Lista de
+  Transmissao, envio manual para contatos, outro metodo do WhatsApp ou decidir
+  por campanha.
+
+Essa configuracao inicial orienta o modo padrao de execucao, mas nao e
+definitiva. Configuracoes operacionais devem permitir alteracao posterior por
+Administrador ou Autonomo autorizado, respeitando RBAC e tenant isolation.
+
+Usuarios internos cadastrados durante onboarding, equipe ou configuracoes nao
+devem ser considerados destinatarios de campanhas do proprio tenant. A regra de
+campanhas e exclusiva para clientes finais e deve ser aplicada no backend.
+
 ## Dependencias
 
 ### Auth
@@ -358,3 +394,5 @@ Isso reduz risco de tenants incompletos durante falhas de provisionamento.
 - Usar IA para sugerir servicos e especialidades com base no tipo de negocio.
 - Melhorar tratamento de inconsistencias quando uma etapa e refeita parcialmente.
 - Exibir no dashboard um resumo do que foi criado durante o onboarding.
+- Evoluir o primeiro convite assistido para permitir registro explicito de
+  campanha preparada/enviada manualmente, sem tratar isso como entrega tecnica.

@@ -1,3 +1,5 @@
+const { buildWhatsAppMessage } = require('./whatsapp-templates');
+
 async function sendPendingAttendantConfirmation(context) {
   return {
     provider: 'placeholder',
@@ -25,8 +27,19 @@ async function sendAppointmentExpiredNotification(context) {
   };
 }
 
+async function prepareOperationalWhatsAppMessage(eventType, appointment) {
+  return {
+    provider: 'placeholder',
+    queued: false,
+    notification: eventType,
+    appointment_id: appointment?.id,
+    message: buildWhatsAppMessage(eventType, appointment)
+  };
+}
+
 module.exports = {
   sendPendingAttendantConfirmation,
   sendPendingClientConfirmation,
-  sendAppointmentExpiredNotification
+  sendAppointmentExpiredNotification,
+  prepareOperationalWhatsAppMessage
 };

@@ -26,6 +26,8 @@ const operationSchema = z.object({
   antecedencia_minima_minutos: z.coerce.number().int().min(0).max(10080).optional(),
   janela_agendamento_dias: z.coerce.number().int().min(1).max(365).optional(),
   tolerancia_atraso_minutos: z.coerce.number().int().min(0).max(240).optional(),
+  tolerancia_intervalo_min: z.coerce.number().int().min(0).max(60).optional(),
+  tolerancia_fim_expediente_min: z.coerce.number().int().min(0).max(60).optional(),
   intervalo_padrao_minutos: z.coerce.number().int().min(5).max(240).optional(),
   evita_buracos_agenda: z.boolean().optional(),
   permite_cancelamento_cliente: z.boolean().optional(),

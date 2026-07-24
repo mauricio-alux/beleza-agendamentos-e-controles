@@ -6,8 +6,10 @@ import { BusinessTypeSelect } from "@/components/settings/BusinessTypeSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import type { BusinessType } from "@/constants/business-types";
 import type { SettingsTenant } from "@/services/settings.service";
+import { formatStoredPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type TenantProfileFormProps = {
   tenant: SettingsTenant;
@@ -19,14 +21,15 @@ export function TenantProfileForm({ tenant, isSaving, onSave }: TenantProfileFor
   const [nomeFantasia, setNomeFantasia] = useState(tenant.nome_fantasia || "");
   const [businessType, setBusinessType] = useState<BusinessType | "">(tenant.business_type || "");
   const [email, setEmail] = useState(tenant.email || "");
-  const [telefone, setTelefone] = useState(tenant.telefone || "");
+  const [telefone, setTelefone] = useState(formatStoredPhone(tenant.telefone));
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [timezone, setTimezone] = useState(tenant.timezone || "America/Sao_Paulo");
 
   useEffect(() => {
     setNomeFantasia(tenant.nome_fantasia || "");
     setBusinessType(tenant.business_type || "");
     setEmail(tenant.email || "");
-    setTelefone(tenant.telefone || "");
+    setTelefone(formatStoredPhone(tenant.telefone));
     setTimezone(tenant.timezone || "America/Sao_Paulo");
   }, [tenant]);
 
@@ -36,7 +39,7 @@ export function TenantProfileForm({ tenant, isSaving, onSave }: TenantProfileFor
       nome_fantasia: nomeFantasia,
       business_type: businessType || null,
       email: email || null,
-      telefone,
+      telefone: telefone ? normalizePhoneToE164(telefone, phoneCountry) : null,
       timezone
     });
   }
@@ -61,7 +64,10 @@ export function TenantProfileForm({ tenant, isSaving, onSave }: TenantProfileFor
         </div>
         <div className="space-y-2">
           <Label htmlFor="tenant-phone">Telefone comercial</Label>
-          <Input id="tenant-phone" value={telefone} onChange={(event) => setTelefone(event.target.value)} />
+          <PhoneInput id="tenant-phone" value={telefone} onChange={setTelefone} country={phoneCountry} onCountryChange={(country) => {
+            setPhoneCountry(country);
+            setTelefone("");
+          }} />
         </div>
       </div>
 

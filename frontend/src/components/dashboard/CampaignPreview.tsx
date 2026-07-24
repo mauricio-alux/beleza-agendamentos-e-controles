@@ -1,6 +1,7 @@
 import { Megaphone } from "lucide-react";
 import type { DashboardCampaign } from "@/services/dashboard.service";
 import { EmptyState } from "@/components/dashboard/EmptyState";
+import { APP_BRAND } from "@/config/app-brand";
 
 type CampaignPreviewProps = {
   campaigns: DashboardCampaign[];
@@ -12,7 +13,7 @@ export function CampaignPreview({ campaigns }: CampaignPreviewProps) {
       <EmptyState
         icon={Megaphone}
         title="Campanhas inteligentes"
-        description="O Bellory ja esta preparado para campanhas, retorno de clientes e WhatsApp operacional."
+        description={`O ${APP_BRAND.appName} ja esta preparado para campanhas, retorno de clientes e WhatsApp operacional.`}
         actionLabel="Nova campanha"
       />
     );
@@ -22,9 +23,9 @@ export function CampaignPreview({ campaigns }: CampaignPreviewProps) {
     <div className="space-y-3">
       {campaigns.map((campaign) => (
         <div key={campaign.id} className="rounded-2xl border border-border bg-background/80 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="font-bold text-foreground">{campaign.title}</p>
-            <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold capitalize text-accent">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <p className="min-w-0 break-words font-bold text-foreground">{campaign.title}</p>
+            <span className="w-fit max-w-full rounded-full bg-accent/10 px-3 py-1 text-xs font-bold capitalize text-accent">
               {campaign.status}
             </span>
           </div>

@@ -12,6 +12,11 @@ const settingsRoutes = require('./settings.routes');
 const servicesRoutes = require('./services.routes');
 const clientsRoutes = require('./clients.routes');
 const teamRoutes = require('./team.routes');
+const campaignsRoutes = require('./campaigns.routes');
+const cargosRoutes = require('./cargos.routes');
+const especialidadesRoutes = require('./especialidades.routes');
+const profissionaisRoutes = require('./profissionais.routes');
+const adminRoutes = require('./admin.routes');
 
 const router = Router();
 
@@ -28,5 +33,10 @@ router.use('/settings', settingsRoutes);
 router.use('/services', servicesRoutes);
 router.use('/clients', clientsRoutes);
 router.use('/team', teamRoutes);
+router.use('/campaigns', campaignsRoutes);
+router.use('/cargos', cargosRoutes);
+router.use('/especialidades', especialidadesRoutes);
+router.use('/profissionais', profissionaisRoutes);
+router.use('/admin', adminRoutes);
 
 module.exports = router;

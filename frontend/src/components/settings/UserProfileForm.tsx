@@ -5,7 +5,9 @@ import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import type { SettingsProfile } from "@/services/settings.service";
+import { formatStoredPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type UserProfileFormProps = {
   profile: SettingsProfile;
@@ -15,16 +17,17 @@ type UserProfileFormProps = {
 
 export function UserProfileForm({ profile, isSaving, onSave }: UserProfileFormProps) {
   const [nome, setNome] = useState(profile.nome || "");
-  const [telefone, setTelefone] = useState(profile.telefone || "");
+  const [telefone, setTelefone] = useState(formatStoredPhone(profile.telefone));
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
 
   useEffect(() => {
     setNome(profile.nome || "");
-    setTelefone(profile.telefone || "");
+    setTelefone(formatStoredPhone(profile.telefone));
   }, [profile]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onSave({ nome, telefone });
+    await onSave({ nome, telefone: telefone ? normalizePhoneToE164(telefone, phoneCountry) : null });
   }
 
   return (
@@ -36,7 +39,10 @@ export function UserProfileForm({ profile, isSaving, onSave }: UserProfileFormPr
         </div>
         <div className="space-y-2">
           <Label htmlFor="profile-phone">Telefone</Label>
-          <Input id="profile-phone" value={telefone} onChange={(event) => setTelefone(event.target.value)} />
+          <PhoneInput id="profile-phone" value={telefone} onChange={setTelefone} country={phoneCountry} onCountryChange={(country) => {
+            setPhoneCountry(country);
+            setTelefone("");
+          }} />
         </div>
       </div>
 

@@ -4,8 +4,8 @@ import { DashboardProvider } from "@/context/DashboardProvider";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Dashboard | Bellory",
-  description: "Hub operacional do salao no Bellory."
+  title: "Dashboard",
+  description: "Hub operacional do salao."
 };
 
 export default function DashboardPage() {

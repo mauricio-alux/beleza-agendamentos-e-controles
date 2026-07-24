@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import { AuthProvider } from "@/context/AuthProvider";
+import { APP_BRAND, buildAppUrl, withBrand } from "@/config/app-brand";
 import "./globals.css";
 
 const inter = Inter({
@@ -16,11 +17,15 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Bellory | Tecnologia elegante para profissionais da beleza",
+  metadataBase: new URL(APP_BRAND.appUrl),
+  title: {
+    default: withBrand("Tecnologia elegante para profissionais da beleza"),
+    template: `%s | ${APP_BRAND.appName}`
+  },
   description:
     "Automatize seu salão, organize sua agenda e fidelize clientes com CRM, WhatsApp, campanhas e inteligência.",
   keywords: [
-    "Bellory",
+    APP_BRAND.appName,
     "SaaS beleza",
     "agenda online",
     "salão de beleza",
@@ -28,12 +33,20 @@ export const metadata: Metadata = {
     "CRM beleza"
   ],
   openGraph: {
-    title: "Bellory | Tecnologia elegante para profissionais da beleza",
+    title: withBrand("Tecnologia elegante para profissionais da beleza"),
     description:
       "Automatize seu salão e fidelize clientes com uma plataforma leve, moderna e inteligente.",
     type: "website",
     locale: "pt_BR",
-    siteName: "Bellory"
+    siteName: APP_BRAND.appName,
+    url: APP_BRAND.appUrl
+  },
+  alternates: {
+    canonical: APP_BRAND.appUrl
+  },
+  manifest: buildAppUrl("/manifest.webmanifest"),
+  icons: {
+    icon: "/favicon.ico"
   },
   robots: {
     index: true,

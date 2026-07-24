@@ -24,9 +24,11 @@ const disponibilidadeSchema = z.object({
 });
 
 const listAgendaSchema = z.object({
+  data: isoDate.optional(),
   data_inicio: z.string().datetime().optional(),
   data_fim: z.string().datetime().optional(),
   profissional_id: uuid.optional(),
+  servico_id: uuid.optional(),
   status: z.string().optional()
 });
 
@@ -74,7 +76,21 @@ const updateAgendaSchema = z.object({
 });
 
 const cancelAgendaSchema = z.object({
+  motivo: z.string().max(500).optional(),
+  origem_status: z.string().max(80).optional()
+});
+
+const completeAgendaSchema = z.object({
+  motivo: z.string().max(500).optional(),
+  confirmar_conclusao_antecipada: z.boolean().optional()
+});
+
+const noShowAgendaSchema = z.object({
   motivo: z.string().max(500).optional()
+});
+
+const autoCompleteAgendaSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).optional()
 });
 
 const rescheduleAgendaSchema = z.object({
@@ -142,12 +158,16 @@ const professionalScheduleSchema = z.object({
 });
 
 module.exports = {
+  clienteSchema,
   disponibilidadeSchema,
   agendaIntelligenceSchema,
   listAgendaSchema,
   createAgendaSchema,
   updateAgendaSchema,
   cancelAgendaSchema,
+  completeAgendaSchema,
+  noShowAgendaSchema,
+  autoCompleteAgendaSchema,
   rescheduleAgendaSchema,
   professionalScheduleSchema
 };

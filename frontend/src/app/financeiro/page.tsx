@@ -4,7 +4,7 @@ import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Financeiro | Bellory"
+  title: "Financeiro"
 };
 
 export default function FinanceiroPage() {

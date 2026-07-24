@@ -4,7 +4,9 @@ const { operationSchema, profileSchema, tenantSchema } = require('./settings.val
 function getContext(req) {
   return {
     tenantId: req.tenantId,
-    usuario: req.usuario
+    usuario: req.usuario,
+    role: req.tipoUsuario,
+    membership: req.membership
   };
 }
 

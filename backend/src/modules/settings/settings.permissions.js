@@ -1,9 +1,14 @@
 const SECTION_ACCESS = {
-  MasterAdmin: ['overview', 'profile', 'tenant', 'operation', 'services', 'team', 'subscription', 'security', 'platform'],
-  Administrador: ['overview', 'profile', 'tenant', 'operation', 'services', 'team', 'subscription', 'security'],
-  Autonomo: ['overview', 'profile', 'tenant', 'operation', 'services', 'subscription', 'security'],
-  Funcionario: ['overview', 'profile', 'operation', 'security'],
-  Terceiro: ['overview', 'profile', 'operation', 'security'],
+  MasterAdmin: ['overview', 'profile', 'security', 'platform'],
+  Administrador: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'team', 'subscription', 'security'],
+  Gerente: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'team', 'security'],
+  Autonomo: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'subscription', 'security'],
+  Profissional: ['overview', 'profile', 'operation', 'security'],
+  Recepcionista: ['overview', 'profile', 'operation', 'security'],
+  Financeiro: ['overview', 'profile', 'subscription', 'security'],
+  Funcionario: ['overview', 'profile', 'security'],
+  Terceiro: ['overview', 'profile', 'security'],
+  'Profissional Adm': ['overview', 'profile', 'security'],
   Cliente: ['overview', 'profile', 'security']
 };
 
@@ -28,7 +33,7 @@ function canWriteSection(role, section) {
     return true;
   }
 
-  return ['MasterAdmin', 'Administrador', 'Autonomo'].includes(role) && canAccessSection(role, section);
+  return ['Administrador', 'Gerente', 'Autonomo'].includes(role) && canAccessSection(role, section);
 }
 
 module.exports = {

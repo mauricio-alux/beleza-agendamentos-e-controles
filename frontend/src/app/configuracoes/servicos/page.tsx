@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { SettingsDetailPage } from "@/components/settings/SettingsDetailPage";
+import { OperationalCatalogManager } from "@/components/operational/OperationalCatalogManager";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Servicos | Bellory"
+  title: "Servicos"
 };
 
 export default function ServicosSettingsPage() {
   return (
     <DashboardLayout>
-      <SettingsDetailPage section="services" />
+      <OperationalCatalogManager tab="services" />
     </DashboardLayout>
   );
 }

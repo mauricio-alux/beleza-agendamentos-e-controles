@@ -1,13 +1,25 @@
 const { z } = require('zod');
-const { SERVICE_CATEGORIES } = require('../../constants/service-categories');
+const { SERVICE_CATEGORIES, normalizeServiceCategory } = require('../../constants/service-categories');
+const {
+  validateCategoryValue,
+  validateServiceName
+} = require('../../utils/taxonomy-validator');
+
+const officialCategorySchema = z.preprocess((value) => (
+  value === '' ? null : value === undefined ? value : normalizeServiceCategory(value)
+), z.enum(SERVICE_CATEGORIES).nullable().optional());
 
 const serviceSchema = z.object({
   nome: z.string().min(2).max(150),
   descricao: z.string().optional(),
   duracao_minutos: z.number().int().positive(),
   preco: z.number().nonnegative().default(0),
-  categoria: z.enum(SERVICE_CATEGORIES).nullable().optional(),
-  percentual_comissao: z.number().min(0).max(100).optional()
+  categoria: officialCategorySchema,
+  percentual_comissao: z.number().min(0).max(100).optional(),
+  metadata: z.record(z.any()).optional()
+}).superRefine((value, ctx) => {
+  validateServiceName(ctx, value.nome);
+  validateCategoryValue(ctx, value.categoria);
 });
 
 const createTenantSchema = z.object({

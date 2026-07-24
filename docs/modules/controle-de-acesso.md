@@ -42,3 +42,12 @@ botoes da agenda deve seguir as permissoes efetivas:
 
 Clientes vinculados a atendimentos podem ser apresentados dentro do contexto da
 Agenda. Isso nao concede acesso ao modulo global de Clientes.
+
+## Campanhas
+
+Perfis internos do tenant (`Administrador`, `Autonomo`, `Funcionario` e
+`Terceiro`) nao sao publico-alvo de campanhas do proprio tenant. Mesmo que uma
+pessoa interna tambem possua registro em `clientes`, a elegibilidade de
+campanhas deve priorizar a protecao e excluir esse destinatario no tenant onde
+o papel interno esta ativo. A regra e tenant-aware: a mesma pessoa pode ser
+interna em um tenant e cliente final em outro.

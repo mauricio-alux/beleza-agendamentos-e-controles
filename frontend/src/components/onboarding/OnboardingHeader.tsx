@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { MobileStepIndicator } from "@/components/onboarding/MobileStepIndicator";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
+import { APP_BRAND } from "@/config/app-brand";
 
 export function OnboardingHeader() {
   const { session } = useAuth();
@@ -15,7 +16,7 @@ export function OnboardingHeader() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-accent shadow-sm">
           <Sparkles className="h-4 w-4" />
-          Onboarding Bellory
+          Onboarding {APP_BRAND.appName}
         </span>
         <span className="rounded-full bg-secondary px-4 py-2 text-xs font-semibold text-muted-foreground">
           Etapa {currentStepIndex + 1} de {steps.length}

@@ -1,4 +1,6 @@
 import { authService, type AuthSession, type AuthUser } from "@/services/auth.service";
+import { normalizeUserMessage } from "@/lib/messages";
+import { API_URL, APP_BRAND } from "@/config/app-brand";
 
 export type PublicPlan = {
   id: string;
@@ -15,6 +17,7 @@ export type RegisterPayload = {
   telefone: string;
   nome_salao: string;
   plano_id: string;
+  tipo_usuario_operacional: "Administrador" | "Autonomo";
 };
 
 type RegisterResponse = {
@@ -31,11 +34,21 @@ type RegisterResponse = {
     tenant: AuthSession["tenant"];
     usuario: AuthSession["usuario"];
   };
+  usuario?: AuthSession["usuario"];
+  tenant?: AuthSession["tenant"];
+  tenant_id?: string | null;
+  tipo_usuario?: string;
+  active_membership?: AuthSession["active_membership"];
+  memberships?: AuthSession["memberships"];
+  permissions?: string[];
+  permissionContext?: AuthSession["permissionContext"];
   onboarding_required?: boolean;
 };
 
 type ApiEnvelope<T> = {
   data?: T;
+  code?: string;
+  message?: string;
   error?: {
     code?: string;
     message?: string;
@@ -46,6 +59,7 @@ type ApiEnvelope<T> = {
 export type RegisterFieldErrors = {
   nome?: string;
   nome_salao?: string;
+  tipo_usuario_operacional?: string;
   email?: string;
   telefone?: string;
   senha?: string;
@@ -68,12 +82,11 @@ export class RegisterError extends Error {
   }
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 const DEFAULT_SERVICES = [
-  { nome: "Corte", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
+  { nome: "Corte de Cabelo", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
   { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
-  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "manicure" },
-  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "tratamento" }
+  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "unhas" },
+  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "terapia_capilar" }
 ];
 
 function friendlyError(status: number, code?: string, message = "") {
@@ -114,6 +127,7 @@ function friendlyFieldMessage(field: keyof RegisterFieldErrors) {
   const messages: Record<keyof RegisterFieldErrors, string> = {
     nome: "Revise seu nome completo.",
     nome_salao: "Revise o nome do salao.",
+    tipo_usuario_operacional: `Escolha como voce vai operar o ${APP_BRAND.appName}.`,
     email: "Revise o email informado.",
     telefone: "Revise o WhatsApp informado.",
     senha: "Revise a senha informada.",
@@ -132,6 +146,7 @@ function fieldFromPath(path: Array<string | number> = []): keyof RegisterFieldEr
   if (joined === "senha") return "senha";
   if (joined === "telefone" || joined === "tenant.telefone") return "telefone";
   if (joined === "tenant.nome_fantasia") return "nome_salao";
+  if (joined === "tipo_usuario_operacional") return "tipo_usuario_operacional";
 
   return null;
 }
@@ -156,7 +171,7 @@ function mapBackendFieldErrors(status: number, code?: string, message = "", deta
   const normalizedMessage = message.toLowerCase();
 
   if (status === 409 || code === "USER_EMAIL_ALREADY_EXISTS") {
-    fieldErrors.email = "Este email ja possui cadastro no Bellory.";
+    fieldErrors.email = `Este email ja possui cadastro no ${APP_BRAND.appName}.`;
   }
 
   if (code === "AUTH_REGISTER_FAILED") {
@@ -207,13 +222,17 @@ async function request<T>(path: string, init: RequestInit = {}) {
   if (!response.ok) {
     const fieldErrors = mapBackendFieldErrors(
       response.status,
-      payload.error?.code,
-      payload.error?.message,
+      payload.code || payload.error?.code,
+      payload.message || payload.error?.message,
       payload.error?.details
     );
 
     throw new RegisterError(
-      friendlyError(response.status, payload.error?.code, payload.error?.message),
+      normalizeUserMessage(
+        payload.message || payload.error?.message || friendlyError(response.status, payload.code || payload.error?.code, payload.message || payload.error?.message),
+        "error",
+        payload.code || payload.error?.code
+      ),
       fieldErrors
     );
   }
@@ -257,8 +276,14 @@ function toAuthSession(response: RegisterResponse): AuthSession {
     expires_in: response.session?.expires_in || null,
     expires_at: response.expires_at || response.session?.expires_at || null,
     user: response.auth_user,
-    usuario: response.onboarding.usuario,
-    tenant: response.onboarding.tenant
+    usuario: response.usuario || response.onboarding.usuario,
+    tenant: response.tenant || response.onboarding.tenant,
+    tenant_id: response.tenant_id || response.tenant?.id || response.onboarding.tenant?.id || null,
+    tipo_usuario: response.tipo_usuario || response.usuario?.tipo_usuario || response.onboarding.usuario.tipo_usuario,
+    active_membership: response.active_membership || null,
+    memberships: response.memberships || [],
+    permissions: response.permissions || [],
+    permissionContext: response.permissionContext || null
   };
 }
 
@@ -271,6 +296,7 @@ async function register(payload: RegisterPayload) {
       senha: payload.senha,
       telefone: payload.telefone,
       plano_id: payload.plano_id,
+      tipo_usuario_operacional: payload.tipo_usuario_operacional,
       tenant: {
         nome_fantasia: payload.nome_salao,
         email: payload.email,

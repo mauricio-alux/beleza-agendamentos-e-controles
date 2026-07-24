@@ -11,7 +11,8 @@ async function authMiddleware(req, res, next) {
       throw unauthorized('Missing bearer token');
     }
 
-    const context = await authService.validateToken(token);
+    const activeTenantId = req.headers['x-tenant-id'] || req.headers['x-bellory-tenant-id'] || null;
+    const context = await authService.validateToken(token, { activeTenantId });
 
     req.auth = {
       accessToken: token,
@@ -21,6 +22,9 @@ async function authMiddleware(req, res, next) {
     req.tenant = context.tenant;
     req.tenantId = context.tenant_id;
     req.tipoUsuario = context.tipo_usuario;
+    req.memberships = context.memberships;
+    req.membership = context.active_membership;
+    req.permissionContext = context.permission_context;
     req.supabase = createSupabaseForToken(token);
 
     next();

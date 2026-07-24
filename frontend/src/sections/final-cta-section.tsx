@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { APP_BRAND } from "@/config/app-brand";
 
 export function FinalCtaSection() {
   return (
@@ -11,7 +12,7 @@ export function FinalCtaSection() {
           Transforme sua agenda em relacionamento, recorrência e crescimento.
         </h2>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/72">
-          Bellory prepara a base para seu salão operar com mais organização desde o primeiro cadastro.
+          {APP_BRAND.appName} prepara a base para seu salão operar com mais organização desde o primeiro cadastro.
         </p>
         <Button className="mt-8" size="lg" asChild>
           <Link href="/cadastro">

@@ -1,5 +1,6 @@
 import { CalendarCheck, MessageCircle, TrendingUp, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { APP_BRAND } from "@/config/app-brand";
 
 const dayItems = [
   { time: "09:00", name: "Corte + escova", client: "Marina", status: "Confirmado" },
@@ -21,7 +22,7 @@ export function DashboardMockup() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Painel Bellory
+              Painel {APP_BRAND.appName}
             </p>
             <h2 className="mt-2 font-display text-2xl text-foreground">Studio Bella</h2>
           </div>

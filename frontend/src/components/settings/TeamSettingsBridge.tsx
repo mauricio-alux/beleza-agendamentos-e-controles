@@ -2,22 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CalendarClock } from "lucide-react";
+import { UserRoundCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { agendaService, type Professional } from "@/services/agenda.service";
+import { teamService, type TeamProfessional } from "@/services/team.service";
 
 export function TeamSettingsBridge() {
   const { session } = useAuth();
-  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [professionals, setProfessionals] = useState<TeamProfessional[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!session) return;
 
-    agendaService
-      .getMeta(session)
-      .then((meta) => setProfessionals(meta.profissionais || []))
+    teamService
+      .list(session)
+      .then((team) => setProfessionals(team || []))
       .catch((err) => setError(err instanceof Error ? err.message : "Nao foi possivel carregar profissionais."));
   }, [session]);
 
@@ -47,17 +47,17 @@ export function TeamSettingsBridge() {
         {professionals.map((professional) => (
           <Link
             key={professional.id}
-            href={`/configuracoes/equipe/${professional.id}/agenda`}
+          href={`/equipe/manutencao/${professional.id}`}
             className="flex min-h-16 items-center gap-3 rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft"
           >
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-secondary text-primary">
-              <CalendarClock className="h-5 w-5" />
+              <UserRoundCog className="h-5 w-5" />
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-bold text-foreground">
                 {professional.nome_publico || professional.cargo || "Profissional"}
               </span>
-              <span className="block text-xs text-muted-foreground">Configurar horarios de atendimento</span>
+              <span className="block text-xs text-muted-foreground">Abrir manutencao do profissional</span>
             </span>
           </Link>
         ))}

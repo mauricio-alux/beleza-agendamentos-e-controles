@@ -1,4 +1,5 @@
 import { Sparkles } from "lucide-react";
+import { APP_BRAND } from "@/config/app-brand";
 
 type AvailabilityIndicatorProps = {
   total: number;
@@ -17,7 +18,9 @@ export function AvailabilityIndicator({ total, reason, strategy }: AvailabilityI
           {total ? `${total} horarios inteligentes encontrados` : reason || "Sem horarios disponiveis"}
         </p>
         <p className="text-xs leading-5 text-muted-foreground">
-          {strategy ? "Slots ranqueados por ocupacao, encaixe e fragmentacao." : "O Bellory considera escala, conflitos e duracao do servico."}
+          {strategy
+            ? "Slots ranqueados por ocupacao, encaixe e fragmentacao."
+            : `O ${APP_BRAND.appName} considera escala, conflitos e duracao do servico.`}
         </p>
       </div>
     </div>

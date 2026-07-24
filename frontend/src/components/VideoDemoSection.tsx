@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CalendarDays, MessageCircle, Play, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { APP_BRAND } from "@/config/app-brand";
 
 type VideoDemoSectionProps = {
   videoUrl: string;
@@ -30,7 +31,7 @@ function FallbackPreview() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">Preview vivo</p>
-          <h3 className="mt-2 font-display text-2xl">Painel Bellory</h3>
+          <h3 className="mt-2 font-display text-2xl">Painel {APP_BRAND.appName}</h3>
         </div>
         <span className="rounded-full bg-white/14 px-3 py-1 text-xs">Ao vivo</span>
       </div>
@@ -78,25 +79,17 @@ export function VideoDemoSection({
       <div className="absolute -inset-4 rounded-[2.5rem] bg-[radial-gradient(circle_at_70%_15%,rgba(255,179,193,0.35),transparent_18rem),radial-gradient(circle_at_20%_80%,rgba(123,75,255,0.18),transparent_18rem)] blur-sm" />
       <div className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-white p-3 shadow-glow">
         <div className="relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-[#2B2B2B] sm:aspect-video">
-          {!videoFailed && (
-            <video
-              className="h-full w-full object-cover"
-              src={videoUrl}
-              poster={thumbnailUrl}
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              onError={() => setVideoFailed(true)}
-              aria-label={title}
-            />
+          {thumbnailUrl && !videoFailed ? (
+            <img className="h-full w-full object-cover" src={thumbnailUrl} alt={title} />
+          ) : (
+            <FallbackPreview />
           )}
-          {videoFailed && <FallbackPreview />}
 
           {!videoFailed && (
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#2B2B2B]/88 to-transparent p-4 text-white sm:p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-glow">Veja o Bellory em ação</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-glow">
+                Veja o {APP_BRAND.appName} em ação
+              </p>
               <h2 className="mt-2 text-xl font-semibold sm:text-2xl">{title}</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-white/72">{subtitle}</p>
             </div>

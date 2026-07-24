@@ -7,6 +7,7 @@ import {
   Scissors,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   UserRound,
   UsersRound
 } from "lucide-react";
@@ -17,6 +18,9 @@ export const settingsIconBySection = {
   tenant: Building2,
   operation: Settings2,
   services: Scissors,
+  specialties: SlidersHorizontal,
+  role_specialties: UsersRound,
+  service_specialties: Scissors,
   team: UsersRound,
   subscription: CreditCard,
   security: LockKeyhole,
@@ -28,6 +32,9 @@ export const settingsSectionHints = {
   tenant: "Ajuste identidade, contato e dados publicos do negocio sem sair do fluxo operacional.",
   operation: "Defina parametros que ajudam a agenda a trabalhar melhor no dia a dia.",
   services: "A manutencao completa do catalogo continua no modulo de servicos.",
+  specialties: "Ative ou pause o uso operacional das especialidades no salao.",
+  role_specialties: "Revise quais especialidades pertencem a cada cargo.",
+  service_specialties: "Controle quais especialidades podem executar cada servico.",
   team: "Usuarios e profissionais ficam centralizados, sem sobrecarregar a home do dashboard.",
   subscription: "Plano, limites e cobranca ficam agrupados em uma area discreta.",
   security: "Preferencias de acesso e protecao da conta.",

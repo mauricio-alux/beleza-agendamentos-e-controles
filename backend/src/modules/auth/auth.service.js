@@ -1,11 +1,14 @@
 const { supabase, supabaseAdmin } = require('../../config/supabase');
+const { APP_BRAND } = require('../../config/app-brand');
 const { AppError, forbidden, unauthorized } = require('../../utils/errors');
-const { normalizeEmail, onlyDigits } = require('../../utils/normalize');
+const { normalizeEmail, normalizePhoneToE164 } = require('../../utils/normalize');
 const usuariosRepository = require('../usuarios/usuarios.repository');
+const membershipsRepository = require('../memberships/memberships.repository');
 const tenantsRepository = require('../tenants/tenants.repository');
 const planosService = require('../planos/planos.service');
 const onboardingService = require('../onboarding/onboarding.service');
 const eventLogsService = require('../event-logs/eventLogs.service');
+const rbacService = require('../rbac/rbac.service');
 
 function sanitizeAuthUser(authUser) {
   return {
@@ -20,7 +23,36 @@ function sanitizeAuthUser(authUser) {
   };
 }
 
-function formatSessionResponse(session, authUser, usuario, tenant) {
+function sanitizeMembership(membership) {
+  if (!membership) return null;
+
+  return {
+    id: membership.id,
+    usuario_id: membership.usuario_id,
+    tenant_id: membership.tenant_id,
+    role: membership.role,
+    status: membership.status,
+    profissional_id: membership.profissional_id,
+    is_primary: membership.is_primary,
+    vinculo_tipo: membership.vinculo_tipo || null,
+    is_owner: Boolean(membership.is_owner),
+    marketplace_enabled: Boolean(membership.marketplace_enabled),
+    marketplace_profile: membership.marketplace_profile || {},
+    metadata: membership.metadata || {},
+    tenant: membership.tenant ? {
+      id: membership.tenant.id,
+      nome_fantasia: membership.tenant.nome_fantasia,
+      slug: membership.tenant.slug,
+      status: membership.tenant.status,
+      plano_id: membership.tenant.plano_id,
+      timezone: membership.tenant.timezone
+    } : null
+  };
+}
+
+function formatSessionResponse(session, authUser, context) {
+  const { usuario, tenant, tenant_id: tenantId, tipo_usuario: role } = context;
+
   return {
     access_token: session?.access_token || null,
     refresh_token: session?.refresh_token || null,
@@ -30,21 +62,28 @@ function formatSessionResponse(session, authUser, usuario, tenant) {
     user: sanitizeAuthUser(authUser),
     usuario: {
       id: usuario.id,
-      tenant_id: usuario.tenant_id,
+      tenant_id: tenantId,
       nome: usuario.nome,
       email: usuario.email,
       telefone: usuario.telefone,
-      tipo_usuario: usuario.tipo_usuario,
+      tipo_usuario: role,
+      tipo_usuario_global: usuario.tipo_usuario,
       foto_url: usuario.foto_url
     },
-    tenant: {
+    tenant: tenant ? {
       id: tenant.id,
       nome_fantasia: tenant.nome_fantasia,
       slug: tenant.slug,
       status: tenant.status,
       plano_id: tenant.plano_id,
       timezone: tenant.timezone
-    }
+    } : null,
+    tenant_id: tenantId,
+    tipo_usuario: role,
+    active_membership: sanitizeMembership(context.active_membership),
+    memberships: (context.memberships || []).map(sanitizeMembership),
+    permissions: context.permission_context?.permissions || [],
+    permissionContext: context.permission_context || null
   };
 }
 
@@ -115,33 +154,74 @@ async function rollbackAuthUser(authUserId, reason = 'register_failed') {
   });
 }
 
-async function getAuthenticatedUser(authUser) {
+function selectActiveMembership(memberships, activeTenantId = null) {
+  const activeMemberships = memberships.filter((membership) => membership.status === 'ativo');
+
+  if (activeTenantId) {
+    return activeMemberships.find((membership) => membership.tenant_id === activeTenantId) || null;
+  }
+
+  return activeMemberships.find((membership) => membership.is_primary) || activeMemberships[0] || null;
+}
+
+async function getAuthenticatedUser(authUser, options = {}) {
   const usuario = await usuariosRepository.findByAuthUserId(authUser.id);
 
   if (!usuario || !usuario.ativo || usuario.deleted_at) {
-    throw forbidden('Usuario Bellory nao encontrado ou inativo');
+    throw forbidden(`Usuario ${APP_BRAND.appName} nao encontrado ou inativo`);
   }
 
-  if (!usuario.tenant_id) {
+  const memberships = await membershipsRepository.listByUsuario(usuario.id);
+  const activeMembership = selectActiveMembership(memberships, options.activeTenantId);
+
+  if (options.activeTenantId && !activeMembership && usuario.tipo_usuario !== 'MasterAdmin') {
+    throw forbidden('Usuario nao possui acesso ao tenant informado');
+  }
+
+  if (!activeMembership && usuario.tipo_usuario !== 'MasterAdmin') {
     throw forbidden('Usuario sem tenant vinculado');
   }
 
-  const tenant = await tenantsRepository.findById(usuario.tenant_id);
+  const tenant = activeMembership?.tenant || null;
 
-  if (!tenant || !tenant.ativo || tenant.deleted_at) {
+  if (tenant && (!tenant.ativo || tenant.deleted_at)) {
     throw forbidden('Tenant nao encontrado ou inativo');
   }
 
-  return {
+  const context = {
     auth_user: authUser,
     usuario,
     tenant,
-    tenant_id: tenant.id,
-    tipo_usuario: usuario.tipo_usuario
+    tenant_id: tenant?.id || null,
+    tipo_usuario: activeMembership?.role || usuario.tipo_usuario,
+    active_membership: activeMembership,
+    memberships
   };
+
+  context.permission_context = await rbacService.buildPermissionContext({
+    usuario,
+    tenantId: context.tenant_id,
+    tipoUsuario: context.tipo_usuario,
+    membership: activeMembership,
+    platformContext: usuario.tipo_usuario === 'MasterAdmin' && !context.tenant_id ? { role: 'MasterAdmin' } : null
+  });
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[rbac-session-debug] authenticated user permission context', {
+      auth_user_id: authUser.id,
+      usuario_id: usuario.id,
+      role: context.tipo_usuario,
+      tenant_id: context.tenant_id,
+      membership_id: activeMembership?.id || null,
+      permissions: context.permission_context?.permissions || [],
+      has_agenda_confirm: Boolean(context.permission_context?.permissions?.includes('agenda.confirm'))
+    });
+  }
+
+  return context;
 }
 
-async function validateToken(accessToken) {
+async function validateToken(accessToken, options = {}) {
   if (!accessToken) {
     throw unauthorized('Missing bearer token');
   }
@@ -152,12 +232,12 @@ async function validateToken(accessToken) {
     throw unauthorized('Invalid bearer token');
   }
 
-  return getAuthenticatedUser(data.user);
+  return getAuthenticatedUser(data.user, options);
 }
 
 async function register(input, requestContext = {}) {
   const email = normalizeEmail(input.email);
-  const telefone = input.telefone ? onlyDigits(input.telefone) : null;
+  const telefone = input.telefone ? normalizePhoneToE164(input.telefone) : null;
 
   await planosService.validatePlan(input.plano_id);
 
@@ -232,7 +312,8 @@ async function register(input, requestContext = {}) {
         },
         admin: {
           nome: input.nome,
-          telefone
+          telefone,
+          tipo_usuario_operacional: input.tipo_usuario_operacional
         },
         atua_como_profissional: input.atua_como_profissional,
         servicos_iniciais: input.servicos_iniciais || []
@@ -251,6 +332,8 @@ async function register(input, requestContext = {}) {
     if (sessionError || !sessionData.session) {
       throw new AppError('Usuario criado, mas nao foi possivel iniciar a sessao', 400, 'AUTH_SESSION_NOT_CREATED');
     }
+
+    const sessionContext = await getAuthenticatedUser(sessionData.user || authUser);
 
     await eventLogsService.logEvent('user_registered', {
       tenantId: onboarding.tenant.id,
@@ -277,6 +360,30 @@ async function register(input, requestContext = {}) {
       auth_user: sessionData.user || authUser,
       session: sessionData.session,
       onboarding,
+      usuario: {
+        id: sessionContext.usuario.id,
+        tenant_id: sessionContext.tenant_id,
+        nome: sessionContext.usuario.nome,
+        email: sessionContext.usuario.email,
+        telefone: sessionContext.usuario.telefone,
+        tipo_usuario: sessionContext.tipo_usuario,
+        tipo_usuario_global: sessionContext.usuario.tipo_usuario,
+        foto_url: sessionContext.usuario.foto_url
+      },
+      tenant: sessionContext.tenant ? {
+        id: sessionContext.tenant.id,
+        nome_fantasia: sessionContext.tenant.nome_fantasia,
+        slug: sessionContext.tenant.slug,
+        status: sessionContext.tenant.status,
+        plano_id: sessionContext.tenant.plano_id,
+        timezone: sessionContext.tenant.timezone
+      } : null,
+      tenant_id: sessionContext.tenant_id,
+      tipo_usuario: sessionContext.tipo_usuario,
+      active_membership: sanitizeMembership(sessionContext.active_membership),
+      memberships: sessionContext.memberships.map(sanitizeMembership),
+      permissions: sessionContext.permission_context?.permissions || [],
+      permissionContext: sessionContext.permission_context || null,
       onboarding_required: false
     };
   } catch (provisioningError) {
@@ -311,7 +418,7 @@ async function login(input, requestContext = {}) {
   const context = await getAuthenticatedUser(data.user);
   await usuariosRepository.update(context.usuario.id, { ultimo_login: new Date().toISOString() });
 
-  return formatSessionResponse(data.session, data.user, context.usuario, context.tenant);
+  return formatSessionResponse(data.session, data.user, context);
 }
 
 async function refreshToken(refreshTokenValue) {
@@ -325,7 +432,7 @@ async function refreshToken(refreshTokenValue) {
 
   const context = await getAuthenticatedUser(data.user);
 
-  return formatSessionResponse(data.session, data.user, context.usuario, context.tenant);
+  return formatSessionResponse(data.session, data.user, context);
 }
 
 async function logout(accessToken) {
@@ -347,23 +454,28 @@ async function getMe(authUser) {
     auth_user: sanitizeAuthUser(context.auth_user),
     usuario: {
       id: context.usuario.id,
-      tenant_id: context.usuario.tenant_id,
+      tenant_id: context.tenant_id,
       nome: context.usuario.nome,
       email: context.usuario.email,
       telefone: context.usuario.telefone,
-      tipo_usuario: context.usuario.tipo_usuario,
+      tipo_usuario: context.tipo_usuario,
+      tipo_usuario_global: context.usuario.tipo_usuario,
       foto_url: context.usuario.foto_url
     },
-    tenant: {
+    tenant: context.tenant ? {
       id: context.tenant.id,
       nome_fantasia: context.tenant.nome_fantasia,
       slug: context.tenant.slug,
       status: context.tenant.status,
       plano_id: context.tenant.plano_id,
       timezone: context.tenant.timezone
-    },
+    } : null,
     tenant_id: context.tenant_id,
-    tipo_usuario: context.tipo_usuario
+    tipo_usuario: context.tipo_usuario,
+    active_membership: sanitizeMembership(context.active_membership),
+    memberships: context.memberships.map(sanitizeMembership),
+    permissions: context.permission_context?.permissions || [],
+    permissionContext: context.permission_context || null
   };
 }
 

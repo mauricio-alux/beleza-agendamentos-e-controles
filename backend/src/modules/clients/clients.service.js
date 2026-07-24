@@ -1,6 +1,7 @@
-const { AppError } = require('../../utils/errors');
-const { normalizeEmail, onlyDigits } = require('../../utils/normalize');
+const { AppError, notFound } = require('../../utils/errors');
+const { normalizeEmail, normalizePhoneToE164, onlyDigits } = require('../../utils/normalize');
 const clientsRepository = require('./clients.repository');
+const clientIdentityService = require('../public-booking/client-identity.service');
 
 function sanitize(row) {
   const client = row.cliente || row;
@@ -28,7 +29,7 @@ async function list(tenantId) {
 }
 
 async function create(tenantId, input) {
-  const telefone = onlyDigits(input.telefone);
+  const telefone = normalizePhoneToE164(input.telefone);
   const email = input.email ? normalizeEmail(input.email) : null;
   const endereco = normalizeAddress(input.endereco);
 
@@ -76,6 +77,13 @@ async function create(tenantId, input) {
   }
 }
 
+async function issueBookingToken(tenantId, clientId, input) {
+  const link = await clientsRepository.findActiveBookingLink(tenantId, input.slug);
+  if (!link) throw notFound('Link publico de agendamento nao encontrado.');
+
+  return clientIdentityService.issueClientLink(tenantId, clientId, link.slug);
+}
+
 function normalizeAddress(endereco) {
   if (!endereco?.cep) return null;
 
@@ -90,5 +98,6 @@ function normalizeAddress(endereco) {
 
 module.exports = {
   list,
-  create
+  create,
+  issueBookingToken
 };

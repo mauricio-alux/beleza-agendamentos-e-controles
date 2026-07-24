@@ -1,4 +1,5 @@
 import type { AuthSession } from "@/services/auth.service";
+import { API_URL } from "@/config/app-brand";
 
 export type SalonClient = {
   id: string;
@@ -45,8 +46,6 @@ type ApiEnvelope<T> = {
   };
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
-
 async function request<T>(session: AuthSession | null, path: string, init: RequestInit = {}) {
   if (!session?.access_token) {
     throw new Error("Sessao expirada. Entre novamente.");
@@ -87,7 +86,23 @@ async function create(session: AuthSession | null, payload: SalonClientPayload) 
   });
 }
 
+async function createBookingLink(
+  session: AuthSession | null,
+  clientId: string,
+  slug?: string
+) {
+  return request<{ token: string; expires_at: string; url: string }>(
+    session,
+    `/clients/${encodeURIComponent(clientId)}/booking-token`,
+    {
+      method: "POST",
+      body: JSON.stringify({ slug })
+    }
+  );
+}
+
 export const clientsService = {
   list,
-  create
+  create,
+  createBookingLink
 };

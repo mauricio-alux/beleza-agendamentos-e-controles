@@ -1,10 +1,12 @@
 const occupancyEngine = require('./occupancy.engine');
 
 function buildAnalyticsContext({ appointments, schedules, date, durationMinutes }) {
-  const workIntervals = schedules.map((schedule) => ({
-    start: new Date(`${date}T${String(schedule.hora_inicio).slice(0, 5)}:00`),
-    end: new Date(`${date}T${String(schedule.hora_fim).slice(0, 5)}:00`)
-  }));
+  const workIntervals = schedules
+    .filter((schedule) => schedule.hora_inicio && schedule.hora_fim)
+    .map((schedule) => ({
+      start: new Date(`${date}T${String(schedule.hora_inicio).slice(0, 5)}:00`),
+      end: new Date(`${date}T${String(schedule.hora_fim).slice(0, 5)}:00`)
+    }));
 
   return occupancyEngine.calculateAnalytics({
     appointments,

@@ -3,7 +3,7 @@ import { SettingsDetailPage } from "@/components/settings/SettingsDetailPage";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Salao | Bellory"
+  title: "Salao"
 };
 
 export default function SalaoSettingsPage() {

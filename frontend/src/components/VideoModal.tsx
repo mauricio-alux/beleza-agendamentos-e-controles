@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { APP_BRAND } from "@/config/app-brand";
 
 type VideoModalProps = {
   open: boolean;
@@ -22,7 +23,9 @@ export function VideoModal({ open, onClose, videoUrl, thumbnailUrl, title, subti
       <div className="relative w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/20 bg-[#111] shadow-glow">
         <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/5 p-4 text-white sm:p-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-glow">Demonstração Bellory</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-glow">
+              Demonstração {APP_BRAND.appName}
+            </p>
             <h2 className="mt-2 text-xl font-semibold sm:text-2xl">{title}</h2>
             {subtitle && <p className="mt-1 text-sm text-white/70">{subtitle}</p>}
           </div>

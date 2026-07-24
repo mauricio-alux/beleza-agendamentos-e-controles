@@ -25,6 +25,7 @@ async function getTenantSettings(tenantId) {
     horario_inicio_padrao: tenantConfig.horario_inicio_padrao || '09:00',
     horario_fim_padrao: tenantConfig.horario_fim_padrao || '18:00',
     intervalo_agendamento: tenantConfig.intervalo_agendamento || settings.intervalo_padrao_minutos,
+    duracao_padrao_servico: tenantConfig.duracao_padrao_servico || 45,
     fl_whatsapp_ativo: Boolean(settings.configuracoes_whatsapp?.fl_whatsapp_ativo),
     fl_agendamento_online: tenantConfig.fl_agendamento_online !== false,
     status_onboarding: tenantConfig.status_onboarding || 'em_andamento',

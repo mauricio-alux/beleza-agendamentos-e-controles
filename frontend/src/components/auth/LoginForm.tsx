@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { LoadingButton } from "@/components/auth/LoadingButton";
 import { Button } from "@/components/ui/button";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { onboardingService } from "@/services/onboarding.service";
+import { getErrorMessage } from "@/lib/messages";
 
 type FormErrors = {
   email?: string;
@@ -61,10 +63,19 @@ export function LoginForm() {
 
     try {
       const session = await login({ email: email.trim().toLowerCase(), senha, persist: remember });
-      const onboardingStatus = await onboardingService.getStatus(session);
-      router.replace(onboardingStatus.progress >= 100 ? dashboardPath : onboardingPath);
+      if (session.usuario.tipo_usuario_global === "MasterAdmin" || session.usuario.tipo_usuario === "MasterAdmin") {
+        router.replace("/admin");
+        return;
+      }
+
+      try {
+        const onboardingStatus = await onboardingService.getStatus(session);
+        router.replace(onboardingStatus.progress >= 100 ? dashboardPath : onboardingPath);
+      } catch {
+        router.replace(onboardingPath);
+      }
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Não foi possível conectar. Tente novamente.");
+      setFormError(getErrorMessage(error, "Não foi possível conectar. Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }
@@ -73,10 +84,7 @@ export function LoginForm() {
   return (
     <form className="space-y-5" onSubmit={handleSubmit} noValidate>
       {formError ? (
-        <div className="flex gap-3 rounded-2xl border border-primary/25 bg-secondary/70 p-4 text-sm leading-6 text-foreground">
-          <AlertCircle className="mt-0.5 h-5 w-5 flex-none text-primary" />
-          <span>{formError}</span>
-        </div>
+        <FeedbackMessage tone="error" message={formError} />
       ) : null}
 
       <div className="space-y-2">

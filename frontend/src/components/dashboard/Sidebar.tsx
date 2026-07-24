@@ -3,18 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
-import { dashboardNavItems } from "@/components/dashboard/navigation";
+import { getDashboardNavItems } from "@/components/dashboard/navigation";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { session } = useAuth();
+  const visibleItems = getDashboardNavItems(session);
 
   return (
     <aside className="hidden min-h-[calc(100vh-2rem)] w-72 flex-none rounded-[2rem] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur-xl lg:block">
       <div className="sticky top-4 space-y-7">
         <BrandLogo />
         <nav className="space-y-1">
-          {dashboardNavItems.map(({ label, href, icon: Icon }) => {
+          {visibleItems.map(({ label, href, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
             return (

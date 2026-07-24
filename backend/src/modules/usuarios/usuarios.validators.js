@@ -5,7 +5,17 @@ const createUsuarioSchema = z.object({
   email: z.string().email(),
   senha_temporaria: z.string().min(8),
   telefone: z.string().max(20).optional(),
-  tipo_usuario: z.enum(['Administrador', 'Autonomo', 'Funcionario', 'Terceiro'])
+  tipo_usuario: z.enum([
+    'Administrador',
+    'Gerente',
+    'Profissional',
+    'Recepcionista',
+    'Financeiro',
+    'Autonomo',
+    'Funcionario',
+    'Terceiro',
+    'Profissional Adm'
+  ])
 });
 
 module.exports = {

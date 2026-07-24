@@ -499,3 +499,25 @@ O módulo AI Engine deve representar:
 •	operação inteligente
 O usuário deve sentir:
 "O Bellory pensa no meu negócio por mim."
+# Atualizacao - IA como consultora de marketing
+
+A IA do Bellory deve atuar como consultora de marketing. Ela identifica
+oportunidades de relacionamento, sugere campanhas, recomenda periodo/oferta,
+analisa resultados e sugere melhorias futuras. Ela nao executa ofertas
+comerciais sem aprovacao do tenant.
+
+Ao sugerir campanhas, a IA deve considerar apenas clientes finais elegiveis.
+Usuarios internos do tenant, incluindo Administrador, Funcionario, Autonomo e
+Terceiro, nao podem ser tratados como publico de campanha mesmo quando atendem
+a criterios de aniversario, recorrencia, inatividade ou agenda livre.
+
+Fluxo:
+
+```text
+IA identifica oportunidade
+  -> sugere campanha
+  -> tenant aprova/rejeita
+  -> tenant parametriza
+  -> Bellory prepara ou executa
+  -> resultados voltam para analise da IA
+```

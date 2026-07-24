@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { ProfessionalSchedulePage } from "@/components/settings/ProfessionalSchedulePage";
-import { DashboardLayout } from "@/layouts/DashboardLayout";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Agenda do profissional | Bellory"
+  title: "Agenda do profissional"
 };
 
 type PageProps = {
@@ -14,10 +13,5 @@ type PageProps = {
 
 export default async function ProfessionalAgendaSettingsPage({ params }: PageProps) {
   const { id } = await params;
-
-  return (
-    <DashboardLayout>
-      <ProfessionalSchedulePage professionalId={id} />
-    </DashboardLayout>
-  );
+  redirect(`/equipe/manutencao/${id}/horarios`);
 }

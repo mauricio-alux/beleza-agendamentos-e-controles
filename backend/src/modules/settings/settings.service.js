@@ -2,13 +2,16 @@ const settingsRepository = require('./settings.repository');
 const { canAccessSection, canWriteSection, getAllowedSections, getRole } = require('./settings.permissions');
 const { BUSINESS_TYPES } = require('../../constants/business-types');
 const { AppError, forbidden, notFound } = require('../../utils/errors');
-const { onlyDigits } = require('../../utils/normalize');
+const { normalizePhoneToE164 } = require('../../utils/normalize');
 
 const SECTION_LABELS = {
   profile: 'Perfil',
   tenant: 'Salao',
   operation: 'Operacao',
   services: 'Servicos',
+  specialties: 'Especialidades',
+  role_specialties: 'Cargos x Especialidades',
+  service_specialties: 'Servicos x Especialidades',
   team: 'Equipe',
   subscription: 'Assinatura',
   security: 'Seguranca',
@@ -20,6 +23,9 @@ const SECTION_DESCRIPTIONS = {
   tenant: 'Dados comerciais, identidade e endereco do negocio.',
   operation: 'Parametros que orientam agenda, cancelamentos e atendimento.',
   services: 'Catalogo de servicos e preparacao para precos/duracoes.',
+  specialties: 'Uso operacional das especialidades no salao.',
+  role_specialties: 'Especialidades disponiveis por cargo.',
+  service_specialties: 'Vinculos entre servicos e especialidades.',
   team: 'Usuarios, papeis e profissionais vinculados ao tenant.',
   subscription: 'Plano, limites e dados comerciais do SaaS.',
   security: 'Acesso, sessoes e preferencias de seguranca.',
@@ -31,6 +37,9 @@ const SECTION_HREFS = {
   tenant: '/configuracoes/salao',
   operation: '/configuracoes/operacao',
   services: '/configuracoes/servicos',
+  specialties: '/configuracoes/especialidades',
+  role_specialties: '/configuracoes/cargos-especialidades',
+  service_specialties: '/configuracoes/servico-especialidades',
   team: '/configuracoes/equipe',
   subscription: '/configuracoes/assinatura',
   security: '/configuracoes/seguranca',
@@ -50,13 +59,12 @@ function normalizePhone(value) {
     return null;
   }
 
-  return onlyDigits(value);
+  return normalizePhoneToE164(value);
 }
 
 function sanitizeProfile(usuario) {
   return {
     id: usuario.id,
-    tenant_id: usuario.tenant_id,
     nome: usuario.nome,
     email: usuario.email,
     telefone: usuario.telefone,
@@ -94,6 +102,8 @@ function sanitizeOperation(settings) {
     antecedencia_minima_minutos: settings?.antecedencia_minima_minutos ?? 60,
     janela_agendamento_dias: settings?.janela_agendamento_dias ?? 30,
     tolerancia_atraso_minutos: settings?.tolerancia_atraso_minutos ?? 10,
+    tolerancia_intervalo_min: settings?.tolerancia_intervalo_min ?? 0,
+    tolerancia_fim_expediente_min: settings?.tolerancia_fim_expediente_min ?? 0,
     intervalo_padrao_minutos: settings?.intervalo_padrao_minutos ?? 15,
     evita_buracos_agenda: settings?.evita_buracos_agenda ?? true,
     permite_cancelamento_cliente: settings?.permite_cancelamento_cliente ?? true,
@@ -122,8 +132,8 @@ function buildSections(role) {
     }));
 }
 
-async function getContext({ tenantId, usuario }) {
-  const role = getRole(usuario);
+async function getContext({ tenantId, usuario, role: contextRole }) {
+  const role = contextRole || getRole(usuario);
   const [profile, tenant, operation] = await Promise.all([
     settingsRepository.findUsuarioById(tenantId, usuario.id),
     settingsRepository.findTenantById(tenantId),

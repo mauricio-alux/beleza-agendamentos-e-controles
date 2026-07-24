@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, CalendarCheck, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { ReactNode } from "react";
+import { APP_BRAND } from "@/config/app-brand";
 
 type AuthLayoutProps = {
   children: ReactNode;
@@ -33,7 +34,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             </span>
             <div className="max-w-lg space-y-4">
               <h1 className="font-display text-5xl leading-[1.05] text-foreground">
-                Entre no Bellory com a leveza que sua operação merece.
+                Entre no {APP_BRAND.appName} com a leveza que sua operação merece.
               </h1>
               <p className="text-lg leading-8 text-muted-foreground">
                 Acesse sua conta para continuar a configuração do salão, acompanhar clientes e preparar as

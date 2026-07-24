@@ -1,9 +1,12 @@
 import type { AuthSession } from "@/services/auth.service";
+import { normalizeUserMessage } from "@/lib/messages";
+import { API_URL } from "@/config/app-brand";
 
 export type Professional = {
   id: string;
   nome_publico: string | null;
   cargo?: string | null;
+  servico_ids?: string[];
 };
 
 export type Service = {
@@ -45,6 +48,12 @@ export type Appointment = {
   profissional?: Professional;
   servicos?: AppointmentService[];
   metadata?: Record<string, unknown>;
+  operational_alert?: {
+    type: "completion_tolerance" | "auto_completion_due";
+    elapsed_minutes: number;
+    remaining_minutes: number;
+    message: string;
+  } | null;
 };
 
 export type AppointmentStatus =
@@ -134,6 +143,10 @@ export type AgendaMeta = {
   servicos: Service[];
 };
 
+export type CompleteAppointmentOptions = {
+  confirmarConclusaoAntecipada?: boolean;
+};
+
 export type ProfessionalScheduleDay = {
   weekday: number;
   work_start_morning?: string | null;
@@ -154,13 +167,13 @@ export type ProfessionalScheduleResponse = {
 
 type ApiEnvelope<T> = {
   data?: T;
+  code?: string;
+  message?: string;
   error?: {
     code?: string;
     message?: string;
   };
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 
 function friendlyError(status: number, code?: string) {
   if (status === 409 || code === "SLOT_UNAVAILABLE" || code === "APPOINTMENT_CONFLICT") {
@@ -205,7 +218,11 @@ async function request<T>(session: AuthSession | null, path: string, init: Reque
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok) {
-    throw new Error(friendlyError(response.status, payload.error?.code));
+    throw new Error(normalizeUserMessage(
+      payload.message || payload.error?.message || friendlyError(response.status, payload.error?.code),
+      "error",
+      payload.code || payload.error?.code
+    ));
   }
 
   return payload.data as T;
@@ -265,7 +282,14 @@ async function getSignals(
 
 async function list(
   session: AuthSession | null,
-  params: { data_inicio?: string; data_fim?: string; profissional_id?: string; status?: string }
+  params: {
+    data?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    profissional_id?: string;
+    servico_id?: string;
+    status?: string;
+  }
 ) {
   return request<Appointment[]>(session, `/agenda${qs(params)}`);
 }
@@ -321,6 +345,28 @@ async function confirm(session: AuthSession | null, id: string) {
   });
 }
 
+async function complete(
+  session: AuthSession | null,
+  id: string,
+  motivo?: string,
+  options: CompleteAppointmentOptions = {}
+) {
+  return request<Appointment>(session, `/agenda/${id}/concluir`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      motivo,
+      confirmar_conclusao_antecipada: options.confirmarConclusaoAntecipada || undefined
+    })
+  });
+}
+
+async function noShow(session: AuthSession | null, id: string, motivo?: string) {
+  return request<Appointment>(session, `/agenda/${id}/no-show`, {
+    method: "PATCH",
+    body: JSON.stringify({ motivo })
+  });
+}
+
 async function reschedule(session: AuthSession | null, id: string, data_inicio: string, motivo?: string) {
   return request<Appointment>(session, `/agenda/${id}/reagendar`, {
     method: "PATCH",
@@ -340,5 +386,7 @@ export const agendaService = {
   create,
   cancel,
   confirm,
+  complete,
+  noShow,
   reschedule
 };

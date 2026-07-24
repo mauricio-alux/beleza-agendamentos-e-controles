@@ -2,12 +2,13 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { APP_BRAND } from "@/config/app-brand";
 
 const plans = [
   {
     name: "Trial grátis",
     price: "14 dias",
-    copy: "Para experimentar a estrutura inicial do Bellory.",
+    copy: `Para experimentar a estrutura inicial do ${APP_BRAND.appName}.`,
     features: ["Agenda online", "Serviços iniciais", "Link de agendamento", "Configuração guiada"],
     highlighted: false
   },

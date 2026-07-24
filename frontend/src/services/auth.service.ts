@@ -1,3 +1,6 @@
+import { normalizeUserMessage } from "@/lib/messages";
+import { API_URL } from "@/config/app-brand";
+
 export type AuthUser = {
   id: string;
   email: string;
@@ -11,11 +14,12 @@ export type AuthUser = {
 
 export type BelloryUser = {
   id: string;
-  tenant_id: string;
+  tenant_id?: string | null;
   nome: string;
   email: string;
   telefone?: string | null;
   tipo_usuario: string;
+  tipo_usuario_global?: string;
   foto_url?: string | null;
 };
 
@@ -28,6 +32,22 @@ export type BelloryTenant = {
   timezone?: string | null;
 };
 
+export type BelloryMembership = {
+  id: string;
+  usuario_id: string;
+  tenant_id: string;
+  role: string;
+  status: string;
+  profissional_id?: string | null;
+  is_primary: boolean;
+  vinculo_tipo?: string | null;
+  is_owner?: boolean;
+  marketplace_enabled?: boolean;
+  marketplace_profile?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  tenant?: BelloryTenant | null;
+};
+
 export type AuthSession = {
   access_token: string;
   refresh_token: string;
@@ -36,7 +56,21 @@ export type AuthSession = {
   expires_at?: number | null;
   user: AuthUser;
   usuario: BelloryUser;
-  tenant: BelloryTenant;
+  tenant: BelloryTenant | null;
+  tenant_id?: string | null;
+  tipo_usuario?: string;
+  active_membership?: BelloryMembership | null;
+  memberships?: BelloryMembership[];
+  permissions?: string[];
+  permissionContext?: {
+    role?: {
+      nome?: string;
+      escopo?: string;
+      dashboard?: string;
+    } | null;
+    scope?: string;
+    permissions?: string[];
+  } | null;
 };
 
 type LoginPayload = {
@@ -47,6 +81,8 @@ type LoginPayload = {
 
 type ApiEnvelope<T> = {
   data?: T;
+  code?: string;
+  message?: string;
   error?: {
     code?: string;
     message?: string;
@@ -54,8 +90,8 @@ type ApiEnvelope<T> = {
   };
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
 const SESSION_KEY = "bellory.session";
+const REQUEST_TIMEOUT_MS = 15000;
 
 function getFriendlyError(status: number, code?: string, message?: string) {
   if (status === 401 || code === "UNAUTHORIZED") {
@@ -83,23 +119,40 @@ function getFriendlyError(status: number, code?: string, message?: string) {
 
 async function request<T>(path: string, init: RequestInit = {}) {
   let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(init.headers || {})
       }
     });
-  } catch {
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("A conexao com o servidor demorou demais. Tente novamente.");
+    }
     throw new Error("Não foi possível conectar. Tente novamente.");
   }
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
-    throw new Error(getFriendlyError(response.status, payload.error?.code, payload.error?.message));
+    const code = payload.code || payload.error?.code;
+    if (path === "/auth/login") {
+      throw new Error(getFriendlyError(response.status, code, payload.message || payload.error?.message));
+    }
+
+    throw new Error(normalizeUserMessage(
+      payload.message || payload.error?.message || getFriendlyError(response.status, code),
+      "error",
+      code
+    ));
   }
 
   if (!payload.data) {
@@ -186,9 +239,13 @@ async function me(accessToken: string) {
   return request<{
     auth_user: AuthUser;
     usuario: BelloryUser;
-    tenant: BelloryTenant;
-    tenant_id: string;
+    tenant: BelloryTenant | null;
+    tenant_id?: string | null;
     tipo_usuario: string;
+    active_membership?: BelloryMembership | null;
+    memberships?: BelloryMembership[];
+    permissions?: string[];
+    permissionContext?: AuthSession["permissionContext"];
   }>("/auth/me", {
     method: "GET",
     headers: {
