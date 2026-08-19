@@ -12,6 +12,7 @@ router.use(authMiddleware, tenantMiddleware, requireValidSubscription);
 
 router.get('/', requirePermission('clientes.read'), asyncHandler(clientsController.list));
 router.post('/', requirePermission('clientes.write'), asyncHandler(clientsController.create));
+router.patch('/:id', requirePermission('clientes.write'), asyncHandler(clientsController.update));
 router.post(
   '/:id/booking-token',
   requirePermission('clientes.write'),

@@ -12,7 +12,8 @@ const clientSchema = z.object({
     logradouro: z.string().max(180).optional(),
     numero: z.string().max(20).optional()
   }).optional(),
-  aceita_campanhas: z.boolean().optional()
+  aceita_campanhas: z.boolean().optional(),
+  status: z.enum(['ativo', 'inativo']).optional()
 }).strict();
 
 const bookingTokenSchema = z.object({

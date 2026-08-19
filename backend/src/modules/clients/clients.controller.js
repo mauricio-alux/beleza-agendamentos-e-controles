@@ -13,6 +13,13 @@ async function create(req, res) {
   return res.status(201).json({ data });
 }
 
+async function update(req, res) {
+  const clientId = z.string().uuid().parse(req.params.id);
+  const input = clientSchema.parse(req.body);
+  const data = await clientsService.update(req.tenantId, clientId, input);
+  return res.json({ data });
+}
+
 async function issueBookingToken(req, res) {
   const clientId = z.string().uuid().parse(req.params.id);
   const input = bookingTokenSchema.parse(req.body || {});
@@ -23,5 +30,6 @@ async function issueBookingToken(req, res) {
 module.exports = {
   list,
   create,
+  update,
   issueBookingToken
 };

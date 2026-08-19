@@ -36,6 +36,7 @@ export type SalonClientPayload = {
     numero?: string;
   };
   aceita_campanhas?: boolean;
+  status?: "ativo" | "inativo";
 };
 
 type ApiEnvelope<T> = {
@@ -69,7 +70,7 @@ async function request<T>(session: AuthSession | null, path: string, init: Reque
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Nao foi possivel carregar os clientes.");
+    throw new Error(payload.error?.message || "Não foi possível carregar os clientes.");
   }
 
   return payload.data as T;
@@ -82,6 +83,13 @@ async function list(session: AuthSession | null) {
 async function create(session: AuthSession | null, payload: SalonClientPayload) {
   return request<SalonClient>(session, "/clients", {
     method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function update(session: AuthSession | null, clientId: string, payload: SalonClientPayload) {
+  return request<SalonClient>(session, `/clients/${encodeURIComponent(clientId)}`, {
+    method: "PATCH",
     body: JSON.stringify(payload)
   });
 }
@@ -104,5 +112,6 @@ async function createBookingLink(
 export const clientsService = {
   list,
   create,
+  update,
   createBookingLink
 };

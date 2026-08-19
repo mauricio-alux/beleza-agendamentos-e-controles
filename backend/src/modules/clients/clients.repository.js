@@ -25,6 +25,19 @@ async function findClientByPhone(tenantId, telefone) {
   return data;
 }
 
+async function findTenantLink(tenantId, clienteId) {
+  const { data, error } = await supabaseAdmin
+    .from('cliente_tenants')
+    .select('*, cliente:clientes(*)')
+    .eq('tenant_id', tenantId)
+    .eq('cliente_id', clienteId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 async function createClient(payload) {
   const { data, error } = await supabaseAdmin
     .from('clientes')
@@ -100,6 +113,7 @@ async function findActiveBookingLink(tenantId, slug) {
 module.exports = {
   listByTenant,
   findClientByPhone,
+  findTenantLink,
   createClient,
   updateClient,
   createTenantLink,

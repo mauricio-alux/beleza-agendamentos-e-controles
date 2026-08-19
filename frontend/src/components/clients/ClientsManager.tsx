@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Mail, Phone, Plus, Search, UsersRound } from "lucide-react";
+import { Mail, Pencil, Phone, Plus, Search, UsersRound, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { useAuth } from "@/hooks/useAuth";
 import { clientsService, type SalonClient } from "@/services/clients.service";
-import { formatStoredPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
+import { formatStoredPhone, getNationalPhone, isValidPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type ClientFormState = {
   nome: string;
@@ -21,7 +21,9 @@ type ClientFormState = {
   cidade: string;
   logradouro: string;
   numero: string;
+  observacoes: string;
   aceita_campanhas: boolean;
+  status: "ativo" | "inativo";
 };
 
 const EMPTY_FORM: ClientFormState = {
@@ -33,22 +35,31 @@ const EMPTY_FORM: ClientFormState = {
   cidade: "",
   logradouro: "",
   numero: "",
-  aceita_campanhas: true
+  observacoes: "",
+  aceita_campanhas: true,
+  status: "ativo"
 };
 
 export function ClientsManager() {
   const { session } = useAuth();
   const searchParams = useSearchParams();
   const formRef = useRef<HTMLDivElement | null>(null);
+  const successRef = useRef<HTMLDivElement | null>(null);
+  const editTitleRef = useRef<HTMLHeadingElement | null>(null);
   const [clients, setClients] = useState<SalonClient[]>([]);
   const [form, setForm] = useState<ClientFormState>(EMPTY_FORM);
+  const [editForm, setEditForm] = useState<ClientFormState>(EMPTY_FORM);
+  const [editingClient, setEditingClient] = useState<SalonClient | null>(null);
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
+  const [editPhoneCountry, setEditPhoneCountry] = useState<PhoneCountry>("BR");
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
   const [cepMessage, setCepMessage] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   async function load() {
     if (!session) return;
@@ -59,7 +70,7 @@ export function ClientsManager() {
     try {
       setClients(await clientsService.list(session));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar os clientes.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar os clientes.");
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +119,7 @@ export function ClientsManager() {
         };
 
         if (data.erro) {
-          setCepMessage("CEP nao encontrado.");
+          setCepMessage("CEP não encontrado.");
           return;
         }
 
@@ -120,7 +131,7 @@ export function ClientsManager() {
         }));
       } catch {
         if (!controller.signal.aborted) {
-          setCepMessage("Nao foi possivel consultar o CEP.");
+          setCepMessage("Não foi possível consultar o CEP.");
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -134,37 +145,121 @@ export function ClientsManager() {
     return () => controller.abort();
   }, [form.cep]);
 
+  useEffect(() => {
+    if (!editingClient) return;
+    window.setTimeout(() => editTitleRef.current?.focus({ preventScroll: true }), 80);
+  }, [editingClient]);
+
+  function validateClientForm(state: ClientFormState, country: PhoneCountry) {
+    if (state.nome.trim().length < 2) return "Informe um nome válido.";
+    if (!isValidPhone(state.telefone, country)) return "Informe um WhatsApp válido.";
+    if (state.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email.trim())) {
+      return "Informe um email válido ou deixe o campo em branco.";
+    }
+    return "";
+  }
+
+  function buildClientPayload(state: ClientFormState, country: PhoneCountry) {
+    const cepDigits = state.cep.replace(/\D/g, "");
+
+    return {
+      nome: state.nome.trim(),
+      telefone: normalizePhoneToE164(state.telefone, country),
+      email: state.email.trim() || null,
+      observacoes: state.observacoes.trim() || null,
+      endereco: cepDigits.length === 8
+        ? {
+            cep: cepDigits,
+            uf: state.uf.trim() || undefined,
+            cidade: state.cidade.trim() || undefined,
+            logradouro: state.logradouro.trim() || undefined,
+            numero: state.numero.trim() || undefined
+          }
+        : undefined,
+      aceita_campanhas: state.aceita_campanhas,
+      status: state.status
+    };
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session || !form.nome.trim() || !form.telefone.trim()) return;
+    if (!session) return;
+
+    const validationMessage = validateClientForm(form, phoneCountry);
+    if (validationMessage) {
+      setError(validationMessage);
+      setSuccess("");
+      return;
+    }
 
     setIsSaving(true);
     setError("");
+    setSuccess("");
 
     try {
-      const created = await clientsService.create(session, {
-        nome: form.nome.trim(),
-        telefone: normalizePhoneToE164(form.telefone, phoneCountry),
-        email: form.email.trim() || null,
-        endereco: form.cep.replace(/\D/g, "").length === 8
-          ? {
-              cep: form.cep.replace(/\D/g, ""),
-              uf: form.uf.trim() || undefined,
-              cidade: form.cidade.trim() || undefined,
-              logradouro: form.logradouro.trim() || undefined,
-              numero: form.numero.trim() || undefined
-            }
-          : undefined,
-        aceita_campanhas: form.aceita_campanhas
-      });
+      const created = await clientsService.create(session, buildClientPayload(form, phoneCountry));
       setClients((current) => [created, ...current.filter((client) => client.id !== created.id)]);
       setForm(EMPTY_FORM);
       setPhoneCountry("BR");
       setCepMessage("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel cadastrar o cliente.");
+      setError(err instanceof Error ? err.message : "Não foi possível cadastrar o cliente.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  function openEdit(client: SalonClient) {
+    setError("");
+    setSuccess("");
+    setEditingClient(client);
+    setEditPhoneCountry("BR");
+    setEditForm({
+      nome: client.nome || "",
+      telefone: getNationalPhone(client.telefone || "", "BR"),
+      email: client.email || "",
+      cep: formatCep(client.endereco?.cep || ""),
+      uf: client.endereco?.uf || "",
+      cidade: client.endereco?.cidade || "",
+      logradouro: client.endereco?.logradouro || "",
+      numero: client.endereco?.numero || "",
+      observacoes: client.observacoes || "",
+      aceita_campanhas: client.aceita_campanhas !== false,
+      status: client.status === "inativo" ? "inativo" : "ativo"
+    });
+  }
+
+  function closeEdit() {
+    setEditingClient(null);
+    setEditForm(EMPTY_FORM);
+    setEditPhoneCountry("BR");
+  }
+
+  async function handleUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !editingClient) return;
+
+    const validationMessage = validateClientForm(editForm, editPhoneCountry);
+    if (validationMessage) {
+      setError(validationMessage);
+      setSuccess("");
+      return;
+    }
+
+    setIsUpdating(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const updated = await clientsService.update(session, editingClient.id, buildClientPayload(editForm, editPhoneCountry));
+      setClients((current) => current.map((client) => (client.id === updated.id ? updated : client)));
+      closeEdit();
+      setSuccess("Cliente atualizado com sucesso.");
+      window.setTimeout(() => successRef.current?.focus({ preventScroll: true }), 120);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar o cliente.");
+    } finally {
+      setIsUpdating(false);
     }
   }
 
@@ -177,15 +272,16 @@ export function ClientsManager() {
     <section className="space-y-5">
       <div className="rounded-[1.75rem] border border-white/80 bg-white/82 p-5 shadow-soft backdrop-blur-xl sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Relacionamento</p>
-        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Clientes do salao</h1>
+        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Clientes do salão</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Cadastre contatos, encontre clientes rapidamente e mantenha a base pronta para agenda, campanhas e CRM.
         </p>
       </div>
 
       {error ? <FeedbackMessage tone="error" message={error} /> : null}
+      {success ? <FeedbackMessage ref={successRef} tone="success" message={success} /> : null}
 
-      <DashboardCard title="Acoes rapidas" description="Atalhos para manter sua base organizada.">
+      <DashboardCard title="Ações rápidas" description="Atalhos para manter sua base organizada.">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <button
             type="button"
@@ -201,7 +297,7 @@ export function ClientsManager() {
       </DashboardCard>
 
       <div ref={formRef}>
-        <DashboardCard title="Novo cliente" description="Nome e WhatsApp ja sao suficientes para operar a agenda.">
+        <DashboardCard title="Novo cliente" description="Nome e WhatsApp já são suficientes para operar a agenda.">
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-[1.2fr_0.9fr_1fr_0.8fr_auto]">
               <Input value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} placeholder="Nome do cliente" />
@@ -241,7 +337,7 @@ export function ClientsManager() {
                     onChange={(event) => setForm({ ...form, logradouro: event.target.value })}
                     placeholder="Logradouro"
                   />
-                  <Input value={form.numero} onChange={(event) => setForm({ ...form, numero: event.target.value })} placeholder="Numero" />
+                  <Input value={form.numero} onChange={(event) => setForm({ ...form, numero: event.target.value })} placeholder="Número" />
                 </div>
                 {isLoadingCep || cepMessage ? (
                   <p className="mt-3 text-xs font-semibold text-muted-foreground">
@@ -254,7 +350,7 @@ export function ClientsManager() {
         </DashboardCard>
       </div>
 
-      <DashboardCard title="Clientes cadastrados" description="Base operacional para agenda, recorrencia e campanhas futuras.">
+      <DashboardCard title="Clientes cadastrados" description="Base operacional para agenda, recorrência e campanhas futuras.">
         <div className="mb-4 flex items-center gap-2 rounded-2xl border border-border bg-white/90 px-3">
           <Search className="h-4 w-4 text-muted-foreground" />
           <Input
@@ -302,9 +398,19 @@ export function ClientsManager() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex gap-2 text-xs font-bold text-primary">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-primary sm:justify-end">
                     <span className="rounded-full bg-secondary px-3 py-1">{client.qtd_atendimentos} atend.</span>
                     <span className="rounded-full bg-secondary px-3 py-1">{client.status}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => openEdit(client)}
+                      title="Editar cliente"
+                      aria-label={`Editar cliente ${client.nome}`}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   </div>
                 </div>
               </article>
@@ -316,6 +422,133 @@ export function ClientsManager() {
           </p>
         )}
       </DashboardCard>
+
+      {editingClient ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-foreground/35 px-3 py-4 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-client-title"
+            className="max-h-[92vh] w-full overflow-y-auto rounded-[1.5rem] border border-white/80 bg-white p-5 shadow-2xl sm:max-w-3xl sm:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Manutenção de cliente</p>
+                <h2
+                  id="edit-client-title"
+                  ref={editTitleRef}
+                  tabIndex={-1}
+                  className="mt-2 text-xl font-bold text-foreground outline-none sm:text-2xl"
+                >
+                  Editar cliente — {editingClient.nome}
+                </h2>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={closeEdit} aria-label="Fechar edição">
+                <X className="h-5 w-5" aria-hidden="true" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleUpdate} className="mt-5 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-xs font-bold text-foreground">
+                  Nome
+                  <Input value={editForm.nome} onChange={(event) => setEditForm({ ...editForm, nome: event.target.value })} />
+                </label>
+                <label className="space-y-1 text-xs font-bold text-foreground">
+                  WhatsApp
+                  <PhoneInput
+                    value={editForm.telefone}
+                    onChange={(value) => setEditForm({ ...editForm, telefone: value })}
+                    country={editPhoneCountry}
+                    onCountryChange={(country) => {
+                      setEditPhoneCountry(country);
+                      setEditForm({ ...editForm, telefone: "" });
+                    }}
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-bold text-foreground">
+                  Email
+                  <Input value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} />
+                </label>
+                <label className="space-y-1 text-xs font-bold text-foreground">
+                  CEP
+                  <Input
+                    value={editForm.cep}
+                    onChange={(event) => setEditForm({ ...editForm, cep: formatCep(event.target.value) })}
+                    maxLength={9}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/80 p-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[110px_1fr_1.4fr_120px]">
+                  <label className="space-y-1 text-xs font-bold text-foreground">
+                    Estado
+                    <Input
+                      value={editForm.uf}
+                      onChange={(event) => setEditForm({ ...editForm, uf: event.target.value.toUpperCase().slice(0, 2) })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-foreground">
+                    Cidade
+                    <Input value={editForm.cidade} onChange={(event) => setEditForm({ ...editForm, cidade: event.target.value })} />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-foreground">
+                    Logradouro
+                    <Input value={editForm.logradouro} onChange={(event) => setEditForm({ ...editForm, logradouro: event.target.value })} />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-foreground">
+                    Número
+                    <Input value={editForm.numero} onChange={(event) => setEditForm({ ...editForm, numero: event.target.value })} />
+                  </label>
+                </div>
+              </div>
+
+              <label className="space-y-1 text-xs font-bold text-foreground">
+                Observações
+                <textarea
+                  value={editForm.observacoes}
+                  onChange={(event) => setEditForm({ ...editForm, observacoes: event.target.value })}
+                  maxLength={1000}
+                  className="min-h-24 w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm font-semibold text-foreground shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-xs font-bold text-foreground">
+                  Status
+                  <select
+                    value={editForm.status}
+                    onChange={(event) => setEditForm({ ...editForm, status: event.target.value as ClientFormState["status"] })}
+                    className="min-h-11 w-full rounded-full border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                </label>
+                <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-sm">
+                  <input
+                    type="checkbox"
+                    checked={editForm.aceita_campanhas}
+                    onChange={(event) => setEditForm({ ...editForm, aceita_campanhas: event.target.checked })}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-ring"
+                  />
+                  Aceita campanhas
+                </label>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={closeEdit} disabled={isUpdating}>
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="accent" disabled={isUpdating}>
+                  {isUpdating ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -77,6 +77,48 @@ async function create(tenantId, input) {
   }
 }
 
+async function update(tenantId, clientId, input) {
+  const currentLink = await clientsRepository.findTenantLink(tenantId, clientId);
+  if (!currentLink) throw notFound('Cliente nao encontrado.');
+
+  const telefone = normalizePhoneToE164(input.telefone);
+  const email = input.email ? normalizeEmail(input.email) : null;
+  const endereco = normalizeAddress(input.endereco);
+  const existing = await clientsRepository.findClientByPhone(tenantId, telefone);
+
+  if (existing && existing.id !== clientId) {
+    throw new AppError(
+      'Este WhatsApp ja esta cadastrado para outro cliente.',
+      409,
+      'CLIENT_PHONE_DUPLICATE'
+    );
+  }
+
+  const status = input.status === 'inativo' ? 'inativo' : 'ativo';
+  const metadata = {
+    ...(currentLink.cliente?.metadata || {}),
+    endereco
+  };
+
+  const updatedClient = await clientsRepository.updateClient(clientId, {
+    nome: input.nome,
+    telefone,
+    email,
+    observacoes: input.observacoes || null,
+    metadata
+  });
+
+  const updatedLink = await clientsRepository.updateTenantLink(tenantId, clientId, {
+    nome_no_tenant: input.nome,
+    observacoes: input.observacoes || null,
+    aceita_campanhas: input.aceita_campanhas !== false,
+    status,
+    ativo: status === 'ativo'
+  });
+
+  return sanitize({ ...updatedLink, cliente: updatedClient });
+}
+
 async function issueBookingToken(tenantId, clientId, input) {
   const link = await clientsRepository.findActiveBookingLink(tenantId, input.slug);
   if (!link) throw notFound('Link publico de agendamento nao encontrado.');
@@ -99,5 +141,6 @@ function normalizeAddress(endereco) {
 module.exports = {
   list,
   create,
+  update,
   issueBookingToken
 };
