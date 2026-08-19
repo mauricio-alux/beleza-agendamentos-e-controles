@@ -3,7 +3,7 @@ import { AppointmentActionPage } from "@/components/public-booking/AppointmentAc
 import { withBrand } from "@/config/app-brand";
 
 export const metadata: Metadata = {
-  title: withBrand("Acao do agendamento"),
+  title: withBrand("Ação do agendamento"),
   robots: { index: false, follow: false }
 };
 

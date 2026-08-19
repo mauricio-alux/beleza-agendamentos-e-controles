@@ -88,12 +88,6 @@ function assertAppointmentScope(req, appointment) {
 
 async function meta(req, res) {
   const data = await agendaService.getMeta(req.tenantId, getScopedProfessionalId(req));
-  console.log('[agenda-list-debug] backend meta response', {
-    tenantId: req.tenantId,
-    scoped_professional_id: getScopedProfessionalId(req),
-    professionals_count: data.profissionais?.length || 0,
-    services_count: data.servicos?.length || 0
-  });
   return res.json({ data });
 }
 

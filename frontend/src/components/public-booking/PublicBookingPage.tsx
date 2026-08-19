@@ -9,7 +9,7 @@ import {
   Sparkles,
   UserRound
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -48,15 +48,16 @@ function localDate(offsetDays = 0) {
   ].join("-");
 }
 
-function currency(value: number) {
+function currency(value?: number | null) {
+  if (value == null) return "Sob consulta";
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL"
-  }).format(value || 0);
+  }).format(value);
 }
 
 function formatDateTime(value?: string) {
-  if (!value) return "Horario nao informado";
+  if (!value) return "Horário não informado";
   return new Date(value).toLocaleString("pt-BR", {
     dateStyle: "short",
     timeStyle: "short"
@@ -66,6 +67,7 @@ function formatDateTime(value?: string) {
 export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
   const [catalog, setCatalog] = useState<PublicBookingCatalog | null>(null);
   const [serviceId, setServiceId] = useState("");
+  const [specialtyId, setSpecialtyId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
   const [date, setDate] = useState(localDate(1));
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
@@ -86,6 +88,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
   const [loadingUpcoming, setLoadingUpcoming] = useState(false);
   const [rememberIdentity, setRememberIdentity] = useState(true);
   const [success, setSuccess] = useState(false);
+  const bookingChoiceRef = useRef<HTMLElement | null>(null);
 
   async function loadUpcomingAppointments(token: string) {
     if (!token) {
@@ -120,10 +123,15 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
         if (!active) return;
         setCatalog(data);
         const service = data.servicos[0];
+        const firstSpecialtyId = service?.especialidades_config?.[0]?.especialidade_id || "";
         const professional = service
-          ? data.profissionais.find((item) => item.servico_ids.includes(service.id))
+          ? data.profissionais.find((item) => (
+            item.servico_ids.includes(service.id)
+            && (!firstSpecialtyId || item.especialidade_ids?.includes(firstSpecialtyId))
+          ))
           : undefined;
         setServiceId(service?.id || "");
+        setSpecialtyId(firstSpecialtyId);
         setProfessionalId(professional?.id || "");
 
         try {
@@ -226,22 +234,36 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
     };
   }, [campaign, catalog, clientToken, email, name, phone, phoneCountry, slug]);
 
-  const compatibleProfessionals = useMemo(() => (
-    catalog?.profissionais.filter((professional) => professional.servico_ids.includes(serviceId)) || []
-  ), [catalog, serviceId]);
-
   const selectedService = catalog?.servicos.find((service) => service.id === serviceId);
+  const selectedServiceSpecialties = selectedService?.especialidades_config || [];
+  const selectedSpecialty = selectedServiceSpecialties.find((item) => item.especialidade_id === specialtyId) || selectedServiceSpecialties[0] || null;
+  const compatibleProfessionals = useMemo(() => (
+    catalog?.profissionais.filter((professional) => (
+      professional.servico_ids.includes(serviceId)
+      && (!specialtyId || professional.especialidade_ids?.includes(specialtyId))
+    )) || []
+  ), [catalog, serviceId, specialtyId]);
   const selectedProfessional = catalog?.profissionais.find((item) => item.id === professionalId);
   const orderedSlots = useMemo(() => [...slots].sort((left, right) => (
     new Date(left.inicio).getTime() - new Date(right.inicio).getTime()
   )), [slots]);
-  const hasValidIdentityToken = Boolean(clientToken);
+  const isIdentifiedClient = Boolean(clientToken && clientId && name.trim());
+  const hasValidIdentityToken = isIdentifiedClient;
   const isNameValid = name.trim().length >= 2;
   const isPhoneValid = isValidPhone(phone, phoneCountry);
-  const canSubmit = Boolean(slot && selectedService && professionalId && isNameValid && (hasValidIdentityToken || isPhoneValid));
+  const canSubmit = Boolean(slot && selectedService && selectedSpecialty && professionalId && isNameValid && (hasValidIdentityToken || isPhoneValid));
 
   useEffect(() => {
-    if (!professionalId || !serviceId || !date) {
+    if (!isIdentifiedClient || loading || success) return;
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    if (!mediaQuery.matches) return;
+    window.setTimeout(() => {
+      bookingChoiceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [isIdentifiedClient, loading, success]);
+
+  useEffect(() => {
+    if (!professionalId || !serviceId || !specialtyId || !date) {
       setSlots([]);
       return;
     }
@@ -254,7 +276,8 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
     getPublicAvailability(slug, {
       data: date,
       profissional_id: professionalId,
-      servico_id: serviceId
+      servico_id: serviceId,
+      especialidade_id: specialtyId
     })
       .then((data) => active && setSlots(data.availability.slots || []))
       .catch((err) => {
@@ -267,11 +290,28 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
     return () => {
       active = false;
     };
-  }, [date, professionalId, serviceId, slug]);
+  }, [date, professionalId, serviceId, specialtyId, slug]);
 
   function changeService(value: string) {
     setServiceId(value);
-    const professionals = catalog?.profissionais.filter((item) => item.servico_ids.includes(value)) || [];
+    const service = catalog?.servicos.find((item) => item.id === value);
+    const nextSpecialtyId = service?.especialidades_config?.[0]?.especialidade_id || "";
+    setSpecialtyId(nextSpecialtyId);
+    const professionals = catalog?.profissionais.filter((item) => (
+      item.servico_ids.includes(value)
+      && (!nextSpecialtyId || item.especialidade_ids?.includes(nextSpecialtyId))
+    )) || [];
+    if (!professionals.some((item) => item.id === professionalId)) {
+      setProfessionalId(professionals[0]?.id || "");
+    }
+  }
+
+  function changeSpecialty(value: string) {
+    setSpecialtyId(value);
+    const professionals = catalog?.profissionais.filter((item) => (
+      item.servico_ids.includes(serviceId)
+      && item.especialidade_ids?.includes(value)
+    )) || [];
     if (!professionals.some((item) => item.id === professionalId)) {
       setProfessionalId(professionals[0]?.id || "");
     }
@@ -335,6 +375,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
       await createPublicAppointment(slug, {
         profissional_id: professionalId,
         servico_id: serviceId,
+        especialidade_id: specialtyId,
         data_inicio: slot,
         cliente: resolvedToken ? undefined : client,
         observacoes: notes.trim() || undefined,
@@ -455,7 +496,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
         </section>
       ) : (
       <>
-      <section className="mx-auto max-w-6xl px-5 pt-8 sm:px-8">
+      <section className={`mx-auto max-w-6xl px-5 pt-8 sm:px-8 ${isIdentifiedClient ? "hidden lg:block" : ""}`}>
         <div className="rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
           <SectionTitle icon={UserRound} number="1" title="Seus dados" />
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -566,14 +607,23 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
 
       <form className="mx-auto grid max-w-6xl gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[1fr_380px]" onSubmit={submit}>
         <div className="space-y-6">
-          <section className="rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
-            <SectionTitle icon={Scissors} number={loadingUpcoming || upcomingAppointments.length > 0 ? "3" : "2"} title="Escolha o atendimento" />
+          <section ref={bookingChoiceRef} className="scroll-mt-4 rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
+            <SectionTitle icon={Scissors} number={loadingUpcoming || upcomingAppointments.length > 0 ? "3" : "2"} title="Escolha o atendimento" mobilePlain={isIdentifiedClient} />
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <Field label="Serviço">
                 <select className="h-12 w-full rounded-2xl border border-input bg-white px-4 text-sm" value={serviceId} onChange={(event) => changeService(event.target.value)}>
                   {catalog.servicos.map((service) => (
                     <option key={service.id} value={service.id}>
-                      {service.nome} · {currency(service.preco)}
+                      {service.nome}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Especialidade">
+                <select className="h-12 w-full rounded-2xl border border-input bg-white px-4 text-sm" value={specialtyId} onChange={(event) => changeSpecialty(event.target.value)}>
+                  {selectedServiceSpecialties.map((specialty) => (
+                    <option key={specialty.especialidade_id} value={specialty.especialidade_id}>
+                      {specialty.nome || "Especialidade"} · {currency(specialty.preco)} · {specialty.duracao_minutos || 0} min
                     </option>
                   ))}
                 </select>
@@ -591,7 +641,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
           </section>
 
           <section className="rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
-            <SectionTitle icon={CalendarDays} number={loadingUpcoming || upcomingAppointments.length > 0 ? "4" : "3"} title="Escolha data e horário" />
+            <SectionTitle icon={CalendarDays} number={loadingUpcoming || upcomingAppointments.length > 0 ? "4" : "3"} title="Escolha data e horário" mobilePlain={isIdentifiedClient} />
             <div className="mt-5">
               <Field label="Data">
                 <Input type="date" min={localDate()} value={date} onChange={(event) => setDate(event.target.value)} />
@@ -623,8 +673,8 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
             </div>
           </section>
 
-          <section className="hidden">
-            <SectionTitle icon={UserRound} number="3" title="Seus dados" />
+          <section className={isIdentifiedClient ? "rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6 lg:hidden" : "hidden"}>
+            <SectionTitle icon={UserRound} number="" title="Cliente identificado" />
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <Field label="Nome" required>
                 <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como podemos chamar você?" required />
@@ -686,14 +736,15 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
           <p className="text-xs font-bold uppercase text-accent">Resumo</p>
           <h2 className="mt-2 text-xl font-bold">{selectedService?.nome || "Escolha um serviço"}</h2>
           <div className="mt-5 space-y-3 text-sm">
+            <Summary icon={Scissors} text={selectedSpecialty?.nome || "Especialidade"} />
             <Summary icon={UserRound} text={selectedProfessional?.nome_publico || "Profissional"} />
-            <Summary icon={Clock3} text={`${selectedService?.duracao_minutos || 0} minutos`} />
+            <Summary icon={Clock3} text={`${selectedSpecialty?.duracao_minutos || 0} minutos`} />
             <Summary icon={CalendarDays} text={slot ? new Date(slot).toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short" }) : "Selecione um horário"} />
           </div>
           <div className="my-5 border-t border-border" />
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Valor</span>
-            <strong className="text-xl">{currency(selectedService?.preco || 0)}</strong>
+            <strong className="text-xl">{currency(selectedSpecialty?.preco)}</strong>
           </div>
           {error ? <p className="mt-4 rounded-lg border border-primary/30 bg-secondary p-3 text-sm">{error}</p> : null}
           <Button className="mt-5 w-full" size="lg" disabled={submitting || !canSubmit}>
@@ -711,11 +762,13 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
 function SectionTitle({
   icon: Icon,
   number,
-  title
+  title,
+  mobilePlain = false
 }: {
   icon: typeof Scissors;
   number: string;
   title: string;
+  mobilePlain?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -723,7 +776,7 @@ function SectionTitle({
         <Icon className="h-4 w-4" />
       </span>
       <div>
-        <p className="text-xs font-bold uppercase text-accent">Etapa {number}</p>
+        {number ? <p className={`text-xs font-bold uppercase text-accent ${mobilePlain ? "hidden lg:block" : ""}`}>Etapa {number}</p> : null}
         <h2 className="text-lg font-bold">{title}</h2>
       </div>
     </div>

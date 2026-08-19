@@ -27,21 +27,6 @@ async function findTenant(tenantId) {
   return data;
 }
 
-async function listProfessionalServices(tenantId, professionalIds) {
-  if (!professionalIds.length) return [];
-
-  const { data, error } = await supabaseAdmin
-    .from('profissional_servicos')
-    .select('profissional_id, servico_id')
-    .eq('tenant_id', tenantId)
-    .in('profissional_id', professionalIds)
-    .eq('ativo', true)
-    .is('deleted_at', null);
-
-  if (error) throw error;
-  return data || [];
-}
-
 async function listBookingProfessionals(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('profissionais')
@@ -59,17 +44,58 @@ async function listBookingProfessionals(tenantId) {
 
 async function listOnlineServices(tenantId) {
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('id, tenant_id, nome, duracao_minutos, preco, categoria, taxonomy_category_key, taxonomy_service_key, is_official, is_custom, ordem_exibicao')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      metadata,
+      servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,categoria_key,natureza,ativo),
+      especialidades_config:servico_tenant_especialidades(
+        id,
+        servico_tenant_id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        especialidade:especialidades(id,nome,ativo,deleted_at)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('ativo', true)
-    .eq('permite_online', true)
-    .is('deleted_at', null)
-    .order('ordem_exibicao', { ascending: true })
-    .order('nome', { ascending: true });
+    .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  return (data || []).map((item) => {
+    const catalog = item.servico_catalogo || {};
+    const configs = (item.especialidades_config || []).filter((config) => (
+      config.ativo !== false
+      && config.aceita_agendamento_online !== false
+      && Number(config.duracao_minutos) > 0
+      && config.especialidade?.ativo !== false
+      && !config.especialidade?.deleted_at
+    ));
+
+    return {
+      id: item.id,
+      tenant_id: item.tenant_id,
+      servico_tenant_id: item.id,
+      servico_catalogo_id: item.servico_catalogo_id,
+      codigo_canonico: catalog.codigo_canonico,
+      nome: catalog.nome,
+      categoria: catalog.categoria_key,
+      taxonomy_category_key: catalog.categoria_key,
+      natureza: catalog.natureza,
+      ativo: item.ativo !== false,
+      permite_online: configs.length > 0,
+      duracao_minutos: configs[0]?.duracao_minutos ?? null,
+      preco: configs[0]?.preco ?? null,
+      especialidades_config: configs
+    };
+  }).filter((item) => item.permite_online);
 }
 
 async function listProfessionalSpecialties(tenantId, professionalIds) {
@@ -91,12 +117,11 @@ async function listServiceSpecialties(tenantId, serviceIds) {
   if (!serviceIds.length) return [];
 
   const { data, error } = await supabaseAdmin
-    .from('servico_especialidades')
-    .select('servico_id, especialidade_id')
-    .eq('tenant_id', tenantId)
-    .in('servico_id', serviceIds)
+    .from('servico_tenant_especialidades')
+    .select('id, servico_tenant_id, especialidade_id, duracao_minutos, preco, dias_retorno_recomendado, aceita_agendamento_online, ativo, especialidade:especialidades(id,nome)')
+    .in('servico_tenant_id', serviceIds)
     .eq('ativo', true)
-    .is('deleted_at', null);
+    .eq('aceita_agendamento_online', true);
 
   if (error) throw error;
   return data || [];
@@ -152,7 +177,6 @@ async function recordBookingAttribution(payload) {
 module.exports = {
   findActiveLink,
   findTenant,
-  listProfessionalServices,
   listBookingProfessionals,
   listOnlineServices,
   listProfessionalSpecialties,

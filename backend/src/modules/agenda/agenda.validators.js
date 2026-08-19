@@ -20,7 +20,8 @@ const clienteSchema = z.object({
 const disponibilidadeSchema = z.object({
   data: isoDate,
   profissional_id: uuid,
-  servico_id: uuid
+  servico_id: uuid,
+  especialidade_id: uuid.optional()
 });
 
 const listAgendaSchema = z.object({
@@ -29,13 +30,15 @@ const listAgendaSchema = z.object({
   data_fim: z.string().datetime().optional(),
   profissional_id: uuid.optional(),
   servico_id: uuid.optional(),
+  especialidade_id: uuid.optional(),
   status: z.string().optional()
 });
 
 const agendaIntelligenceSchema = z.object({
   data: isoDate.optional(),
   profissional_id: uuid.optional(),
-  servico_id: uuid.optional()
+  servico_id: uuid.optional(),
+  especialidade_id: uuid.optional()
 });
 
 const createAgendaSchema = z.object({
@@ -43,6 +46,7 @@ const createAgendaSchema = z.object({
   cliente: clienteSchema.optional(),
   profissional_id: uuid,
   servico_id: uuid,
+  especialidade_id: uuid.optional(),
   data_inicio: z.string().datetime(),
   observacoes: z.string().max(1000).optional(),
   client_context: z.object({

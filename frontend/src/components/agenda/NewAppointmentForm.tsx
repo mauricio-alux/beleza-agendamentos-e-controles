@@ -1,21 +1,31 @@
 "use client";
 
-import { AlertCircle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AgendaFilters } from "@/components/agenda/AgendaFilters";
 import { CalendarView } from "@/components/agenda/CalendarView";
+import { isPastDateInput } from "@/components/agenda/date";
 import { SmartSlotSuggestions } from "@/components/agenda/SmartSlotSuggestions";
 import { TimeSlots } from "@/components/agenda/TimeSlots";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { LoadingButton } from "@/components/auth/LoadingButton";
 import { Input } from "@/components/ui/input";
+import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { useAgenda } from "@/hooks/useAgenda";
 import { normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 export function NewAppointmentForm() {
-  const agenda = useAgenda();
+  const router = useRouter();
+  const agenda = useAgenda({ preventPastAvailability: true });
+  const isAvailabilityConfigured = Boolean(
+    agenda.date
+    && agenda.selectedProfessionalId
+    && agenda.selectedServiceId
+    && agenda.selectedSpecialtyId
+  );
   const [selectedSlot, setSelectedSlot] = useState("");
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -29,6 +39,35 @@ export function NewAppointmentForm() {
   const [isLoadingCep, setIsLoadingCep] = useState(false);
   const [cepMessage, setCepMessage] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    if (!isPastDateInput(agenda.date)) return;
+
+    setSelectedSlot("");
+    setClientName("");
+    setClientPhone("");
+    setClientPhoneCountry("BR");
+    setClientEmail("");
+    setCep("");
+    setUf("");
+    setCidade("");
+    setLogradouro("");
+    setNumero("");
+    setCepMessage("");
+    setSuccess("");
+
+    const params = new URLSearchParams({ data: agenda.date });
+    if (agenda.selectedProfessionalId) {
+      params.set("profissional_id", agenda.selectedProfessionalId);
+    }
+
+    router.replace(`/agenda?${params.toString()}`);
+  }, [agenda.date, agenda.selectedProfessionalId, router]);
+
+  useEffect(() => {
+    setSelectedSlot("");
+    setSuccess("");
+  }, [agenda.availabilityConfigKey]);
 
   useEffect(() => {
     const digits = cep.replace(/\D/g, "");
@@ -69,7 +108,7 @@ export function NewAppointmentForm() {
         setLogradouro(data.logradouro || "");
       } catch (err) {
         if (!controller.signal.aborted) {
-          setCepMessage("Nao foi possivel consultar o CEP.");
+          setCepMessage("Não foi possível consultar o CEP.");
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -112,7 +151,7 @@ export function NewAppointmentForm() {
     });
 
     if (created) {
-      setSuccess("Solicitacao enviada. O horario fica reservado enquanto aguarda confirmacao.");
+      setSuccess("Solicitação enviada. O horário fica reservado enquanto aguarda confirmação.");
       setSelectedSlot("");
       setClientName("");
       setClientPhone("");
@@ -141,36 +180,47 @@ export function NewAppointmentForm() {
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Novo atendimento</p>
         <h1 className="mt-1 font-display text-3xl text-foreground sm:text-4xl">Criar agendamento</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Escolha profissional, servico e um horario calculado pelo motor inteligente.
+          Escolha data, profissional, serviço, especialidade e um horário disponível.
         </p>
       </section>
 
       {agenda.error || success ? (
-        <div className="flex gap-3 rounded-2xl border border-primary/30 bg-secondary/80 p-4 text-sm text-foreground">
-          <AlertCircle className="h-5 w-5 text-primary" />
-          {success || agenda.error}
-        </div>
+        <FeedbackMessage
+          tone={agenda.error ? "error" : "success"}
+          message={agenda.error || success}
+          className={agenda.error ? "p-5 text-base" : undefined}
+        />
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <div className="space-y-5">
           <CalendarView date={agenda.date} onChange={agenda.setDate} />
-          <DashboardCard title="Configuracao">
+          <DashboardCard title="Configuração">
             <AgendaFilters
               meta={agenda.meta}
               professionalId={agenda.selectedProfessionalId}
               serviceId={agenda.selectedServiceId}
+              specialtyId={agenda.selectedSpecialtyId}
               onProfessionalChange={agenda.setSelectedProfessionalId}
               onServiceChange={agenda.setSelectedServiceId}
+              onSpecialtyChange={agenda.setSelectedSpecialtyId}
+              invalidFields={agenda.availabilityErrorFields}
+              mode="creation"
             />
           </DashboardCard>
         </div>
 
         <div className="space-y-5">
-          <DashboardCard title="Horarios disponiveis">
+          <DashboardCard title="Horários disponíveis">
             <div className="space-y-5">
               <SmartSlotSuggestions slots={agenda.smartSuggestions} onSelect={setSelectedSlot} />
-              <TimeSlots availability={agenda.availability} selectedSlot={selectedSlot} onSelect={setSelectedSlot} />
+              <TimeSlots
+                availability={agenda.availability}
+                selectedSlot={selectedSlot}
+                onSelect={setSelectedSlot}
+                isLoading={agenda.isRefreshingAvailability}
+                isConfigured={isAvailabilityConfigured}
+              />
             </div>
           </DashboardCard>
 

@@ -3,6 +3,7 @@
 import { AlertCircle, CalendarDays, Check, Loader2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PublicBackButton } from "@/components/public-booking/PublicBackButton";
 import {
   getPublicAppointmentActionContext,
   runPublicAppointmentAction,
@@ -51,7 +52,7 @@ export function AppointmentActionPage({ token = "", command }: Props) {
 
     getPublicAppointmentActionContext(token, command)
       .then((data) => active && setAppointment(data))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Nao foi possivel localizar o agendamento."))
+      .catch((err) => active && setError(err instanceof Error ? err.message : "Não foi possível localizar o agendamento."))
       .finally(() => active && setLoading(false));
 
     return () => {
@@ -64,6 +65,9 @@ export function AppointmentActionPage({ token = "", command }: Props) {
     if (command === "confirmar") return "Confirmar agendamento";
     return "Acao do agendamento";
   }, [command]);
+  const fallbackHref = appointment?.tenant.slug
+    ? `/agendar/${encodeURIComponent(appointment.tenant.slug)}`
+    : "/";
 
   async function submit() {
     if (!token || !command) {
@@ -84,7 +88,7 @@ export function AppointmentActionPage({ token = "", command }: Props) {
       setAppointment(data);
       setMessage(command === "confirmar" ? "Agendamento confirmado com sucesso." : "Agendamento cancelado com sucesso.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel concluir a acao.");
+      setError(err instanceof Error ? err.message : "Não foi possível concluir a ação.");
     } finally {
       setSubmitting(false);
     }
@@ -106,7 +110,8 @@ export function AppointmentActionPage({ token = "", command }: Props) {
 
       <section className="mx-auto max-w-4xl px-5 py-10">
         <div className="rounded-lg border border-primary/20 bg-white p-6 shadow-soft">
-          <p className="text-xs font-bold uppercase text-accent">Link operacional</p>
+          <PublicBackButton fallbackHref={fallbackHref} label="Voltar" />
+          <p className="mt-5 text-xs font-bold uppercase text-accent">Link operacional</p>
           <h1 className="mt-2 font-display text-4xl">{title}</h1>
 
           {loading ? (
@@ -117,9 +122,9 @@ export function AppointmentActionPage({ token = "", command }: Props) {
           ) : appointment ? (
             <div className="mt-8 grid gap-5">
               <div className="rounded-lg border border-border bg-secondary/25 p-5">
-                <h2 className="text-xl font-bold">{appointment.servico?.nome || "Servico"}</h2>
+                <h2 className="text-xl font-bold">{appointment.servico?.nome || "Serviço"}</h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {appointment.tenant.nome_fantasia || "Salao"} · {appointment.profissional?.nome_publico || "Profissional"}
+                  {appointment.tenant.nome_fantasia || "Salão"} · {appointment.profissional?.nome_publico || "Profissional"}
                 </p>
                 <p className="mt-2 text-sm">{formatDate(appointment.data_inicio)}</p>
                 <p className="mt-2 text-sm font-bold">{currency(appointment.valor_total || appointment.servico?.preco)}</p>

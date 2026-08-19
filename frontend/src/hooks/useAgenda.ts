@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   agendaService,
   type AgendaAnalytics,
@@ -10,12 +10,57 @@ import {
   type AvailabilityResponse
 } from "@/services/agenda.service";
 import { useAuth } from "@/hooks/useAuth";
+import { isPastDateInput, toDateInput } from "@/components/agenda/date";
 
-function toDateInput(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+const APPOINTMENT_STATUSES_WITHOUT_CANCELED = [
+  "solicitado",
+  "pendente",
+  "pendente_atendente",
+  "pendente_cliente",
+  "confirmado",
+  "concluido",
+  "no_show",
+  "no-show",
+  "reagendado",
+  "expirado_atendente",
+  "expirado_cliente",
+  "suspeito"
+];
+
+type AgendaFilterState = {
+  date: string;
+  selectedProfessionalId: string;
+  selectedServiceId: string;
+  selectedSpecialtyId: string;
+  showCanceledAppointments: boolean;
+};
+
+type UseAgendaOptions = {
+  manualSearch?: boolean;
+  initialDate?: string | null;
+  initialProfessionalId?: string | null;
+  preventPastAvailability?: boolean;
+  loadInsightsInManualSearch?: boolean;
+};
+
+function buildInitialFilters(options: Pick<UseAgendaOptions, "initialDate" | "initialProfessionalId"> = {}): AgendaFilterState {
+  return {
+    date: options.initialDate || toDateInput(new Date()),
+    selectedProfessionalId: options.initialProfessionalId || "",
+    selectedServiceId: "",
+    selectedSpecialtyId: "",
+    showCanceledAppointments: false
+  };
+}
+
+function areFiltersEqual(left: AgendaFilterState, right: AgendaFilterState) {
+  return (
+    left.date === right.date
+    && left.selectedProfessionalId === right.selectedProfessionalId
+    && left.selectedServiceId === right.selectedServiceId
+    && left.selectedSpecialtyId === right.selectedSpecialtyId
+    && left.showCanceledAppointments === right.showCanceledAppointments
+  );
 }
 
 function getSessionRole(session: ReturnType<typeof useAuth>["session"]) {
@@ -26,50 +71,75 @@ function isPersonalAgendaSession(session: ReturnType<typeof useAuth>["session"])
   return ["Funcionario", "Terceiro", "Profissional"].includes(getSessionRole(session) || "");
 }
 
-export function useAgenda() {
+export function useAgenda(options: UseAgendaOptions = {}) {
+  const {
+    manualSearch = false,
+    initialDate = null,
+    initialProfessionalId = null,
+    preventPastAvailability = false,
+    loadInsightsInManualSearch = false
+  } = options;
   const { session, isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  const [date, setDate] = useState(toDateInput(new Date()));
+  const initialFiltersRef = useRef(buildInitialFilters({ initialDate, initialProfessionalId }));
+  const [date, setDate] = useState(initialFiltersRef.current.date);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedSpecialtyId, setSelectedSpecialtyId] = useState("");
+  const [showCanceledAppointments, setShowCanceledAppointments] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState<AgendaFilterState>(initialFiltersRef.current);
   const [meta, setMeta] = useState<AgendaMeta>({ profissionais: [], servicos: [] });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [analytics, setAnalytics] = useState<AgendaAnalytics | null>(null);
   const [signals, setSignals] = useState<AgendaSignals | null>(null);
   const [isRefreshingIntelligence, setIsRefreshingIntelligence] = useState(false);
+  const [isRefreshingAppointments, setIsRefreshingAppointments] = useState(false);
+  const [isRefreshingAvailability, setIsRefreshingAvailability] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [availabilityErrorFields, setAvailabilityErrorFields] = useState<string[]>([]);
+  const appointmentsRequestRef = useRef(0);
+  const availabilityRequestRef = useRef(0);
+  const didInitialLoadRef = useRef(false);
   const shouldUsePersonalAgenda = isPersonalAgendaSession(session);
+  const draftFilters = useMemo<AgendaFilterState>(() => ({
+    date,
+    selectedProfessionalId,
+    selectedServiceId,
+    selectedSpecialtyId,
+    showCanceledAppointments
+  }), [date, selectedProfessionalId, selectedServiceId, selectedSpecialtyId, showCanceledAppointments]);
+  const queryFilters = manualSearch ? appliedFilters : draftFilters;
+  const hasPendingFilterChanges = manualSearch && !areFiltersEqual(draftFilters, appliedFilters);
+  const availabilityConfigKey = [
+    queryFilters.date,
+    queryFilters.selectedProfessionalId,
+    queryFilters.selectedServiceId,
+    queryFilters.selectedSpecialtyId
+  ].join("|");
 
-  const selectedProfessional = useMemo(
-    () => meta.profissionais.find((item) => item.id === selectedProfessionalId) || null,
-    [meta.profissionais, selectedProfessionalId]
-  );
-  const availableServices = useMemo(() => {
-    if (!selectedProfessional) return meta.servicos;
-    const serviceIds = new Set(selectedProfessional.servico_ids || []);
-    return meta.servicos.filter((service) => serviceIds.has(service.id));
-  }, [meta.servicos, selectedProfessional]);
-  const availabilityService = useMemo(
-    () => availableServices.find((item) => item.id === selectedServiceId) || null,
-    [availableServices, selectedServiceId]
-  );
   const selectedService = useMemo(
     () => meta.servicos.find((item) => item.id === selectedServiceId) || null,
     [meta.servicos, selectedServiceId]
   );
-
+  const selectedServiceSpecialties = selectedService?.especialidades_config || [];
+  const selectedSpecialty = selectedServiceSpecialties.find((item) => item.especialidade_id === selectedSpecialtyId) || null;
+  const selectedProfessional = useMemo(
+    () => meta.profissionais.find((item) => item.id === selectedProfessionalId) || null,
+    [meta.profissionais, selectedProfessionalId]
+  );
+  const selectedProfessionalServiceIds = useMemo(
+    () => new Set(selectedProfessional?.servico_ids || []),
+    [selectedProfessional]
+  );
+  const selectedProfessionalConfigIds = useMemo(
+    () => new Set(selectedProfessional?.servico_tenant_especialidade_ids || []),
+    [selectedProfessional]
+  );
   const loadMeta = useCallback(async () => {
     if (!session) return;
     const nextMeta = await agendaService.getMeta(session);
-
-    console.log("[agenda-list-debug] frontend meta", {
-      professionals_count: nextMeta.profissionais.length,
-      services_count: nextMeta.servicos.length,
-      professional_ids: nextMeta.profissionais.map((professional) => professional.id),
-      service_ids: nextMeta.servicos.map((service) => service.id)
-    });
 
     setMeta(nextMeta);
     setSelectedProfessionalId((current) => (
@@ -80,52 +150,99 @@ export function useAgenda() {
           : ""
     ));
     setSelectedServiceId((current) => (nextMeta.servicos.some((service) => service.id === current) ? current : ""));
+    setSelectedSpecialtyId((current) => (
+      nextMeta.servicos.some((service) => service.especialidades_config?.some((config) => config.especialidade_id === current))
+        ? current
+        : ""
+    ));
   }, [session, shouldUsePersonalAgenda]);
 
-  const loadAppointments = useCallback(async () => {
+  const loadAppointments = useCallback(async (
+    filters: AgendaFilterState = queryFilters,
+    options: { reset?: boolean } = {}
+  ) => {
     if (!session) return;
-    const tenantId = session.tenant?.id || session.active_membership?.tenant_id || session.tenant_id || null;
+    const requestId = appointmentsRequestRef.current + 1;
+    appointmentsRequestRef.current = requestId;
+    const shouldFilterBySpecialty = Boolean(filters.selectedSpecialtyId);
     const params = {
-      data: date,
-      profissional_id: selectedProfessionalId || undefined,
-      servico_id: selectedServiceId || undefined
+      data: filters.date,
+      profissional_id: filters.selectedProfessionalId || undefined,
+      servico_id: filters.selectedServiceId || undefined,
+      especialidade_id: shouldFilterBySpecialty ? filters.selectedSpecialtyId : undefined,
+      status: filters.showCanceledAppointments ? undefined : APPOINTMENT_STATUSES_WITHOUT_CANCELED.join(",")
     };
 
-    console.log("[agenda-list-debug] frontend request", {
-      tenant_id: tenantId,
-      selected_date: date,
-      params
-    });
+    setIsRefreshingAppointments(true);
+    if (options.reset !== false) {
+      setAppointments([]);
+    }
 
-    const data = await agendaService.list(session, params);
+    try {
+      const data = await agendaService.list(session, params);
 
-    console.log("[agenda-list-debug] frontend response", {
-      tenant_id: tenantId,
-      selected_date: date,
-      count: data.length,
-      statuses: data.map((appointment) => appointment.status),
-      appointment_ids: data.map((appointment) => appointment.id)
-    });
-
-    setAppointments(data);
-  }, [date, selectedProfessionalId, selectedServiceId, session]);
+      if (appointmentsRequestRef.current === requestId) {
+        setAppointments(data);
+      }
+    } finally {
+      if (appointmentsRequestRef.current === requestId) {
+        setIsRefreshingAppointments(false);
+      }
+    }
+  }, [
+    queryFilters,
+    session,
+  ]);
 
   const loadAvailability = useCallback(async () => {
-    if (!session || !selectedProfessionalId || !selectedServiceId || !availabilityService) {
-      setAvailability(null);
+    const requestId = availabilityRequestRef.current + 1;
+    availabilityRequestRef.current = requestId;
+
+    setAvailability(null);
+    setAvailabilityErrorFields([]);
+    setError("");
+
+    if (
+      !session
+      || (preventPastAvailability && isPastDateInput(queryFilters.date))
+      || !queryFilters.selectedProfessionalId
+      || !queryFilters.selectedServiceId
+      || !queryFilters.selectedSpecialtyId
+    ) {
+      setIsRefreshingAvailability(false);
       return;
     }
 
-    const data = await agendaService.getAvailability(session, {
-      data: date,
-      profissional_id: selectedProfessionalId,
-      servico_id: selectedServiceId
-    });
-    setAvailability(data);
-  }, [availabilityService, date, selectedProfessionalId, selectedServiceId, session]);
+    setIsRefreshingAvailability(true);
+
+    try {
+      const data = await agendaService.getAvailability(session, {
+        data: queryFilters.date,
+        profissional_id: queryFilters.selectedProfessionalId,
+        servico_id: queryFilters.selectedServiceId,
+        especialidade_id: queryFilters.selectedSpecialtyId
+      });
+
+      if (availabilityRequestRef.current === requestId) {
+        setAvailability(data);
+        setAvailabilityErrorFields([]);
+        setError("");
+      }
+    } catch (err) {
+      if (availabilityRequestRef.current === requestId) {
+        setAvailability(null);
+        setAvailabilityErrorFields(["professional", "service", "specialty"]);
+        setError(err instanceof Error ? err.message : "Não foi possível carregar horários.");
+      }
+    } finally {
+      if (availabilityRequestRef.current === requestId) {
+        setIsRefreshingAvailability(false);
+      }
+    }
+  }, [preventPastAvailability, queryFilters, session]);
 
   const loadIntelligence = useCallback(async () => {
-    if (!session || !selectedProfessionalId) {
+    if (!session) {
       setAnalytics(null);
       setSignals(null);
       return;
@@ -135,9 +252,10 @@ export function useAgenda() {
 
     try {
       const params = {
-        data: date,
-        profissional_id: selectedProfessionalId,
-        servico_id: selectedServiceId || undefined
+        data: queryFilters.date,
+        profissional_id: queryFilters.selectedProfessionalId,
+        servico_id: queryFilters.selectedServiceId || undefined,
+        especialidade_id: queryFilters.selectedServiceId && queryFilters.selectedSpecialtyId ? queryFilters.selectedSpecialtyId : undefined
       };
       const [nextAnalytics, nextSignals] = await Promise.all([
         agendaService.getAnalytics(session, params),
@@ -148,7 +266,7 @@ export function useAgenda() {
     } finally {
       setIsRefreshingIntelligence(false);
     }
-  }, [date, selectedProfessionalId, selectedServiceId, session]);
+  }, [queryFilters, session]);
 
   const refresh = useCallback(async () => {
     if (!session) return;
@@ -156,62 +274,133 @@ export function useAgenda() {
     setError("");
     try {
       await loadMeta();
-      await loadAppointments();
+      await loadAppointments(queryFilters);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar a agenda.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a agenda.");
     } finally {
       setIsLoading(false);
     }
-  }, [loadAppointments, loadMeta, session]);
+  }, [loadAppointments, loadMeta, queryFilters, session]);
 
   useEffect(() => {
-    if (isAuthLoading || !isAuthenticated) return;
+    if (isAuthLoading || !isAuthenticated || didInitialLoadRef.current) return;
+    didInitialLoadRef.current = true;
     refresh();
   }, [isAuthLoading, isAuthenticated, refresh]);
 
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated || !session || isLoading) return;
 
-    loadAppointments().catch((err) => {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar a agenda.");
+    if (manualSearch) return;
+
+    loadAppointments(queryFilters).catch((err) => {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a agenda.");
     });
   }, [
-    date,
     isAuthLoading,
     isAuthenticated,
     isLoading,
     loadAppointments,
-    selectedProfessionalId,
-    selectedServiceId,
+    manualSearch,
+    queryFilters,
     session
   ]);
 
   useEffect(() => {
-    loadAvailability().catch((err) => {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar horarios.");
-    });
-  }, [loadAvailability]);
+    if (manualSearch) return;
+
+    loadAvailability();
+  }, [
+    date,
+    loadAvailability,
+    manualSearch,
+    meta.servicos,
+    selectedProfessionalId,
+    selectedServiceId,
+    selectedSpecialtyId,
+    session
+  ]);
+
+  useEffect(() => {
+    setAvailability(null);
+    setAvailabilityErrorFields([]);
+    setError("");
+  }, [selectedProfessionalId, selectedServiceId, selectedSpecialtyId]);
 
   useEffect(() => {
     setSelectedServiceId((current) => (
-      meta.servicos.some((service) => service.id === current)
+      meta.servicos.some((service) => (
+        service.id === current
+        && (!selectedProfessional || selectedProfessionalServiceIds.has(service.id))
+      ))
         ? current
         : ""
     ));
-  }, [meta.servicos]);
+  }, [meta.servicos, selectedProfessional, selectedProfessionalServiceIds]);
 
   useEffect(() => {
+    if (!selectedService) {
+      setSelectedSpecialtyId("");
+      return;
+    }
+
+    setSelectedSpecialtyId((current) => (
+      !current || selectedService.especialidades_config?.some((config) => (
+        config.especialidade_id === current
+        && (!selectedProfessional || selectedProfessionalConfigIds.has(config.id))
+      ))
+        ? current
+        : ""
+    ));
+  }, [selectedProfessional, selectedProfessionalConfigIds, selectedService]);
+
+  useEffect(() => {
+    if (manualSearch && !loadInsightsInManualSearch) return;
+
     loadIntelligence().catch(() => null);
-  }, [loadIntelligence]);
+  }, [loadInsightsInManualSearch, loadIntelligence, manualSearch]);
 
   useEffect(() => {
     if (!session || !isAuthenticated) return;
     const timer = window.setInterval(() => {
-      Promise.all([loadAppointments(), loadAvailability(), loadIntelligence()]).catch(() => null);
+      if (manualSearch) {
+        Promise.all([
+          loadAppointments(queryFilters, { reset: false }),
+          loadInsightsInManualSearch ? loadIntelligence() : Promise.resolve()
+        ]).catch(() => null);
+        return;
+      }
+
+      Promise.all([loadAppointments(queryFilters, { reset: false }), loadAvailability(), loadIntelligence()]).catch(() => null);
     }, 60000);
 
     return () => window.clearInterval(timer);
-  }, [isAuthenticated, loadAppointments, loadAvailability, loadIntelligence, session]);
+  }, [isAuthenticated, loadAppointments, loadAvailability, loadInsightsInManualSearch, loadIntelligence, manualSearch, queryFilters, session]);
+
+  const applyFilters = useCallback(async () => {
+    if (!session) return;
+    const nextFilters = draftFilters;
+    setAppliedFilters(nextFilters);
+    setError("");
+    await loadAppointments(nextFilters).catch((err) => {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a agenda.");
+    });
+    if (loadInsightsInManualSearch) {
+      await loadIntelligence().catch(() => null);
+    }
+  }, [draftFilters, loadAppointments, loadInsightsInManualSearch, loadIntelligence, session]);
+
+  const clearFilters = useCallback(() => {
+    const nextFilters: AgendaFilterState = {
+      ...buildInitialFilters(),
+      selectedProfessionalId: shouldUsePersonalAgenda ? meta.profissionais[0]?.id || "" : ""
+    };
+    setDate(nextFilters.date);
+    setSelectedProfessionalId(nextFilters.selectedProfessionalId);
+    setSelectedServiceId("");
+    setSelectedSpecialtyId("");
+    setShowCanceledAppointments(false);
+  }, [meta.profissionais, shouldUsePersonalAgenda]);
 
   async function createAppointment(payload: {
     data_inicio: string;
@@ -236,19 +425,20 @@ export function useAgenda() {
       locale?: string;
     };
   }) {
-    if (!session || !selectedProfessionalId || !selectedServiceId) return null;
+    if (!session || !selectedProfessionalId || !selectedServiceId || !selectedSpecialtyId) return null;
     setIsSaving(true);
     setError("");
     try {
       const appointment = await agendaService.create(session, {
         profissional_id: selectedProfessionalId,
         servico_id: selectedServiceId,
+        especialidade_id: selectedSpecialtyId,
         ...payload
       });
-      await Promise.all([loadAppointments(), loadAvailability()]);
+      await Promise.all([loadAppointments(queryFilters), loadAvailability()]);
       return appointment;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel criar o agendamento.");
+      setError(err instanceof Error ? err.message : "Não foi possível criar o agendamento.");
       return null;
     } finally {
       setIsSaving(false);
@@ -260,7 +450,7 @@ export function useAgenda() {
     setIsSaving(true);
     try {
       await agendaService.confirm(session, id);
-      await Promise.all([loadAppointments(), loadIntelligence()]);
+      await Promise.all([loadAppointments(queryFilters), loadIntelligence()]);
     } finally {
       setIsSaving(false);
     }
@@ -271,7 +461,7 @@ export function useAgenda() {
     setIsSaving(true);
     try {
       await agendaService.cancel(session, id, motivo);
-      await loadAppointments();
+      await loadAppointments(queryFilters);
       await loadAvailability();
       await loadIntelligence();
     } finally {
@@ -288,7 +478,7 @@ export function useAgenda() {
     setIsSaving(true);
     try {
       await agendaService.complete(session, id, motivo, options);
-      await loadAppointments();
+      await loadAppointments(queryFilters);
       await loadAvailability();
       await loadIntelligence();
     } finally {
@@ -301,9 +491,27 @@ export function useAgenda() {
     setIsSaving(true);
     try {
       await agendaService.noShow(session, id, motivo);
-      await loadAppointments();
+      await loadAppointments(queryFilters);
       await loadAvailability();
       await loadIntelligence();
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function rescheduleAppointment(id: string, dataInicio: string, motivo?: string) {
+    if (!session) return null;
+    setIsSaving(true);
+    setError("");
+    try {
+      const appointment = await agendaService.reschedule(session, id, dataInicio, motivo);
+      await loadAppointments(queryFilters);
+      await loadAvailability();
+      await loadIntelligence();
+      return appointment;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "NÃ£o foi possÃ­vel reagendar este atendimento.");
+      return null;
     } finally {
       setIsSaving(false);
     }
@@ -316,27 +524,43 @@ export function useAgenda() {
     setSelectedProfessionalId,
     selectedServiceId,
     setSelectedServiceId,
+    selectedSpecialtyId,
+    setSelectedSpecialtyId,
+    showCanceledAppointments,
+    setShowCanceledAppointments,
+    appliedFilters,
+    appliedDate: appliedFilters.date,
+    hasPendingFilterChanges,
     selectedProfessional,
     selectedService,
+    selectedServiceSpecialties,
+    selectedSpecialty,
     meta: {
       ...meta,
       servicos: meta.servicos
     },
     appointments,
     availability,
+    availabilityConfigKey,
+    availabilityErrorFields,
     analytics,
     signals,
     smartSuggestions: availability?.smart_suggestions || availability?.slots?.slice(0, 3) || [],
     isPersonalAgenda: shouldUsePersonalAgenda,
     isLoading: isLoading || isAuthLoading,
+    isRefreshingAppointments,
+    isRefreshingAvailability,
     isSaving,
     isRefreshingIntelligence,
     error,
     refresh,
+    applyFilters,
+    clearFilters,
     createAppointment,
     confirmAppointment,
     cancelAppointment,
     completeAppointment,
-    noShowAppointment
+    noShowAppointment,
+    rescheduleAppointment
   };
 }

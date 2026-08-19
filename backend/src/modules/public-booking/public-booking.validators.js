@@ -30,6 +30,7 @@ const publicAppointmentSchema = z.object({
   cliente: publicClienteSchema.optional(),
   profissional_id: z.string().uuid(),
   servico_id: z.string().uuid(),
+  especialidade_id: z.string().uuid().optional(),
   data_inicio: z.string().datetime(),
   observacoes: z.string().max(1000).optional(),
   campanha: campaignKeySchema.optional(),

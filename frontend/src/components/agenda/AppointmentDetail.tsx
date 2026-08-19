@@ -50,7 +50,7 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
     try {
       setAppointment(await agendaService.getById(session, id));
     } catch (err) {
-      setLoadError(getErrorMessage(err, "Nao foi possivel carregar os dados do agendamento."));
+      setLoadError(getErrorMessage(err, "Não foi possível carregar os dados do agendamento."));
     } finally {
       if (!options.silent) setIsLoading(false);
     }
@@ -78,7 +78,7 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
     if (!session) return;
     await runAppointmentAction(
       () => agendaService.confirm(session, id).then(() => undefined),
-      "Nao foi possivel confirmar este agendamento."
+      "Não foi possível confirmar este agendamento."
     );
   }
 
@@ -91,15 +91,15 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
     setShowCancellationReason(false);
     await runAppointmentAction(
       () => agendaService.cancel(session, id, motivo).then(() => undefined),
-      "Nao foi possivel cancelar este agendamento."
+      "Não foi possível cancelar este agendamento."
     );
   }
 
   async function complete(options: CompleteAppointmentOptions = {}) {
     if (!session) return;
     await runAppointmentAction(
-      () => agendaService.complete(session, id, "Concluido pelo painel", options).then(() => undefined),
-      "Nao foi possivel concluir este agendamento."
+      () => agendaService.complete(session, id, "Concluído pelo painel", options).then(() => undefined),
+      "Não foi possível concluir este agendamento."
     );
   }
 
@@ -124,7 +124,7 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
     if (!session) return;
     await runAppointmentAction(
       () => agendaService.noShow(session, id, "Cliente nao compareceu").then(() => undefined),
-      "Nao foi possivel marcar nao comparecimento para este agendamento."
+      "Não foi possível marcar não comparecimento para este agendamento."
     );
   }
 
@@ -240,7 +240,7 @@ export function AppointmentDetail({ id }: AppointmentDetailProps) {
       {actionError ? (
         <FeedbackMessage
           tone="error"
-          title="Nao foi possivel concluir a acao"
+          title="Não foi possível concluir a ação"
           message={actionError}
         />
       ) : null}

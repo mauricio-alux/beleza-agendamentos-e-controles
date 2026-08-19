@@ -27,6 +27,19 @@ const COMPLETION_TOLERANCE_MINUTES = Math.max(
   0,
   Number(process.env.APPOINTMENT_COMPLETION_TOLERANCE_MINUTES || 120)
 );
+const { UNAVAILABILITY_REASONS } = agendaEngine;
+
+function buildUnavailabilityErrorDetails(reason, details = {}) {
+  return {
+    unavailability: {
+      predominant_reason: reason,
+      reason_counts: {
+        [reason]: 1
+      },
+      ...details
+    }
+  };
+}
 
 function getDayOfWeek(date) {
   return new Date(`${date}T12:00:00`).getDay();
@@ -57,27 +70,6 @@ function normalizeAgendaListFilters(filters = {}) {
   }
 
   return normalized;
-}
-
-function getServiceDuration(service, professionalService) {
-  return firstPositiveNumber(
-    professionalService?.duracao_minutos,
-    professionalService?.duracao_especifica_minutos,
-    service.duracao_minutos
-  );
-}
-
-function getServicePrice(service, professionalService) {
-  return firstPositiveNumber(
-    professionalService?.preco,
-    professionalService?.preco_especifico,
-    service.preco
-  );
-}
-
-function firstPositiveNumber(...values) {
-  const value = values.find((item) => Number(item) > 0);
-  return value === undefined ? 0 : Number(value);
 }
 
 function getEffectiveAppointmentStatus(appointment) {
@@ -211,6 +203,8 @@ function getPrimaryAppointmentService(appointment) {
 function serializeOperationalAppointment(appointment) {
   const serviceLink = getPrimaryAppointmentService(appointment);
   const service = serviceLink?.servico || null;
+  const tenantService = serviceLink?.servico_tenant || null;
+  const catalog = tenantService?.servico_catalogo || null;
 
   return {
     id: appointment.id,
@@ -229,11 +223,17 @@ function serializeOperationalAppointment(appointment) {
       nome_publico: appointment.profissional.nome_publico,
       cargo: appointment.profissional.cargo
     } : null,
-    servico: service ? {
-      id: service.id,
-      nome: service.nome,
-      preco: service.preco,
-      duracao_minutos: service.duracao_minutos || serviceLink?.duracao_minutos
+    servico: serviceLink ? {
+      id: serviceLink.servico_tenant_id || tenantService?.id || service?.id || null,
+      servico_id_legado: serviceLink.servico_id || service?.id || null,
+      servico_tenant_id: serviceLink.servico_tenant_id || tenantService?.id || null,
+      servico_catalogo_id: serviceLink.servico_catalogo_id || tenantService?.servico_catalogo_id || catalog?.id || null,
+      servico_tenant_especialidade_id: serviceLink.servico_tenant_especialidade_id || null,
+      especialidade_id: serviceLink.especialidade_id || null,
+      nome: serviceLink.nome_servico || catalog?.nome || service?.nome || null,
+      nome_especialidade: serviceLink.nome_especialidade || null,
+      preco: serviceLink.valor_servico ?? service?.preco ?? null,
+      duracao_minutos: serviceLink.duracao_minutos || service?.duracao_minutos || null
     } : null,
     data_inicio: appointment.data_inicio,
     data_fim: appointment.data_fim,
@@ -407,47 +407,140 @@ function normalizeLegacySchedulesForApi(schedules) {
 }
 
 async function getMeta(tenantId, profissionalId = null) {
-  const [profissionais, servicos] = await Promise.all([
+  const [profissionais, servicos, operationalLinks] = await Promise.all([
     agendaRepository.listProfessionals(tenantId, profissionalId),
-    agendaRepository.listServices(tenantId)
+    agendaRepository.listServices(tenantId),
+    agendaRepository.listProfessionalServiceSpecialtyLinks(tenantId, profissionalId)
   ]);
+  const authorizedConfigIdsByProfessional = new Map();
+  const authorizedServiceIdsByProfessional = new Map();
 
-  return { profissionais, servicos };
+  operationalLinks.forEach((link) => {
+    const config = link.servico_tenant_especialidade;
+    const professionalId = link.profissional_id;
+    if (!professionalId || !config?.id || !config.servico_tenant_id) return;
+
+    if (!authorizedConfigIdsByProfessional.has(professionalId)) {
+      authorizedConfigIdsByProfessional.set(professionalId, new Set());
+    }
+    if (!authorizedServiceIdsByProfessional.has(professionalId)) {
+      authorizedServiceIdsByProfessional.set(professionalId, new Set());
+    }
+
+    authorizedConfigIdsByProfessional.get(professionalId).add(config.id);
+    authorizedServiceIdsByProfessional.get(professionalId).add(config.servico_tenant_id);
+  });
+
+  const professionals = profissionais.map((professional) => {
+    const serviceIds = Array.from(authorizedServiceIdsByProfessional.get(professional.id) || []);
+    const serviceSpecialtyIds = Array.from(authorizedConfigIdsByProfessional.get(professional.id) || []);
+
+    return {
+      ...professional,
+      servico_ids: serviceIds,
+      servico_tenant_especialidade_ids: serviceSpecialtyIds
+    };
+  });
+
+  return { profissionais: professionals, servicos };
 }
 
-async function getContext(tenantId, profissionalId, servicoId) {
-  const [profissional, servico, professionalService, settings] = await Promise.all([
+async function resolveServiceSpecialtyForContext(tenantId, profissionalId, servicoId, especialidadeId = null) {
+  const [professionalServiceSpecialtyLinks, serviceSpecialtyLinks] = await Promise.all([
+    agendaRepository.listProfessionalServiceSpecialtyLinks(tenantId, profissionalId),
+    agendaRepository.listServiceSpecialtyLinks(tenantId, servicoId)
+  ]);
+  const professionalConfigIds = new Set(professionalServiceSpecialtyLinks.map((link) => (
+    link.servico_tenant_especialidade_id || link.servico_tenant_especialidade?.id
+  )));
+  const compatibleLinks = serviceSpecialtyLinks.filter((link) => (
+    link.ativo !== false
+    && link.servico_tenant?.ativo !== false
+    && professionalConfigIds.has(link.id)
+  ));
+
+  if (especialidadeId) {
+    const selected = compatibleLinks.find((link) => link.especialidade_id === especialidadeId);
+    if (!selected) {
+      throw new AppError(
+        'Especialidade indisponivel para este profissional e servico.',
+        422,
+        'PROFESSIONAL_SERVICE_SPECIALTY_NOT_LINKED',
+        buildUnavailabilityErrorDetails(UNAVAILABILITY_REASONS.NO_PROFESSIONAL_LINK, {
+          profissional_id: profissionalId,
+          servico_id: servicoId,
+          especialidade_id: especialidadeId
+        })
+      );
+    }
+    return selected;
+  }
+
+  if (compatibleLinks.length > 1) {
+    throw new AppError(
+      'Selecione a especialidade para calcular preco, duracao e disponibilidade.',
+      422,
+      'SERVICE_SPECIALTY_REQUIRED'
+    );
+  }
+
+  return compatibleLinks[0] || null;
+}
+
+async function getContext(tenantId, profissionalId, servicoId, especialidadeId = null) {
+  const [profissional, servico, settings] = await Promise.all([
     agendaRepository.findProfessional(tenantId, profissionalId),
     agendaRepository.findService(tenantId, servicoId),
-    agendaRepository.findProfessionalService(tenantId, profissionalId, servicoId),
     agendaRepository.getTenantSettings(tenantId)
   ]);
 
   if (!profissional) throw notFound('Profissional nao encontrado');
   if (!servico) throw notFound('Servico nao encontrado');
-  if (!professionalService) {
+
+  const serviceSpecialty = await resolveServiceSpecialtyForContext(tenantId, profissionalId, servicoId, especialidadeId);
+  if (!serviceSpecialty) {
     throw new AppError(
-      'Este servico nao esta vinculado ao profissional selecionado.',
+      'Selecione uma especialidade compativel para este profissional e servico.',
       422,
-      'PROFESSIONAL_SERVICE_NOT_LINKED'
+      'PROFESSIONAL_SERVICE_SPECIALTY_REQUIRED',
+      buildUnavailabilityErrorDetails(UNAVAILABILITY_REASONS.NO_MATCHING_SPECIALTY, {
+        profissional_id: profissionalId,
+        servico_id: servicoId,
+        especialidade_id: especialidadeId
+      })
     );
   }
 
-  const composition = serviceComposition.resolveServiceComposition(servico, professionalService);
+  const composition = serviceComposition.resolveServiceComposition(servico, null, [], { serviceSpecialty });
+  const durationMinutes = composition.totalDurationMinutes;
+  if (!durationMinutes) {
+    throw new AppError(
+      'Configure a duracao do servico para a especialidade antes de agendar.',
+      422,
+      'SERVICE_SPECIALTY_DURATION_REQUIRED'
+    );
+  }
+  if (composition.totalPrice === null || composition.totalPrice === undefined) {
+    throw new AppError(
+      'Configure o preco da combinacao antes de agendar.',
+      422,
+      'SERVICE_SPECIALTY_PRICE_REQUIRED'
+    );
+  }
 
   return {
     profissional,
     servico,
-    professionalService,
+    serviceSpecialty,
     settings,
-    durationMinutes: composition.totalDurationMinutes || getServiceDuration(servico, professionalService),
-    price: firstPositiveNumber(composition.totalPrice, getServicePrice(servico, professionalService)),
+    durationMinutes,
+    price: composition.totalPrice,
     composition
   };
 }
 
 async function getAvailability(tenantId, input, options = {}) {
-  const context = await getContext(tenantId, input.profissional_id, input.servico_id);
+  const context = await getContext(tenantId, input.profissional_id, input.servico_id, input.especialidade_id);
   const range = getDayRange(input.data);
   const diaSemana = getDayOfWeek(input.data);
 
@@ -478,6 +571,8 @@ async function getAvailability(tenantId, input, options = {}) {
     data: input.data,
     profissional: context.profissional,
     servico: context.servico,
+    especialidade: context.serviceSpecialty?.especialidade || null,
+    servico_tenant_especialidade_id: context.serviceSpecialty?.id || null,
     duracao_minutos: context.durationMinutes,
     slots: result.available,
     smart_suggestions: result.available.slice(0, 3),
@@ -486,7 +581,8 @@ async function getAvailability(tenantId, input, options = {}) {
       availability_source: scheduleContext.source,
       professional_schedule_ready: true
     },
-    unavailable_reason: result.unavailable_reason
+    unavailable_reason: result.unavailable_reason,
+    unavailability: result.unavailability
   };
 }
 
@@ -541,7 +637,7 @@ async function getOperationalAnalytics(tenantId, filters = {}) {
   const profissionalId = filters.profissional_id || null;
   const diaSemana = getDayOfWeek(date);
   const context = filters.servico_id && profissionalId
-    ? await getContext(tenantId, profissionalId, filters.servico_id)
+    ? await getContext(tenantId, profissionalId, filters.servico_id, filters.especialidade_id)
     : { durationMinutes: 45 };
   const scheduleProfessional = context.profissional || (profissionalId ? await agendaRepository.findProfessional(tenantId, profissionalId) : null);
   const scheduleSettings = context.settings || (profissionalId ? await agendaRepository.getTenantSettings(tenantId) : null);
@@ -609,28 +705,7 @@ async function list(tenantId, filters) {
   await processAutoCompletion(tenantId);
   const normalizedFilters = normalizeAgendaListFilters(filters);
 
-  console.log('[agenda-list-debug] backend request', {
-    tenantId,
-    selected_date: filters?.data || null,
-    received_filters: filters,
-    interval: {
-      data_inicio: normalizedFilters.data_inicio || null,
-      data_fim: normalizedFilters.data_fim || null
-    },
-    profissional_id: normalizedFilters.profissional_id || null,
-    servico_id: normalizedFilters.servico_id || null,
-    status: normalizedFilters.status || null
-  });
-
   const appointments = await agendaRepository.listAppointments(tenantId, normalizedFilters);
-
-  console.log('[agenda-list-debug] backend response', {
-    tenantId,
-    selected_date: filters?.data || null,
-    count: appointments.length,
-    statuses: appointments.map((appointment) => appointment.status),
-    appointment_ids: appointments.map((appointment) => appointment.id)
-  });
 
   return appointments.map(enrichOperationalAlert);
 }
@@ -709,7 +784,8 @@ async function validateSlot(tenantId, input, ignoreAppointmentId = null) {
   const availability = await getAvailability(tenantId, {
     data: date,
     profissional_id: input.profissional_id,
-    servico_id: input.servico_id
+    servico_id: input.servico_id,
+    especialidade_id: input.especialidade_id
   }, { ignoreAppointmentId });
 
   return {
@@ -722,7 +798,7 @@ async function validateSlot(tenantId, input, ignoreAppointmentId = null) {
 
 async function create(tenantId, usuarioId, input, options = {}) {
   const origin = options.origin || 'dashboard';
-  const context = await getContext(tenantId, input.profissional_id, input.servico_id);
+  const context = await getContext(tenantId, input.profissional_id, input.servico_id, input.especialidade_id);
   const { slot } = await validateSlot(tenantId, input);
   const confirmationContext = appointmentSecurity.buildConfirmationContext(context.settings);
   const conflicts = await agendaRepository.listConflicts(
@@ -805,10 +881,18 @@ async function create(tenantId, usuarioId, input, options = {}) {
     },
     {
       tenant_id: tenantId,
-      servico_id: input.servico_id,
+      servico_id: context.composition.services[0]?.servico_id || null,
+      servico_catalogo_id: context.composition.services[0]?.servico_catalogo_id || null,
+      servico_tenant_id: context.composition.services[0]?.servico_tenant_id || input.servico_id,
+      servico_tenant_especialidade_id: context.composition.services[0]?.servico_tenant_especialidade_id || null,
+      especialidade_id: context.composition.services[0]?.especialidade_id || null,
+      servico_especialidade_id: context.composition.services[0]?.servico_especialidade_id || null,
       nome_servico: context.servico.nome,
+      nome_especialidade: context.composition.services[0]?.nome_especialidade || null,
       duracao_minutos: context.durationMinutes,
-      valor_servico: context.price
+      valor_servico: context.price,
+      duracao_origem: context.composition.services[0]?.duracao_origem || null,
+      preco_origem: context.composition.services[0]?.preco_origem || null
     }
   );
 
@@ -1116,7 +1200,8 @@ async function reschedule(tenantId, usuarioId, id, input) {
 
   const { slot } = await validateSlot(tenantId, {
     profissional_id: current.profissional_id,
-    servico_id: service.servico_id,
+    servico_id: service.servico_tenant_id || service.servico_id,
+    especialidade_id: service.especialidade_id,
     data_inicio: input.data_inicio
   }, id);
 
@@ -1262,5 +1347,10 @@ module.exports = {
   listUpcomingClientAppointments,
   confirmByOperationalToken,
   cancelByOperationalToken,
-  rescheduleByOperationalToken
+  rescheduleByOperationalToken,
+  _internal: {
+    addDaysToDateInput,
+    getDayRange,
+    normalizeAgendaListFilters
+  }
 };

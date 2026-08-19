@@ -16,7 +16,7 @@ export function SmartSlotSuggestions({ slots, onSelect }: SmartSlotSuggestionsPr
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-bold text-foreground">
         <Sparkles className="h-4 w-4 text-accent" />
-        Sugestoes inteligentes
+        Horários recomendados
       </div>
       <div className="grid gap-2">
         {slots.slice(0, 3).map((slot) => (
@@ -29,7 +29,7 @@ export function SmartSlotSuggestions({ slots, onSelect }: SmartSlotSuggestionsPr
             <div>
               <p className="font-bold text-foreground">{slot.hora}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Score {slot.ranking_score ?? slot.score}/100
+                {getSuggestionLabel(slot)}
               </p>
             </div>
             <SlotRankingBadge slot={slot} />
@@ -38,4 +38,16 @@ export function SmartSlotSuggestions({ slots, onSelect }: SmartSlotSuggestionsPr
       </div>
     </div>
   );
+}
+
+function getSuggestionLabel(slot: AvailabilitySlot) {
+  if (slot.intelligence?.recommendation === "recommended" || slot.slot_quality === "otimo") {
+    return "Melhor encaixe";
+  }
+
+  if (slot.intelligence?.recommendation === "good" || slot.slot_quality === "bom") {
+    return "Boa opção";
+  }
+
+  return "Horário disponível";
 }

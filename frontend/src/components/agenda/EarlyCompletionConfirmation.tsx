@@ -42,8 +42,8 @@ export function EarlyCompletionConfirmation({
         </div>
 
         <div className="mt-5 grid gap-3 rounded-lg border border-border bg-background/70 p-4 text-sm">
-          <InfoRow label="Horario agendado" value={formatDateTime(scheduledAt)} />
-          <InfoRow label="Horario atual" value={formatDateTime(currentAt.toISOString())} />
+          <InfoRow label="Horário agendado" value={formatDateTime(scheduledAt)} />
+          <InfoRow label="Horário atual" value={formatDateTime(currentAt.toISOString())} />
         </div>
 
         <p className="mt-5 text-sm leading-6 text-foreground">

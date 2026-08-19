@@ -2,17 +2,17 @@ import type { AppointmentStatus } from "@/services/agenda.service";
 
 export const appointmentStatusLabel: Record<AppointmentStatus, string> = {
   solicitado: "Solicitado",
-  pendente: "Aguardando confirmacao",
-  pendente_atendente: "Aguardando profissional",
-  pendente_cliente: "Aguardando Cliente",
+  pendente: "Aguardando confirmação",
+  pendente_atendente: "Aguardando confirmação do estabelecimento",
+  pendente_cliente: "Aguardando confirmação do cliente",
   confirmado: "Confirmado",
   cancelado: "Cancelado",
-  concluido: "Concluido",
-  no_show: "No-show",
+  concluido: "Concluído",
+  no_show: "Cliente não compareceu",
   reagendado: "Reagendado",
   expirado_atendente: "Expirado pelo profissional",
   expirado_cliente: "Expirado pelo cliente",
-  suspeito: "Revisao necessaria"
+  suspeito: "Revisão necessária"
 };
 
 export function getAppointmentStatusLabel(status: string) {
@@ -42,6 +42,12 @@ export function canCompleteAppointment(status: string, intendedStatus?: string) 
 
 export function canMarkNoShowAppointment(status: string, intendedStatus?: string) {
   return ["pendente_cliente", "confirmado"].includes(resolveAppointmentStatus(status, intendedStatus));
+}
+
+export function canRescheduleAppointment(status: string, intendedStatus?: string) {
+  return ["pendente", "pendente_atendente", "pendente_cliente", "confirmado"].includes(
+    resolveAppointmentStatus(status, intendedStatus)
+  );
 }
 
 export function canMarkNoShowNow(status: string, dataInicio: string, intendedStatus?: string, now = new Date()) {

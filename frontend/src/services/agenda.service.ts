@@ -7,19 +7,39 @@ export type Professional = {
   nome_publico: string | null;
   cargo?: string | null;
   servico_ids?: string[];
+  especialidade_ids?: string[];
+  servico_tenant_especialidade_ids?: string[];
 };
 
 export type Service = {
   id: string;
+  servico_tenant_id?: string;
+  servico_catalogo_id?: string;
+  codigo_canonico?: string;
   nome: string;
-  duracao_minutos: number;
-  preco: number;
+  duracao_minutos: number | null;
+  preco: number | null;
   categoria?: string | null;
+  natureza?: string | null;
+  especialidades_config?: Array<{
+    id: string;
+    especialidade_id: string;
+    nome?: string | null;
+    taxonomy_category_key?: string | null;
+    duracao_minutos: number | null;
+    preco: number | null;
+    dias_retorno_recomendado?: number | null;
+  }>;
 };
 
 export type AppointmentService = {
-  servico_id: string;
+  servico_id?: string | null;
+  servico_tenant_id?: string | null;
+  servico_catalogo_id?: string | null;
+  servico_tenant_especialidade_id?: string | null;
+  especialidade_id?: string | null;
   nome_servico: string;
+  nome_especialidade?: string | null;
   duracao_minutos: number;
   valor_servico: number;
   servico?: {
@@ -100,6 +120,25 @@ export type AvailabilityResponse = {
     ai_ready: boolean;
   };
   unavailable_reason: string | null;
+  unavailability?: {
+    predominant_reason:
+      | "minimum_notice"
+      | "outside_working_hours"
+      | "service_duration"
+      | "schedule_conflict"
+      | "professional_unavailable"
+      | "blocked_time"
+      | "missing_scale"
+      | "no_matching_specialty"
+      | "no_professional_link"
+      | "other";
+    reason_counts?: Record<string, number>;
+    total_candidates?: number;
+    minimum_notice_minutes?: number;
+    service_duration_minutes?: number;
+    latest_work_end?: string | null;
+    earliest_start?: string | null;
+  } | null;
 };
 
 export type AgendaAnalytics = {
@@ -177,7 +216,7 @@ type ApiEnvelope<T> = {
 
 function friendlyError(status: number, code?: string) {
   if (status === 409 || code === "SLOT_UNAVAILABLE" || code === "APPOINTMENT_CONFLICT") {
-    return "Horario indisponivel.";
+    return "Horário indisponível.";
   }
 
   if (status === 422) {
@@ -192,7 +231,7 @@ function friendlyError(status: number, code?: string) {
     return "Limite de solicitacoes atingido para este cliente.";
   }
 
-  return "Nao foi possivel concluir a operacao. Tente novamente.";
+  return "Não foi possível concluir a operação. Tente novamente.";
 }
 
 async function request<T>(session: AuthSession | null, path: string, init: RequestInit = {}) {
@@ -237,6 +276,44 @@ function qs(params: Record<string, string | undefined>) {
   return value ? `?${value}` : "";
 }
 
+const TENANT_LOCAL_TIME_ZONE = "America/Sao_Paulo";
+
+function slotLocalSortValue(slot: AvailabilitySlot) {
+  const date = new Date(slot.inicio);
+
+  if (!Number.isNaN(date.getTime())) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: TENANT_LOCAL_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+    return hour * 60 + minute;
+  }
+
+  const [hour, minute] = slot.hora.split(":").map(Number);
+  return (hour || 0) * 60 + (minute || 0);
+}
+
+function sortSlotsByTenantLocalTime(slots: AvailabilitySlot[] = []) {
+  return [...slots].sort((left, right) => (
+    slotLocalSortValue(left) - slotLocalSortValue(right)
+    || left.inicio.localeCompare(right.inicio)
+  ));
+}
+
+function normalizeAvailability(data: AvailabilityResponse) {
+  const sortedSlots = sortSlotsByTenantLocalTime(data.slots || []);
+
+  return {
+    ...data,
+    slots: sortedSlots,
+    smart_suggestions: sortSlotsByTenantLocalTime(data.smart_suggestions || sortedSlots.slice(0, 3))
+  };
+}
+
 async function getMeta(session: AuthSession | null) {
   return request<AgendaMeta>(session, "/agenda/meta");
 }
@@ -258,24 +335,25 @@ async function updateProfessionalSchedule(
 
 async function getAvailability(
   session: AuthSession | null,
-  params: { data: string; profissional_id: string; servico_id: string }
+  params: { data: string; profissional_id: string; servico_id: string; especialidade_id?: string }
 ) {
-  return request<AvailabilityResponse>(
+  const data = await request<AvailabilityResponse>(
     session,
     `/agenda/disponibilidade${qs(params)}`
   );
+  return normalizeAvailability(data);
 }
 
 async function getAnalytics(
   session: AuthSession | null,
-  params: { data?: string; profissional_id?: string; servico_id?: string }
+  params: { data?: string; profissional_id?: string; servico_id?: string; especialidade_id?: string }
 ) {
   return request<AgendaAnalytics>(session, `/agenda/analytics${qs(params)}`);
 }
 
 async function getSignals(
   session: AuthSession | null,
-  params: { data?: string; profissional_id?: string; servico_id?: string }
+  params: { data?: string; profissional_id?: string; servico_id?: string; especialidade_id?: string }
 ) {
   return request<AgendaSignals>(session, `/agenda/signals${qs(params)}`);
 }
@@ -288,6 +366,7 @@ async function list(
     data_fim?: string;
     profissional_id?: string;
     servico_id?: string;
+    especialidade_id?: string;
     status?: string;
   }
 ) {
@@ -303,6 +382,7 @@ async function create(
   payload: {
     profissional_id: string;
     servico_id: string;
+    especialidade_id?: string;
     data_inicio: string;
     cliente: {
       nome: string;

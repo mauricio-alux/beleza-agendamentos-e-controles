@@ -30,6 +30,7 @@ export type PublicAvailability = {
 export type PublicAppointmentInput = {
   profissional_id: string;
   servico_id: string;
+  especialidade_id?: string;
   data_inicio: string;
   cliente?: {
     nome: string;
@@ -81,6 +82,9 @@ export type PublicOperationalAppointment = {
   } | null;
   servico?: {
     id: string;
+    servico_tenant_id?: string | null;
+    especialidade_id?: string | null;
+    nome_especialidade?: string | null;
     nome: string;
     preco?: number | null;
     duracao_minutos?: number | null;
@@ -171,7 +175,7 @@ export function getPublicBookingCatalog(slug: string) {
 
 export function getPublicAvailability(
   slug: string,
-  input: { data: string; profissional_id: string; servico_id: string }
+  input: { data: string; profissional_id: string; servico_id: string; especialidade_id?: string }
 ) {
   const search = new URLSearchParams(input);
   return request<PublicAvailability>(

@@ -10,7 +10,7 @@ const CANCELLATION_REASONS = [
   "Cliente solicitou alteracao",
   "Erro no agendamento",
   "Servico indisponivel",
-  "Horario indisponivel",
+  "Horário indisponível",
   "Problema operacional do salao",
   "Outro motivo"
 ];

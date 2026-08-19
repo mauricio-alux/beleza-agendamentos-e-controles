@@ -11,7 +11,7 @@ export function SlotRankingBadge({ slot }: SlotRankingBadgeProps) {
     otimo: "Otimo encaixe",
     bom: "Bom",
     regular: "Regular",
-    baixo: "Disponivel"
+    baixo: "Disponível"
   }[quality];
 
   return (

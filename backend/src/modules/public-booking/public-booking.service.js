@@ -2,9 +2,6 @@ const agendaService = require('../agenda/agenda.service');
 const repository = require('./public-booking.repository');
 const clientIdentityService = require('./client-identity.service');
 const { AppError, notFound } = require('../../utils/errors');
-const {
-  classifyServiceAvailability
-} = require('./booking-catalog-policy');
 
 async function resolveLink(slug) {
   const link = await repository.findActiveLink(slug);
@@ -30,51 +27,54 @@ async function getCatalog(slug) {
   ]);
   const professionalIds = professionals.map((professional) => professional.id);
   const userIds = professionals.map((professional) => professional.usuario_id).filter(Boolean);
-  const [professionalServices, memberships] = await Promise.all([
-    repository.listProfessionalServices(tenant.id, professionalIds),
+  const [professionalSpecialties, memberships] = await Promise.all([
+    repository.listProfessionalSpecialties(tenant.id, professionalIds),
     repository.listActiveMemberships(tenant.id, userIds)
   ]);
   const activeMembershipUserIds = new Set(memberships.map((membership) => membership.usuario_id));
-  const serviceById = new Map(services.map((service) => [service.id, service]));
-  const serviceIdsByProfessional = new Map();
-
-  professionalServices.forEach((linkItem) => {
-    const service = serviceById.get(linkItem.servico_id);
-    if (!service) return;
-    if (!serviceIdsByProfessional.has(linkItem.profissional_id)) {
-      serviceIdsByProfessional.set(linkItem.profissional_id, new Set());
-    }
-    serviceIdsByProfessional.get(linkItem.profissional_id).add(linkItem.servico_id);
-  });
+  const specialtyIdsByProfessional = new Map();
 
   const operationalProfessionalIds = new Set(professionals
     .filter((professional) => (
       !professional.usuario_id || activeMembershipUserIds.has(professional.usuario_id)
     ))
     .map((professional) => professional.id));
-  const {
-    eligibleServiceIds,
-    unavailableServices
-  } = classifyServiceAvailability({
-    services,
-    professionalServices,
-    eligibleProfessionalIds: operationalProfessionalIds
+
+  professionalSpecialties.forEach((linkItem) => {
+    if (!operationalProfessionalIds.has(linkItem.profissional_id)) return;
+    if (!specialtyIdsByProfessional.has(linkItem.profissional_id)) {
+      specialtyIdsByProfessional.set(linkItem.profissional_id, new Set());
+    }
+    specialtyIdsByProfessional.get(linkItem.profissional_id).add(linkItem.especialidade_id);
   });
+
+  const serviceIdsByProfessional = new Map();
+  services.forEach((service) => {
+    const configs = (service.especialidades_config || []).filter((config) => (
+      config.ativo !== false
+      && config.aceita_agendamento_online !== false
+      && Number(config.duracao_minutos) > 0
+      && config.preco !== null
+      && config.preco !== undefined
+    ));
+    professionals.forEach((professional) => {
+      const professionalSpecialtyIds = specialtyIdsByProfessional.get(professional.id) || new Set();
+      if (configs.some((config) => professionalSpecialtyIds.has(config.especialidade_id))) {
+        if (!serviceIdsByProfessional.has(professional.id)) {
+          serviceIdsByProfessional.set(professional.id, new Set());
+        }
+        serviceIdsByProfessional.get(professional.id).add(service.id);
+      }
+    });
+  });
+
   const eligibleProfessionals = professionals.filter((professional) => (
     operationalProfessionalIds.has(professional.id)
-    && [...(serviceIdsByProfessional.get(professional.id) || [])].some((serviceId) => (
-      eligibleServiceIds.has(serviceId)
-    ))
+    && (serviceIdsByProfessional.get(professional.id) || new Set()).size > 0
   ));
+  const eligibleServiceIds = new Set(eligibleProfessionals.flatMap((professional) => [...(serviceIdsByProfessional.get(professional.id) || [])]));
   const eligibleServices = services.filter((service) => eligibleServiceIds.has(service.id));
-
-  if (unavailableServices.length) {
-    console.warn('[public-booking] online services unavailable', {
-      tenant_id: tenant.id,
-      slug,
-      services: unavailableServices
-    });
-  }
+  const unavailableServices = services.filter((service) => !eligibleServiceIds.has(service.id));
 
   return {
     tenant: {
@@ -96,14 +96,33 @@ async function getCatalog(slug) {
       id: professional.id,
       nome_publico: professional.nome_publico,
       cargo: professional.cargo,
-      servico_ids: [...serviceIdsByProfessional.get(professional.id)]
+      servico_ids: [...(serviceIdsByProfessional.get(professional.id) || [])],
+      especialidade_ids: [...(specialtyIdsByProfessional.get(professional.id) || [])]
     })),
     servicos: eligibleServices.map((service) => ({
       id: service.id,
+      servico_tenant_id: service.id,
+      servico_catalogo_id: service.servico_catalogo_id,
+      codigo_canonico: service.codigo_canonico,
       nome: service.nome,
       duracao_minutos: service.duracao_minutos,
       preco: service.preco,
-      categoria: service.categoria
+      categoria: service.categoria,
+      natureza: service.natureza,
+      especialidades_config: (service.especialidades_config || []).filter((linkItem) => (
+        linkItem.ativo !== false
+        && linkItem.aceita_agendamento_online !== false
+        && Number(linkItem.duracao_minutos) > 0
+        && linkItem.preco !== null
+        && linkItem.preco !== undefined
+      )).map((linkItem) => ({
+        id: linkItem.id,
+        especialidade_id: linkItem.especialidade_id,
+        nome: linkItem.especialidade?.nome || null,
+        duracao_minutos: linkItem.duracao_minutos,
+        preco: linkItem.preco,
+        dias_retorno_recomendado: linkItem.dias_retorno_recomendado ?? null
+      }))
     }))
   };
 }
@@ -111,9 +130,22 @@ async function getCatalog(slug) {
 async function assertPublicSelection(slug, input) {
   const catalog = await getCatalog(slug);
   const professional = catalog.profissionais.find((item) => item.id === input.profissional_id);
+  const service = catalog.servicos.find((item) => item.id === input.servico_id);
 
   if (!professional || !professional.servico_ids.includes(input.servico_id)) {
     throw new AppError('Servico indisponivel para este profissional', 422, 'PUBLIC_BOOKING_SELECTION_INVALID');
+  }
+  const professionalServiceSpecialties = (service?.especialidades_config || []).filter((item) => (
+    professional.especialidade_ids.includes(item.especialidade_id)
+  ));
+  if (professionalServiceSpecialties.length > 1 && !input.especialidade_id) {
+    throw new AppError('Selecione a especialidade para este servico.', 422, 'PUBLIC_BOOKING_SPECIALTY_REQUIRED');
+  }
+  if (input.especialidade_id) {
+    const serviceSpecialty = service?.especialidades_config?.find((item) => item.especialidade_id === input.especialidade_id);
+    if (!serviceSpecialty || !professional.especialidade_ids.includes(input.especialidade_id)) {
+      throw new AppError('Especialidade indisponivel para este profissional e servico', 422, 'PUBLIC_BOOKING_SPECIALTY_INVALID');
+    }
   }
 
   return catalog;

@@ -3,21 +3,26 @@ function firstPositiveNumber(...values) {
   return value === undefined ? 0 : Number(value);
 }
 
-function resolveServiceComposition(primaryService, professionalService = null, additionalServices = []) {
+function resolveServiceComposition(primaryService, professionalService = null, additionalServices = [], options = {}) {
+  const serviceSpecialty = options.serviceSpecialty || null;
+  const durationMinutes = firstPositiveNumber(serviceSpecialty?.duracao_minutos);
+  const servicePrice = serviceSpecialty?.preco ?? null;
   const services = [
     {
-      servico_id: primaryService.id,
+      servico_id: null,
+      servico_tenant_id: primaryService.servico_tenant_id || primaryService.id,
+      servico_catalogo_id: primaryService.servico_catalogo_id || null,
+      especialidade_id: serviceSpecialty?.especialidade_id || null,
+      servico_especialidade_id: null,
+      servico_tenant_especialidade_id: serviceSpecialty?.id || null,
+      nome_especialidade: serviceSpecialty?.especialidade?.nome || null,
       nome_servico: primaryService.nome,
-      duracao_minutos: firstPositiveNumber(
-        professionalService?.duracao_minutos,
-        professionalService?.duracao_especifica_minutos,
-        primaryService.duracao_minutos
-      ),
-      valor_servico: firstPositiveNumber(
-        professionalService?.preco,
-        professionalService?.preco_especifico,
-        primaryService.preco
-      )
+      duracao_minutos: durationMinutes,
+      valor_servico: servicePrice,
+      duracao_origem: serviceSpecialty?.duracao_minutos ? 'servico_tenant_especialidade' : null,
+      preco_origem: serviceSpecialty?.preco !== null && serviceSpecialty?.preco !== undefined
+        ? 'servico_tenant_especialidade'
+        : null
     },
     ...additionalServices
   ];
@@ -25,7 +30,9 @@ function resolveServiceComposition(primaryService, professionalService = null, a
   return {
     services,
     totalDurationMinutes: services.reduce((total, service) => total + Number(service.duracao_minutos || 0), 0),
-    totalPrice: services.reduce((total, service) => total + Number(service.valor_servico || 0), 0),
+    totalPrice: services.some((service) => service.valor_servico === null || service.valor_servico === undefined)
+      ? null
+      : services.reduce((total, service) => total + Number(service.valor_servico || 0), 0),
     multi_service_ready: true,
     multi_professional_ready: false
   };

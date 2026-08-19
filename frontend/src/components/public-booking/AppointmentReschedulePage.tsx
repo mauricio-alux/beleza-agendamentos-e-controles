@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PublicBackButton } from "@/components/public-booking/PublicBackButton";
 import {
   getPublicAppointmentByToken,
   getPublicAvailability,
@@ -70,7 +71,7 @@ export function AppointmentReschedulePage({ token = "" }: Props) {
           }
         }
       })
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Nao foi possivel localizar o agendamento."))
+      .catch((err) => active && setError(err instanceof Error ? err.message : "Não foi possível localizar o agendamento."))
       .finally(() => active && setLoading(false));
 
     return () => {
@@ -92,10 +93,11 @@ export function AppointmentReschedulePage({ token = "" }: Props) {
     getPublicAvailability(appointment.tenant.slug, {
       data: date,
       profissional_id: appointment.profissional.id,
-      servico_id: appointment.servico.id
+      servico_id: appointment.servico.id,
+      especialidade_id: appointment.servico.especialidade_id || undefined
     })
       .then((data) => active && setSlots(data.availability.slots || []))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Nao foi possivel carregar horarios."))
+      .catch((err) => active && setError(err instanceof Error ? err.message : "Não foi possível carregar horários."))
       .finally(() => active && setLoadingSlots(false));
 
     return () => {
@@ -131,7 +133,7 @@ export function AppointmentReschedulePage({ token = "" }: Props) {
       setAppointment(data);
       setMessage("Agendamento reagendado com sucesso. O novo horario aguardara confirmacao.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel reagendar.");
+      setError(err instanceof Error ? err.message : "Não foi possível reagendar.");
     } finally {
       setSubmitting(false);
     }
@@ -153,16 +155,8 @@ export function AppointmentReschedulePage({ token = "" }: Props) {
 
       <section className="mx-auto max-w-5xl px-5 py-10">
         <div className="rounded-lg border border-primary/20 bg-white p-6 shadow-soft">
-          {bookingReturnUrl ? (
-            <Link
-              href={bookingReturnUrl}
-              className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-bold transition hover:border-primary hover:text-primary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar para agendamento
-            </Link>
-          ) : null}
-          <p className={`${bookingReturnUrl ? "mt-5" : ""} text-xs font-bold uppercase text-accent`}>Reagendamento</p>
+          <PublicBackButton fallbackHref={bookingReturnUrl || "/"} label="Voltar" />
+          <p className="mt-5 text-xs font-bold uppercase text-accent">Reagendamento</p>
           <h1 className="mt-2 font-display text-4xl">Escolha um novo horario</h1>
 
           {loading ? (
@@ -229,7 +223,7 @@ export function AppointmentReschedulePage({ token = "" }: Props) {
 
               <aside className="h-fit rounded-lg border border-primary/20 bg-white p-5 shadow-soft">
                 <p className="text-xs font-bold uppercase text-accent">Resumo</p>
-                <h2 className="mt-2 text-xl font-bold">{appointment.tenant.nome_fantasia || "Salao"}</h2>
+                <h2 className="mt-2 text-xl font-bold">{appointment.tenant.nome_fantasia || "Salão"}</h2>
                 <p className="mt-4 text-sm text-muted-foreground">
                   Novo horario: {slot ? formatDate(slot) : "selecione um horario"}
                 </p>

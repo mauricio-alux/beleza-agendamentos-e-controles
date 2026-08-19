@@ -2,18 +2,19 @@ const { supabaseAdmin } = require('../../config/supabase');
 const { isAdministrativeProfessional } = require('../../constants/team-professional-roles');
 
 const ACTIVE_APPOINTMENT_STATUSES = ['pendente', 'pendente_atendente', 'pendente_cliente', 'confirmado', 'suspeito'];
+const APPOINTMENT_SERVICE_SELECT = 'servicos:agendamento_servicos(*, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id, codigo_canonico, nome, categoria_key, natureza)))';
 const APPOINTMENT_OPERATIONAL_SELECT = `
   *,
   cliente:clientes(*),
   profissional:profissionais(*),
-  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+  ${APPOINTMENT_SERVICE_SELECT}
 `;
 const APPOINTMENT_OPERATIONAL_SELECT_WITH_TENANT = `
   *,
   tenant:tenants(id, slug, nome_fantasia),
   cliente:clientes(*),
   profissional:profissionais(*),
-  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+  ${APPOINTMENT_SERVICE_SELECT}
 `;
 
 function isMissingAdvancedScheduleTable(error) {
@@ -28,13 +29,58 @@ function isMissingEmbeddedRelation(error) {
   return ['PGRST200', 'PGRST201', 'PGRST204', 'PGRST205'].includes(error?.code);
 }
 
+function normalizeStatusFilter(status) {
+  if (!status) return [];
+  if (Array.isArray(status)) return status.filter(Boolean);
+  return String(status)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeTenantService(row) {
+  const catalog = row.servico_catalogo || {};
+  const configs = (row.especialidades_config || []).filter((item) => (
+    item
+    && item.ativo !== false
+    && item.especialidade?.ativo !== false
+    && !item.especialidade?.deleted_at
+  )).map((item) => ({
+    ...item,
+    nome: item.especialidade?.nome || null,
+    taxonomy_category_key: item.especialidade?.taxonomy_category_key || null
+  }));
+  const firstConfig = configs[0] || {};
+
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    servico_tenant_id: row.id,
+    servico_catalogo_id: row.servico_catalogo_id,
+    codigo_canonico: catalog.codigo_canonico,
+    nome: catalog.nome,
+    descricao: catalog.descricao,
+    categoria: catalog.categoria_key,
+    taxonomy_category_key: catalog.categoria_key,
+    natureza: catalog.natureza,
+    ativo: row.ativo !== false,
+    permite_online: configs.some((item) => item.aceita_agendamento_online !== false),
+    duracao_minutos: firstConfig.duracao_minutos ?? null,
+    preco: firstConfig.preco ?? null,
+    metadata: row.metadata || {},
+    catalogo_metadata: catalog.metadata || {},
+    especialidade_ids: configs.map((item) => item.especialidade_id),
+    especialidades_config: configs
+  };
+}
+
 async function listProfessionals(tenantId, profissionalId = null) {
   let query = supabaseAdmin
     .from('profissionais')
     .select(`
       *,
-      profissional_servicos(
-        servico_id,
+      profissional_especialidades(
+        especialidade_id,
         ativo,
         deleted_at
       )
@@ -55,27 +101,41 @@ async function listProfessionals(tenantId, profissionalId = null) {
     .filter((professional) => !isAdministrativeProfessional(professional.metadata?.tipo_usuario))
     .map((professional) => ({
       ...professional,
-      servico_ids: (professional.profissional_servicos || [])
+      especialidade_ids: (professional.profissional_especialidades || [])
         .filter((link) => link.ativo !== false && !link.deleted_at)
-        .map((link) => link.servico_id)
+        .map((link) => link.especialidade_id)
     }));
 }
 
 async function listServices(tenantId) {
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('*')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      metadata,
+      servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,descricao,categoria_key,natureza,ativo,metadata),
+      especialidades_config:servico_tenant_especialidades(
+        id,
+        servico_tenant_id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        metadata,
+        especialidade:especialidades(id,nome,taxonomy_category_key,ativo,deleted_at)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('ativo', true)
-    .is('deleted_at', null)
-    .order('ordem_exibicao', { ascending: true });
+    .order('created_at', { ascending: true });
 
   if (error) throw error;
-  if (data && isAdministrativeProfessional(data.metadata?.tipo_usuario)) {
-    return null;
-  }
-
-  return data;
+  return (data || []).map(normalizeTenantService);
 }
 
 async function findProfessional(tenantId, profissionalId) {
@@ -94,31 +154,109 @@ async function findProfessional(tenantId, profissionalId) {
 
 async function findService(tenantId, servicoId) {
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('*')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      metadata,
+      servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,descricao,categoria_key,natureza,ativo,metadata),
+      especialidades_config:servico_tenant_especialidades(
+        id,
+        servico_tenant_id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        metadata,
+        especialidade:especialidades(id,nome,taxonomy_category_key,ativo,deleted_at)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('id', servicoId)
     .eq('ativo', true)
-    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) throw error;
-  return data;
+  return data ? normalizeTenantService(data) : null;
 }
 
-async function findProfessionalService(tenantId, profissionalId, servicoId) {
+async function listProfessionalSpecialtyIds(tenantId, profissionalId) {
   const { data, error } = await supabaseAdmin
-    .from('profissional_servicos')
-    .select('*')
+    .from('profissional_especialidades')
+    .select('especialidade_id')
     .eq('tenant_id', tenantId)
     .eq('profissional_id', profissionalId)
-    .eq('servico_id', servicoId)
     .eq('ativo', true)
-    .is('deleted_at', null)
-    .maybeSingle();
+    .is('deleted_at', null);
 
   if (error) throw error;
-  return data;
+  return (data || []).map((item) => item.especialidade_id).filter(Boolean);
+}
+
+async function listProfessionalServiceSpecialtyLinks(tenantId, profissionalId = null) {
+  let query = supabaseAdmin
+    .from('profissional_servico_especialidades')
+    .select(`
+      id,
+      tenant_id,
+      profissional_id,
+      servico_tenant_especialidade_id,
+      ativo,
+      deleted_at,
+      servico_tenant_especialidade:servico_tenant_especialidades!inner(
+        id,
+        servico_tenant_id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        metadata,
+        servico_tenant:servico_tenants!inner(id,tenant_id,servico_catalogo_id,ativo),
+        especialidade:especialidades(id,nome,taxonomy_category_key,ativo,deleted_at)
+      )
+    `)
+    .eq('tenant_id', tenantId)
+    .eq('ativo', true)
+    .is('deleted_at', null)
+    .eq('servico_tenant_especialidade.ativo', true)
+    .eq('servico_tenant_especialidade.servico_tenant.tenant_id', tenantId)
+    .eq('servico_tenant_especialidade.servico_tenant.ativo', true);
+
+  if (profissionalId) {
+    query = query.eq('profissional_id', profissionalId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data || []).filter((item) => {
+    const config = item.servico_tenant_especialidade;
+    return config
+      && config.especialidade?.ativo !== false
+      && !config.especialidade?.deleted_at;
+  });
+}
+
+async function listServiceSpecialtyLinks(tenantId, servicoId) {
+  const { data, error } = await supabaseAdmin
+    .from('servico_tenant_especialidades')
+    .select(`
+      *,
+      servico_tenant:servico_tenants!inner(id,tenant_id,servico_catalogo_id,ativo),
+      especialidade:especialidades(id,nome,taxonomy_category_key,ativo,deleted_at)
+    `)
+    .eq('servico_tenant.tenant_id', tenantId)
+    .eq('servico_tenant_id', servicoId)
+    .eq('ativo', true);
+
+  if (error) throw error;
+  return (data || []).filter((item) => item.especialidade?.ativo !== false && !item.especialidade?.deleted_at);
 }
 
 async function getTenantSettings(tenantId) {
@@ -313,32 +451,34 @@ async function replaceLegacyWeeklySchedule(tenantId, profissionalId, schedules) 
 async function listAppointments(tenantId, filters = {}) {
   let appointmentIdsByService = null;
 
-  if (filters.servico_id) {
+  if (filters.servico_id || filters.especialidade_id) {
     const { data: serviceLinks, error: serviceLinkError } = await supabaseAdmin
       .from('agendamento_servicos')
-      .select('agendamento_id')
+      .select('agendamento_id, servico_id, servico_tenant_id, servico_catalogo_id, especialidade_id')
       .eq('tenant_id', tenantId)
-      .eq('servico_id', filters.servico_id)
       .eq('ativo', true)
       .is('deleted_at', null);
 
+    let scopedLinks = serviceLinks || [];
+    if (filters.servico_id) {
+      scopedLinks = scopedLinks.filter((item) => (
+        item.servico_tenant_id === filters.servico_id
+        || item.servico_id === filters.servico_id
+        || item.servico_catalogo_id === filters.servico_id
+      ));
+    }
+    if (filters.especialidade_id) {
+      scopedLinks = scopedLinks.filter((item) => item.especialidade_id === filters.especialidade_id);
+    }
+
     if (serviceLinkError) throw serviceLinkError;
 
-    appointmentIdsByService = [...new Set((serviceLinks || []).map((item) => item.agendamento_id).filter(Boolean))];
+    appointmentIdsByService = [...new Set(scopedLinks.map((item) => item.agendamento_id).filter(Boolean))];
 
     if (!appointmentIdsByService.length) {
       return [];
     }
   }
-
-  console.log('[agenda-list-debug] repository filters', {
-    tenantId,
-    data_inicio: filters.data_inicio || null,
-    data_fim: filters.data_fim || null,
-    profissional_id: filters.profissional_id || null,
-    servico_id: filters.servico_id || null,
-    status: filters.status || null
-  });
 
   let query = supabaseAdmin
     .from('agendamentos')
@@ -346,7 +486,7 @@ async function listAppointments(tenantId, filters = {}) {
       *,
       cliente:clientes(*),
       profissional:profissionais(*),
-      servicos:agendamento_servicos(*, servico:servicos(id, nome, preco))
+      ${APPOINTMENT_SERVICE_SELECT}
     `)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -356,7 +496,10 @@ async function listAppointments(tenantId, filters = {}) {
   if (filters.data_fim) query = query.lt('data_inicio', filters.data_fim);
   if (filters.profissional_id) query = query.eq('profissional_id', filters.profissional_id);
   if (appointmentIdsByService) query = query.in('id', appointmentIdsByService);
-  if (filters.status) query = query.eq('status', filters.status);
+
+  const statusFilter = normalizeStatusFilter(filters.status);
+  if (statusFilter.length === 1) query = query.eq('status', statusFilter[0]);
+  if (statusFilter.length > 1) query = query.in('status', statusFilter);
 
   const { data, error } = await query;
   if (error) throw error;
@@ -370,7 +513,7 @@ async function findAppointmentById(tenantId, id) {
       *,
       cliente:clientes(*),
       profissional:profissionais(*),
-      servicos:agendamento_servicos(*, servico:servicos(id, nome, preco))
+      ${APPOINTMENT_SERVICE_SELECT}
     `)
     .eq('tenant_id', tenantId)
     .eq('id', id)
@@ -445,7 +588,7 @@ async function listAutoCompletableAppointments(tenantId, cutoffIso, limit = 100)
       *,
       cliente:clientes(*),
       profissional:profissionais(*),
-      servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+      ${APPOINTMENT_SERVICE_SELECT}
     `)
     .eq('tenant_id', tenantId)
     .in('status', ['pendente_cliente', 'confirmado'])
@@ -697,17 +840,27 @@ async function createNoShowRecord(payload) {
 
 function getPrimaryServiceContext(appointment) {
   const serviceLink = appointment.servicos?.[0] || null;
-  const service = serviceLink?.servico || null;
-  const serviceId = serviceLink?.servico_id || service?.id || null;
-  const serviceName = serviceLink?.nome_servico || service?.nome || null;
-  const serviceValue = Number(appointment.valor_total || serviceLink?.valor_servico || service?.preco || 0);
+  const tenantService = serviceLink?.servico_tenant || null;
+  const serviceCatalog = tenantService?.servico_catalogo || null;
+  const serviceTenantId = serviceLink?.servico_tenant_id || tenantService?.id || null;
+  const serviceCatalogId = serviceLink?.servico_catalogo_id || tenantService?.servico_catalogo_id || serviceCatalog?.id || null;
+  const serviceConfigId = serviceLink?.servico_tenant_especialidade_id || null;
+  const serviceName = serviceLink?.nome_servico || serviceCatalog?.nome || null;
+  const serviceValue = Number(appointment.valor_total || serviceLink?.valor_servico || 0);
+  const durationMinutes = Number(serviceLink?.duracao_minutos || 0) || null;
 
   return {
     serviceLink,
-    service,
-    serviceId,
+    serviceId: null,
+    serviceTenantId,
+    serviceCatalogId,
+    serviceConfigId,
     serviceName,
-    serviceValue
+    serviceValue,
+    durationMinutes,
+    specialtyId: serviceLink?.especialidade_id || null,
+    serviceSpecialtyId: serviceLink?.servico_especialidade_id || null,
+    specialtyName: serviceLink?.nome_especialidade || null
   };
 }
 
@@ -732,16 +885,30 @@ async function upsertClientAppointmentHistory(appointment, status, options = {})
     cliente_id: appointment.cliente_id,
     agendamento_id: appointment.id,
     profissional_id: appointment.profissional_id,
-    servico_id: serviceContext.serviceId,
+    servico_id: null,
+    servico_catalogo_id: serviceContext.serviceCatalogId,
+    servico_tenant_id: serviceContext.serviceTenantId,
+    servico_tenant_especialidade_id: serviceContext.serviceConfigId,
+    especialidade_id: serviceContext.specialtyId,
+    servico_especialidade_id: serviceContext.serviceSpecialtyId,
+    nome_especialidade: serviceContext.specialtyName,
     status,
     data_atendimento: appointmentDate,
     valor_servico: serviceContext.serviceValue,
+    duracao_minutos: serviceContext.durationMinutes,
     origem: options.origem || 'agenda',
     metadata: {
       ...(existing?.metadata || {}),
       profissional_id: appointment.profissional_id,
-      servico_id: serviceContext.serviceId,
+      servico_id: null,
+      servico_catalogo_id: serviceContext.serviceCatalogId,
+      servico_tenant_id: serviceContext.serviceTenantId,
+      servico_tenant_especialidade_id: serviceContext.serviceConfigId,
       nome_servico: serviceContext.serviceName,
+      especialidade_id: serviceContext.specialtyId,
+      servico_especialidade_id: serviceContext.serviceSpecialtyId,
+      nome_especialidade: serviceContext.specialtyName,
+      duracao_minutos: serviceContext.durationMinutes,
       data_atendimento: appointmentDate,
       valor_servico: serviceContext.serviceValue,
       last_synced_at: new Date().toISOString()
@@ -774,7 +941,7 @@ async function updateClientHistoryForCompletedAppointment(appointment) {
     appointmentDate,
     shouldIncrement
   } = await upsertClientAppointmentHistory(appointment, 'concluido', { origem: 'agenda' });
-  const { serviceLink, service, serviceId, serviceName, serviceValue: appointmentValue } = serviceContext;
+  const { serviceLink, serviceTenantId, serviceName, serviceValue: appointmentValue } = serviceContext;
 
   const { data: link, error: linkError } = await supabaseAdmin
     .from('cliente_tenants')
@@ -792,7 +959,7 @@ async function updateClientHistoryForCompletedAppointment(appointment) {
       last_completed_appointment: {
         appointment_id: appointment.id,
         profissional_id: appointment.profissional_id,
-        servico_id: serviceId,
+        servico_tenant_id: serviceTenantId,
         nome_servico: serviceName,
         data_atendimento: appointmentDate,
         valor_pago: appointmentValue
@@ -810,7 +977,7 @@ async function updateClientHistoryForCompletedAppointment(appointment) {
         total_valor_gasto: totalValue + (shouldIncrement ? appointmentValue : 0),
         qtd_atendimentos: Number(link.qtd_atendimentos || 0) + (shouldIncrement ? 1 : 0),
         total_atendimentos_concluidos: totalCompleted + (shouldIncrement ? 1 : 0),
-        servico_mais_recente: serviceId,
+        servico_mais_recente: null,
         profissional_mais_recente: appointment.profissional_id,
         metadata,
         updated_at: now
@@ -830,12 +997,12 @@ async function updateClientHistoryForCompletedAppointment(appointment) {
       usuario_id: null,
       agendamento_id: appointment.id,
       tipo_interacao: 'atendimento_concluido',
-      descricao: `Atendimento concluido: ${serviceLink?.nome_servico || service?.nome || 'servico'}`,
+      descricao: `Atendimento concluido: ${serviceLink?.nome_servico || serviceName || 'servico'}`,
       origem: 'agenda',
       score_relacionamento: 5,
       metadata: {
         profissional_id: appointment.profissional_id,
-        servico_id: serviceId,
+        servico_tenant_id: serviceTenantId,
         data_atendimento: appointmentDate,
         valor_pago: appointmentValue
       }
@@ -892,7 +1059,7 @@ async function updateClientHistoryForNoShowAppointment(appointment) {
     appointmentDate,
     shouldIncrement
   } = await upsertClientAppointmentHistory(appointment, 'no_show', { origem: 'agenda' });
-  const { serviceId, serviceName } = serviceContext;
+  const { serviceTenantId, serviceName } = serviceContext;
 
   const { data: link, error: linkError } = await supabaseAdmin
     .from('cliente_tenants')
@@ -910,7 +1077,7 @@ async function updateClientHistoryForNoShowAppointment(appointment) {
     last_no_show_appointment: {
       appointment_id: appointment.id,
       profissional_id: appointment.profissional_id,
-      servico_id: serviceId,
+      servico_tenant_id: serviceTenantId,
       nome_servico: serviceName,
       data_atendimento: appointmentDate
     }
@@ -921,7 +1088,7 @@ async function updateClientHistoryForNoShowAppointment(appointment) {
     .update({
       data_ultimo_no_show: appointmentDate,
       total_no_show: Number(link.total_no_show || 0) + (shouldIncrement ? 1 : 0),
-      servico_mais_recente: serviceId || link.servico_mais_recente || null,
+      servico_mais_recente: null,
       profissional_mais_recente: appointment.profissional_id || link.profissional_mais_recente || null,
       metadata,
       updated_at: now
@@ -1001,7 +1168,9 @@ module.exports = {
   listServices,
   findProfessional,
   findService,
-  findProfessionalService,
+  listProfessionalSpecialtyIds,
+  listProfessionalServiceSpecialtyLinks,
+  listServiceSpecialtyLinks,
   getTenantSettings,
   getTenant,
   getWeeklySchedule,
