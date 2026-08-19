@@ -18,6 +18,8 @@ const campaignBaseSchema = z.object({
   template_id: uuid,
   cupom_id: optionalUuid,
   servico_id: optionalUuid,
+  especialidade_id: optionalUuid,
+  servico_tenant_especialidade_id: optionalUuid,
   criterios_segmentacao: jsonRecord,
   parametros_template: jsonRecord,
   publico_alvo: jsonRecord.optional(),
@@ -148,6 +150,10 @@ const couponSchema = z.object({
   limite_uso: z.coerce.number().int().min(1).optional().nullable(),
   limite_usos_por_cliente: z.coerce.number().int().min(1).optional().nullable(),
   servico_ids: z.array(uuid).optional().default([]),
+  escopo: z.enum(['geral', 'servico', 'especialidade', 'combinacao']).optional().default('geral'),
+  servico_tenant_id: optionalUuid,
+  especialidade_id: optionalUuid,
+  servico_tenant_especialidade_id: optionalUuid,
   ativo: z.boolean().default(true),
   metadata: jsonRecord.optional()
 }).superRefine((data, ctx) => {
@@ -159,6 +165,28 @@ const couponSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: [data.tipo_desconto === 'percentual' ? 'percentual_desconto' : 'valor_desconto'],
       message: 'Informe um beneficio valido para o cupom.'
+    });
+  }
+
+  if (data.escopo === 'servico' && !data.servico_tenant_id && !data.servico_ids.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['servico_tenant_id'],
+      message: 'Informe o servico do tenant para este cupom.'
+    });
+  }
+  if (data.escopo === 'especialidade' && !data.especialidade_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['especialidade_id'],
+      message: 'Informe a especialidade para este cupom.'
+    });
+  }
+  if (data.escopo === 'combinacao' && !data.servico_tenant_especialidade_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['servico_tenant_especialidade_id'],
+      message: 'Informe a combinacao servico + especialidade para este cupom.'
     });
   }
 });

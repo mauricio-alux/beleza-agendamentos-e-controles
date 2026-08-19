@@ -30,5 +30,6 @@ module.exports = {
   whatsappCloudAccessToken: process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || '',
   whatsappWebhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
   whatsappDryRun: process.env.WHATSAPP_DRY_RUN !== 'false',
-  whatsappMaxAttempts: Number(process.env.WHATSAPP_MAX_ATTEMPTS || 5)
+  whatsappMaxAttempts: Number(process.env.WHATSAPP_MAX_ATTEMPTS || 5),
+  inactiveRecoveryFallbackDays: Number(process.env.DEFAULT_INACTIVE_CUSTOMER_DAYS || 45)
 };

@@ -1,13 +1,12 @@
 const { supabaseAdmin } = require('../../config/supabase');
-const { normalizeEmail, normalizePhoneToE164 } = require('../../utils/normalize');
-
 const INTERNAL_TENANT_ROLES = new Set(['Administrador', 'Funcionario', 'Autonomo', 'Terceiro']);
 const PLATFORM_CAMPAIGN_USER_ROLES = new Set(['Administrador', 'Autonomo']);
 
 const CAMPAIGN_SELECT = `
   *,
+  tenant:tenants(id, nome_fantasia, slug),
   template:templates_mensagem(id, nome, canal, tipo, conteudo, variaveis, aprovado_provider, metadata, ativo),
-  servico:servicos(id, nome, categoria, preco),
+  servico_tenant:servico_tenants(id, tenant_id, servico_catalogo_id, ativo, servico_catalogo:servicos_catalogo(id, codigo_canonico, nome, categoria_key, natureza)),
   cupom:cupons(*)
 `;
 
@@ -179,7 +178,26 @@ async function listAudienceBase(tenantId) {
   const [historyResult, appointmentsResult, internalUsers] = await Promise.all([
     supabaseAdmin
       .from('cliente_historico_atendimentos')
-      .select('id, cliente_id, status, data_atendimento, servico_id, profissional_id, deleted_at')
+        .select(`
+          id,
+          cliente_id,
+          status,
+          data_atendimento,
+          agendamento_id,
+          servico_id,
+          servico_catalogo_id,
+          servico_tenant_id,
+          servico_tenant_especialidade_id,
+          especialidade_id,
+          servico_especialidade_id,
+          nome_especialidade,
+          profissional_id,
+          deleted_at,
+          metadata,
+          servico_tenant:servico_tenants(id, tenant_id, servico_catalogo_id, ativo, servico_catalogo:servicos_catalogo(id, codigo_canonico, nome, categoria_key, natureza)),
+          servico_tenant_especialidade:servico_tenant_especialidades(id, servico_tenant_id, especialidade_id, dias_retorno_recomendado, preco, duracao_minutos, ativo, aceita_agendamento_online, metadata),
+          especialidade:especialidades(id, nome, metadata)
+        `)
       .eq('tenant_id', tenantId)
       .in('cliente_id', clienteIds)
       .is('deleted_at', null),
@@ -274,28 +292,14 @@ async function listSaasUsers(criteria = {}) {
 
 function buildInternalIdentityIndex(users) {
   const byId = new Map();
-  const byEmail = new Map();
-  const byPhone = new Map();
   const byProfessionalId = new Map();
 
   users.forEach((user) => {
     byId.set(user.id, user.role);
     if (user.profissional_id) byProfessionalId.set(user.profissional_id, user.role);
-    const email = normalizeEmail(user.email || '');
-    if (email) byEmail.set(email, user.role);
-    const phone = normalizePhoneSafe(user.telefone);
-    if (phone) byPhone.set(phone, user.role);
   });
 
-  return { byId, byEmail, byPhone, byProfessionalId };
-}
-
-function normalizePhoneSafe(value) {
-  try {
-    return value ? normalizePhoneToE164(value) : '';
-  } catch (_) {
-    return String(value || '').replace(/\D/g, '');
-  }
+  return { byId, byProfessionalId };
 }
 
 function internalRolesForClient(row, internalIdentity) {
@@ -303,25 +307,17 @@ function internalRolesForClient(row, internalIdentity) {
   const client = row.cliente || {};
 
   [
-    row.metadata?.usuario_id,
     row.metadata?.internal_usuario_id,
     row.metadata?.internal_user_id,
-    row.metadata?.owner_user_id,
-    client.metadata?.usuario_id,
     client.metadata?.internal_usuario_id,
-    client.metadata?.internal_user_id,
-    client.metadata?.owner_user_id
+    client.metadata?.internal_user_id
   ].filter(Boolean).forEach((userId) => {
     const role = internalIdentity.byId.get(userId);
     if (role) roles.add(role);
   });
 
   [
-    row.metadata?.profissional_id,
-    row.metadata?.responsible_profissional_id,
     row.metadata?.internal_profissional_id,
-    client.metadata?.profissional_id,
-    client.metadata?.responsible_profissional_id,
     client.metadata?.internal_profissional_id
   ].filter(Boolean).forEach((professionalId) => {
     const role = internalIdentity.byProfessionalId.get(professionalId);
@@ -333,22 +329,14 @@ function internalRolesForClient(row, internalIdentity) {
     row.metadata?.tipo_usuario_operacional,
     row.metadata?.role,
     row.metadata?.user_role,
-    row.metadata?.owner_role,
     client.metadata?.tipo_usuario,
     client.metadata?.tipo_usuario_operacional,
     client.metadata?.role,
-    client.metadata?.user_role,
-    client.metadata?.owner_role
+    client.metadata?.user_role
   ].filter(Boolean);
   explicitRoles.forEach((role) => {
     if (INTERNAL_TENANT_ROLES.has(role)) roles.add(role);
   });
-
-  const email = normalizeEmail(client.email || '');
-  if (email && internalIdentity.byEmail.has(email)) roles.add(internalIdentity.byEmail.get(email));
-
-  const phone = normalizePhoneSafe(client.telefone);
-  if (phone && internalIdentity.byPhone.has(phone)) roles.add(internalIdentity.byPhone.get(phone));
 
   return [...roles];
 }
@@ -364,28 +352,97 @@ function groupByClient(rows) {
 
 async function listServices(tenantId) {
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('id, nome, categoria, preco, ativo')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      metadata,
+      servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,categoria_key,natureza,ativo),
+      especialidades_config:servico_tenant_especialidades(
+        id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        especialidade:especialidades(id,nome,ativo,deleted_at)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('ativo', true)
-    .is('deleted_at', null)
-    .order('nome');
+    .order('created_at');
   if (error) throw error;
-  return data || [];
+  return (data || []).map(normalizeTenantService);
 }
 
 async function getService(tenantId, id) {
   if (!id) return null;
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('id, tenant_id, nome, categoria, preco, ativo')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      metadata,
+      servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,categoria_key,natureza,ativo),
+      especialidades_config:servico_tenant_especialidades(
+        id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        dias_retorno_recomendado,
+        aceita_agendamento_online,
+        ativo,
+        especialidade:especialidades(id,nome,ativo,deleted_at)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .eq('ativo', true)
-    .is('deleted_at', null)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  return data ? normalizeTenantService(data) : null;
+}
+
+function normalizeTenantService(row) {
+  const catalog = row.servico_catalogo || {};
+  const configs = (row.especialidades_config || []).filter((config) => (
+    config.ativo !== false
+    && config.especialidade?.ativo !== false
+    && !config.especialidade?.deleted_at
+  ));
+  const firstConfig = configs[0] || {};
+
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    servico_tenant_id: row.id,
+    servico_catalogo_id: row.servico_catalogo_id,
+    codigo_canonico: catalog.codigo_canonico,
+    nome: catalog.nome,
+    categoria: catalog.categoria_key,
+    taxonomy_category_key: catalog.categoria_key,
+    natureza: catalog.natureza,
+    ativo: row.ativo !== false,
+    preco: firstConfig.preco ?? null,
+    duracao_minutos: firstConfig.duracao_minutos ?? null,
+    dias_retorno_recomendado: firstConfig.dias_retorno_recomendado ?? null,
+    especialidades_config: configs.map((config) => ({
+      id: config.id,
+      servico_tenant_id: row.id,
+      especialidade_id: config.especialidade_id,
+      nome: config.especialidade?.nome || null,
+      preco: config.preco,
+      duracao_minutos: config.duracao_minutos,
+      dias_retorno_recomendado: config.dias_retorno_recomendado ?? null,
+      aceita_agendamento_online: config.aceita_agendamento_online !== false,
+      ativo: config.ativo !== false
+    }))
+  };
 }
 
 function couponHasBenefit(coupon) {
@@ -406,7 +463,7 @@ function couponIsCurrentlyAvailable(coupon) {
 async function listCoupons(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('cupons')
-    .select('*, servicos:cupom_servicos(servico_id)')
+    .select('*, servicos:cupom_servicos(id, escopo, servico_id, servico_tenant_id, especialidade_id, servico_tenant_especialidade_id, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id,nome,codigo_canonico,categoria_key,natureza)), especialidade:especialidades(id,nome), servico_tenant_especialidade:servico_tenant_especialidades(id, servico_tenant_id, especialidade_id))')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -418,7 +475,7 @@ async function getCoupon(tenantId, id) {
   if (!id) return null;
   const { data, error } = await supabaseAdmin
     .from('cupons')
-    .select('*, servicos:cupom_servicos(servico_id)')
+    .select('*, servicos:cupom_servicos(id, escopo, servico_id, servico_tenant_id, especialidade_id, servico_tenant_especialidade_id, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id,nome,codigo_canonico,categoria_key,natureza)), especialidade:especialidades(id,nome), servico_tenant_especialidade:servico_tenant_especialidades(id, servico_tenant_id, especialidade_id))')
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .is('deleted_at', null)
@@ -427,7 +484,7 @@ async function getCoupon(tenantId, id) {
   return data;
 }
 
-async function createCoupon(payload, serviceIds = []) {
+async function createCoupon(payload, scopes = []) {
   const { data, error } = await supabaseAdmin
     .from('cupons')
     .insert(payload)
@@ -435,14 +492,20 @@ async function createCoupon(payload, serviceIds = []) {
     .single();
   if (error) throw error;
 
-  if (serviceIds.length) {
+  if (scopes.length) {
     const { error: linkError } = await supabaseAdmin
       .from('cupom_servicos')
-      .upsert(serviceIds.map((servicoId) => ({
+      .insert(scopes.map((scope) => ({
         tenant_id: payload.tenant_id,
         cupom_id: data.id,
-        servico_id: servicoId
-      })), { onConflict: 'tenant_id,cupom_id,servico_id' });
+        servico_id: scope.servico_id || null,
+        servico_catalogo_id: scope.servico_catalogo_id || null,
+        servico_tenant_id: scope.servico_tenant_id || null,
+        especialidade_id: scope.especialidade_id || null,
+        servico_tenant_especialidade_id: scope.servico_tenant_especialidade_id || null,
+        escopo: scope.escopo,
+        metadata: scope.metadata || {}
+      })));
     if (linkError) throw linkError;
   }
 

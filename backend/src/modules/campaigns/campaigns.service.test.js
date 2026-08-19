@@ -14,6 +14,16 @@ function restore() {
   env.whatsappDryRun = originalDryRun;
 }
 
+function daysAgoIso(days) {
+  const date = new Date(Date.now() - (days * 86_400_000));
+  return date.toISOString();
+}
+
+function futureDateOnly(days) {
+  const date = new Date(Date.now() + (days * 86_400_000));
+  return date.toISOString().slice(0, 10);
+}
+
 function campaign() {
   return {
     id: '11111111-1111-4111-8111-111111111111',
@@ -39,6 +49,11 @@ function campaign() {
     total_lidas: 0,
     total_falhas: 0,
     total_canceladas: 0,
+    tenant: {
+      id: '22222222-2222-4222-8222-222222222222',
+      nome_fantasia: 'Espaco Vivian Beauty',
+      slug: 'espaco-vivian-beauty'
+    },
     metadata: {
       origem_campanha: 'tenant',
       tipo_publico: 'clientes',
@@ -52,13 +67,34 @@ function campaign() {
 }
 
 function serviceRow(overrides = {}) {
+  const serviceId = overrides.id || '66666666-6666-4666-8666-666666666666';
+  const catalogId = overrides.servico_catalogo_id || '77777777-7777-4777-8777-777777777777';
+  const specialtyId = overrides.especialidade_id || 'specialty-nails';
+  const configId = overrides.servico_tenant_especialidade_id || 'service-tenant-specialty-nails';
+  const specialtyConfigOverrides = overrides.especialidade_config || {};
   return {
-    id: '66666666-6666-4666-8666-666666666666',
+    id: serviceId,
+    servico_tenant_id: serviceId,
+    servico_catalogo_id: catalogId,
     tenant_id: '22222222-2222-4222-8222-222222222222',
     nome: 'Manicure',
     categoria: 'manicure',
+    codigo_canonico: 'MANICURE',
+    natureza: 'recorrente',
     preco: 50,
     ativo: true,
+    especialidades_config: [{
+      id: configId,
+      servico_tenant_id: serviceId,
+      especialidade_id: specialtyId,
+      nome: 'Manicure tradicional',
+      preco: 50,
+      duracao_minutos: 45,
+      dias_retorno_recomendado: 25,
+      aceita_agendamento_online: true,
+      ativo: true,
+      ...specialtyConfigOverrides
+    }],
     ...overrides
   };
 }
@@ -166,6 +202,153 @@ function audienceRows() {
   ];
 }
 
+function inactiveCriteria(overrides = {}) {
+  return {
+    mode: 'segment',
+    inactive_by_service_return: true,
+    fallback_inactive_days: 45,
+    no_future_appointment: true,
+    ...overrides
+  };
+}
+
+function inactiveCampaign(overrides = {}) {
+  return {
+    ...campaign(),
+    nome: 'Recuperacao de inativos',
+    tipo: 'recuperacao_inativos',
+    servico_id: null,
+    criterios_segmentacao: inactiveCriteria(),
+    parametros_template: {
+      nome_servico: { source: 'fixed', value: 'Servicos do salao' },
+      valor_promocional: { source: 'fixed', value: 'condicao especial' }
+    },
+    ...overrides
+  };
+}
+
+function completedHistory(overrides = {}) {
+  const specialtyId = overrides.especialidade_id || 'specialty-nails';
+  const service = overrides.servico || serviceRow({
+    id: overrides.servico_id || 'service-manicure',
+    especialidade_id: specialtyId,
+    nome: 'Manicure',
+    natureza: 'recorrente'
+  });
+  const serviceTenantSpecialtyId = overrides.servico_tenant_especialidade_id
+    || overrides.servico_especialidade_id
+    || service.especialidades_config?.[0]?.id
+    || 'service-tenant-specialty-nails';
+  const specialtyConfig = overrides.servico_tenant_especialidade || {
+    id: serviceTenantSpecialtyId,
+    servico_tenant_id: service.id,
+    especialidade_id: specialtyId,
+    dias_retorno_recomendado: service.especialidades_config?.[0]
+      && Object.prototype.hasOwnProperty.call(service.especialidades_config[0], 'dias_retorno_recomendado')
+      ? service.especialidades_config[0].dias_retorno_recomendado
+      : 25,
+    metadata: {}
+  };
+
+  return {
+    id: overrides.id || 'history-1',
+    cliente_id: '44444444-4444-4444-8444-444444444444',
+    status: 'concluido',
+    data_atendimento: '2026-06-20T10:00:00.000Z',
+    agendamento_id: overrides.agendamento_id || 'appointment-1',
+    servico_id: overrides.legacy_servico_id || null,
+    servico_catalogo_id: service.servico_catalogo_id,
+    servico_tenant_id: service.id,
+    especialidade_id: specialtyId,
+    servico_tenant_especialidade_id: specialtyConfig.id,
+    profissional_id: null,
+    deleted_at: null,
+    nome_especialidade: overrides.nome_especialidade || 'Manicure tradicional',
+    servico: overrides.servico_legado || null,
+    servico_tenant: {
+      id: service.id,
+      tenant_id: service.tenant_id,
+      servico_catalogo_id: service.servico_catalogo_id,
+      ativo: service.ativo,
+      servico_catalogo: {
+        id: service.servico_catalogo_id,
+        codigo_canonico: service.codigo_canonico,
+        nome: service.nome,
+        categoria_key: service.categoria,
+        natureza: service.natureza
+      }
+    },
+    servico_tenant_especialidade: specialtyConfig,
+    especialidade: {
+      id: specialtyId,
+      nome: overrides.nome_especialidade || 'Manicure tradicional',
+      metadata: {}
+    },
+    ...overrides
+  };
+}
+
+function inactiveAudienceRow(overrides = {}) {
+  return {
+    ...audienceRows()[0],
+    historico: [completedHistory()],
+    agendamentos: [],
+    ...overrides
+  };
+}
+
+function birthdayInCurrentMonth(day = 15) {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `1990-${month}-${String(day).padStart(2, '0')}`;
+}
+
+function birthdayInMonth(month, day = 15) {
+  return `1990-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function birthdayCampaign(overrides = {}) {
+  return {
+    ...campaign(),
+    nome: 'Aniversariantes do mes',
+    tipo: 'aniversario',
+    servico_id: null,
+    criterios_segmentacao: { mode: 'segment', birthday_month: true },
+    parametros_template: {},
+    metadata: {
+      ...campaign().metadata,
+      natureza_campanha: 'relacionamento',
+      estrategia_envio: 'UNICO'
+    },
+    ...overrides
+  };
+}
+
+function birthdayTemplate(overrides = {}) {
+  return template({
+    nome: 'campaign_birthday',
+    conteudo: [
+      'Ola, {{1}}!',
+      '',
+      'Este e o seu mes especial!',
+      '',
+      'Para celebrar seu aniversario, a {{2}} preparou uma condicao especial para voce aproveitar durante este periodo.',
+      '',
+      'Esperamos sua visita.',
+      '',
+      '[Agendar Agora]'
+    ].join('\n'),
+    variaveis: ['nome_cliente', 'nome_salao'],
+    aprovado_provider: false,
+    metadata: {
+      provider_template_name: 'campaign_birthday',
+      language: 'pt_BR',
+      categoria_provider: 'Marketing'
+    },
+    ...overrides
+  });
+}
+
 function internalAudienceRow(role, overrides = {}) {
   return {
     id: `link-${role}`,
@@ -208,13 +391,33 @@ test('list returns paginated tenant-aware campaigns with diagnostics', async () 
       page_size: 20
     };
   };
+  repository.listAudienceBase = async () => audienceRows();
 
   const result = await service.list('22222222-2222-4222-8222-222222222222', { page: 1, page_size: 20 });
 
   assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].audience_metrics.eligible, 1);
+  assert.equal(result.items[0].audience_metrics.excluded, 1);
   assert.equal(result.pagination.total, 15);
   assert.equal(result.pagination.has_next, false);
   assert.equal(result.diagnostics.criteria.tenant_id, '22222222-2222-4222-8222-222222222222');
+});
+
+test('list keeps dynamic eligible separate from materialized recipients', async () => {
+  repository.listCampaigns = async () => ({
+    rows: [{ ...campaign(), total_destinatarios: 0, total_geradas: 0, total_enviadas: 0, total_falhas: 0 }],
+    count: 1,
+    page: 1,
+    page_size: 20
+  });
+  repository.listAudienceBase = async () => [audienceRows()[0]];
+
+  const result = await service.list('22222222-2222-4222-8222-222222222222', { page: 1, page_size: 20 });
+  const item = result.items[0];
+
+  assert.equal(item.audience_metrics.eligible, 1);
+  assert.equal(item.total_destinatarios, 0);
+  assert.equal(item.total_geradas, 0);
 });
 
 test('list normalizes campaign status filter labels and aliases before querying', async () => {
@@ -241,6 +444,7 @@ test('list normalizes campaign status filter labels and aliases before querying'
       page_size: 20
     };
   };
+  repository.listAudienceBase = async () => audienceRows();
 
   for (const [input] of cases) {
     await service.list('22222222-2222-4222-8222-222222222222', { status: input, page: 1, page_size: 20 });
@@ -349,6 +553,435 @@ test('campaign eligibility is scoped per tenant for multi-tenant people', async 
   assert.equal(tenantB.eligible, 1);
 });
 
+test('campaign eligibility keeps client with owner metadata from another tenant', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    metadata: {
+      owner_user_id: 'other-tenant-user',
+      responsible_profissional_id: 'other-tenant-professional'
+    },
+    cliente: {
+      ...audienceRows()[0].cliente,
+      metadata: {
+        owner_user_id: 'other-tenant-user',
+        owner_role: 'Funcionario'
+      }
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('tenant-current', { criterios_segmentacao: { mode: 'all' } });
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('inactive recovery uses tenant service-specialty return days to mark overdue clients eligible', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow()];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_days, 25);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_source, 'servico_tenant_especialidade');
+});
+
+test('inactive recovery uses service-specialty tenant configuration over legacy service fallback', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow({
+    historico: [completedHistory({
+      data_atendimento: '2026-07-01T10:00:00.000Z',
+      especialidade_id: 'specialty-nails',
+      servico_tenant_especialidade_id: 'service-specialty-nails',
+      especialidade: {
+        id: 'specialty-nails',
+        nome: 'Manicure tradicional',
+        metadata: { dias_retorno_recomendado: 20 }
+      },
+      servico_tenant_especialidade: {
+        id: 'service-specialty-nails',
+        dias_retorno_recomendado: 15,
+        metadata: {}
+      },
+      servico: serviceRow({
+        id: 'service-manicure',
+        nome: 'Manicure',
+        dias_retorno_recomendado: 45,
+        servico_ocasional: false,
+        metadata: {}
+      })
+    })]
+  })];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_days, 15);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_source, 'servico_tenant_especialidade');
+  assert.equal(result.rows[0].stats.inactive_recovery.last_specialty_name, 'Manicure tradicional');
+  assert.equal(result.rows[0].stats.inactive_recovery.last_service_specialty_id, 'service-specialty-nails');
+});
+
+test('inactive recovery excludes clients still inside the service return period', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow({
+    historico: [completedHistory({ data_atendimento: '2026-07-10T10:00:00.000Z' })]
+  })];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.excluded_by_reason.dentro_prazo_retorno, 1);
+});
+
+test('inactive recovery falls back to configured default when recurring service has no return days', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow({
+    historico: [completedHistory({
+      data_atendimento: '2026-06-01T10:00:00.000Z',
+      servico: serviceRow({
+        id: 'service-custom',
+        nome: 'Servico customizado',
+        natureza: 'recorrente',
+        especialidade_config: { dias_retorno_recomendado: null }
+      })
+    })]
+  })];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_days, 45);
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_source, 'fallback');
+});
+
+test('inactive recovery does not classify clients by occasional-only services', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow({
+    historico: [completedHistory({
+      data_atendimento: '2026-04-01T10:00:00.000Z',
+      servico: serviceRow({
+        id: 'service-makeup',
+        nome: 'Maquiagem social',
+        natureza: 'ocasional',
+        especialidade_config: { dias_retorno_recomendado: null }
+      })
+    })]
+  })];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.excluded_by_reason.servico_ocasional_sem_recuperacao, 1);
+});
+
+test('inactive recovery excludes valid future appointments and ignores canceled future appointments', async () => {
+  repository.listAudienceBase = async () => [
+    inactiveAudienceRow({
+      id: 'future-valid',
+      agendamentos: [{ id: 'appt-future', status: 'confirmado', data_inicio: '2026-07-30T10:00:00.000Z', deleted_at: null }]
+    }),
+    inactiveAudienceRow({
+      id: 'future-canceled',
+      cliente: { ...audienceRows()[0].cliente, id: 'client-canceled-future', telefone: '+5511999999998' },
+      agendamentos: [{ id: 'appt-canceled', status: 'cancelado', data_inicio: '2026-07-30T10:00:00.000Z', deleted_at: null }]
+    })
+  ];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.possui_agendamento_futuro, 1);
+});
+
+test('inactive recovery uses the shortest recurring return period in a multi-service appointment', async () => {
+  repository.listAudienceBase = async () => [inactiveAudienceRow({
+    historico: [
+      completedHistory({
+        id: 'history-hair',
+        data_atendimento: '2026-06-30T10:00:00.000Z',
+        agendamento_id: 'appointment-combo',
+        servico: serviceRow({
+          id: 'service-luzes',
+          nome: 'Luzes',
+          natureza: 'recorrente',
+          servico_tenant_especialidade_id: 'service-tenant-specialty-hair',
+          especialidade_config: { id: 'service-tenant-specialty-hair', dias_retorno_recomendado: 120 }
+        })
+      }),
+      completedHistory({
+        id: 'history-nails',
+        data_atendimento: '2026-06-30T10:00:00.000Z',
+        agendamento_id: 'appointment-combo',
+        servico: serviceRow({
+          id: 'service-manicure',
+          nome: 'Manicure',
+          natureza: 'recorrente',
+          servico_tenant_especialidade_id: 'service-tenant-specialty-nails',
+          especialidade_config: { id: 'service-tenant-specialty-nails', dias_retorno_recomendado: 25 }
+        })
+      })
+    ]
+  })];
+
+  const result = await service.estimate(
+    '22222222-2222-4222-8222-222222222222',
+    { criterios_segmentacao: inactiveCriteria() },
+    { now: new Date('2026-07-26T12:00:00.000Z') }
+  );
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.rows[0].stats.inactive_recovery.last_service_name, 'Manicure');
+  assert.equal(result.rows[0].stats.inactive_recovery.recommended_return_days, 25);
+});
+
+test('inactive recovery keeps preview, estimate and start on the same service-return audience', async () => {
+  const messages = [];
+  const baseCampaign = inactiveCampaign({
+    criterios_segmentacao: inactiveCriteria({ no_future_appointment: true }),
+    data_inicio: '2026-07-01',
+    data_fim: '2026-08-01',
+    metadata: {
+      ...campaign().metadata,
+      strategy: {
+        approval: {
+          valor_promocional: 49.9
+        }
+      }
+    }
+  });
+
+  repository.getCampaign = async () => baseCampaign;
+  repository.getTemplate = async () => template();
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => [
+    inactiveAudienceRow({
+      historico: [completedHistory({ data_atendimento: daysAgoIso(35) })]
+    }),
+    inactiveAudienceRow({
+      id: 'inside-period',
+      cliente: { ...audienceRows()[0].cliente, id: 'client-inside-period', telefone: '+5511999999997' },
+      historico: [completedHistory({ data_atendimento: daysAgoIso(10) })]
+    })
+  ];
+  repository.updateCampaign = async (_tenantId, _id, payload) => ({ ...baseCampaign, ...payload });
+  repository.createCampaignSend = async (payload) => ({ id: 'send-1', ...payload });
+  repository.createWhatsAppCampaignMessage = async (payload) => {
+    messages.push(payload);
+    return { id: `msg-${messages.length}`, ...payload };
+  };
+  repository.listCampaignMessages = async () => messages;
+
+  const preview = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+  const estimate = await service.estimate('22222222-2222-4222-8222-222222222222', baseCampaign);
+  const started = await service.start('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.equal(preview.recipient.nome, 'Maria Souza');
+  assert.equal(estimate.eligible, 1);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].cliente_id, '44444444-4444-4444-8444-444444444444');
+  assert.equal(started.total_destinatarios, 1);
+});
+
+test('campaign eligibility keeps common client with owner_user_id metadata', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    metadata: {
+      owner_user_id: 'tenant-user-owner',
+      owner_role: 'Funcionario'
+    },
+    cliente: {
+      ...audienceRows()[0].cliente,
+      metadata: {
+        owner_user_id: 'tenant-user-owner',
+        owner_role: 'Funcionario'
+      }
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'all' }
+  });
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('campaign eligibility keeps common client with responsible_profissional_id metadata', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    metadata: {
+      responsible_profissional_id: 'tenant-professional'
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'all' }
+  });
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('campaign eligibility keeps common client with owner_profissional_id metadata', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    metadata: {
+      owner_profissional_id: 'tenant-owner-professional'
+    },
+    cliente: {
+      ...audienceRows()[0].cliente,
+      metadata: {
+        owner_profissional_id: 'tenant-owner-professional'
+      }
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'all' }
+  });
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('birthday campaign keeps non-internal birthday client eligible', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      data_nascimento: birthdayInCurrentMonth(16)
+    },
+    metadata: {
+      owner_user_id: 'tenant-owner',
+      owner_role: 'Funcionario',
+      responsible_profissional_id: 'tenant-professional'
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'segment', birthday_month: true }
+  });
+
+  assert.equal(result.eligible, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('birthday campaign includes clients from the first and last day of the current month', async () => {
+  const now = new Date('2026-08-01T12:00:00-03:00');
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      id: 'birthday-first-day',
+      data_nascimento: birthdayInMonth(8, 1)
+    }
+  }, {
+    ...audienceRows()[0],
+    id: 'link-last-day',
+    cliente: {
+      ...audienceRows()[0].cliente,
+      id: 'birthday-last-day',
+      nome: 'Cliente Ultimo Dia',
+      telefone: '+5511988888888',
+      data_nascimento: birthdayInMonth(8, 31)
+    }
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'segment', birthday_month: true }
+  }, { now });
+
+  assert.equal(result.eligible, 2);
+  assert.equal(result.excluded_by_reason.fora_mes_aniversario, undefined);
+});
+
+test('birthday campaign excludes clients born in another month', async () => {
+  const now = new Date('2026-08-01T12:00:00-03:00');
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      data_nascimento: birthdayInMonth(9, 15)
+    }
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'segment', birthday_month: true }
+  }, { now });
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.excluded_by_reason.fora_mes_aniversario, 1);
+});
+
+test('birthday campaign excludes birthday client for consent without internal marker', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    aceita_campanhas: false,
+    cliente: {
+      ...audienceRows()[0].cliente,
+      data_nascimento: birthdayInCurrentMonth(21)
+    },
+    metadata: {
+      owner_user_id: 'tenant-owner',
+      owner_role: 'Funcionario',
+      responsible_profissional_id: 'tenant-professional'
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'segment', birthday_month: true }
+  });
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.excluded_by_reason.sem_consentimento, 1);
+  assert.equal(result.excluded_by_reason.usuario_interno_tenant, undefined);
+});
+
+test('birthday campaign excludes birthday client with invalid phone', async () => {
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      telefone: 'telefone-invalido',
+      data_nascimento: birthdayInCurrentMonth(20)
+    },
+    internal_user_roles: []
+  }];
+
+  const result = await service.estimate('22222222-2222-4222-8222-222222222222', {
+    criterios_segmentacao: { mode: 'segment', birthday_month: true }
+  });
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.excluded_by_reason.telefone_invalido, 1);
+});
+
 test('platform campaign audience uses SaaS users and does not include clients', async () => {
   repository.listAudienceBase = async () => {
     throw new Error('client audience should not be used for platform campaigns');
@@ -419,6 +1052,82 @@ test('preview uses the current templates_mensagem content while campaign is edit
 
   assert.equal(result.preview_source, 'templates_mensagem');
   assert.equal(result.conteudo, 'Conteudo vigente Maria Souza.');
+});
+
+test('birthday campaign preview uses monthly copy without implying birthday-day delivery', async () => {
+  repository.getCampaign = async () => birthdayCampaign();
+  repository.getTemplate = async () => birthdayTemplate();
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      data_nascimento: birthdayInCurrentMonth(31)
+    }
+  }];
+
+  const result = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.match(result.conteudo, /mes especial/);
+  assert.match(result.conteudo, /durante este periodo/);
+  assert.doesNotMatch(result.conteudo, /excelente dia|hoje e seu dia|feliz aniversario hoje/i);
+});
+
+test('preview renders tenant campaign origin with tenant name', async () => {
+  repository.getCampaign = async () => ({
+    ...campaign(),
+    tenant: { id: '22222222-2222-4222-8222-222222222222', nome_fantasia: 'Espaco Vivian Beauty', slug: 'espaco-vivian-beauty' },
+    metadata: { ...campaign().metadata, origem_campanha: 'ia' }
+  });
+  repository.getTemplate = async () => template({
+    conteudo: 'Ola, {{1}}! A equipe da {{2}} deseja um excelente dia.',
+    variaveis: ['nome_cliente', 'nome_salao']
+  });
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => audienceRows();
+
+  const result = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.equal(result.params.nome_salao, 'Espaco Vivian Beauty');
+  assert.match(result.conteudo, /A equipe da Espaco Vivian Beauty/);
+});
+
+test('preview renders platform campaign origin with tenant name for establishment variables', async () => {
+  repository.getCampaign = async () => ({
+    ...campaign(),
+    tenant: { id: '22222222-2222-4222-8222-222222222222', nome_fantasia: 'Espaco Vivian Beauty', slug: 'espaco-vivian-beauty' },
+    metadata: { ...campaign().metadata, origem_campanha: 'plataforma' }
+  });
+  repository.getTemplate = async () => template({
+    conteudo: 'Ola, {{1}}! A equipe da {{2}} deseja um excelente dia.',
+    variaveis: ['nome_cliente', 'nome_salao']
+  });
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => audienceRows();
+
+  const result = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.equal(result.params.nome_salao, 'Espaco Vivian Beauty');
+  assert.match(result.conteudo, /A equipe da Espaco Vivian Beauty/);
+});
+
+test('preview renders platform campaign origin with SaaS name only for SaaS variable', async () => {
+  repository.getCampaign = async () => ({
+    ...campaign(),
+    metadata: { ...campaign().metadata, origem_campanha: 'plataforma' }
+  });
+  repository.getTemplate = async () => template({
+    conteudo: 'Ola, {{1}}! A {{2}} opera a tecnologia da {{3}}.',
+    variaveis: ['nome_cliente', 'nome_estabelecimento', 'nome_saas']
+  });
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => audienceRows();
+
+  const result = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.equal(result.params.nome_estabelecimento, 'Espaco Vivian Beauty');
+  assert.equal(result.params.nome_saas, env.appName);
+  assert.match(result.conteudo, new RegExp(`A Espaco Vivian Beauty opera a tecnologia da ${env.appName}`));
 });
 
 test('preview freezes on generated mensagem_whatsapp content after execution starts', async () => {
@@ -704,13 +1413,79 @@ test('preview does not use internal users or unsafe fallback when no client is e
   assert.doesNotMatch(result.conteudo, /Administrador Teste/);
 });
 
-test('preview skips campaign test clients marked with internal owner role in metadata', async () => {
-  const internalOwnedClient = {
+test('preview resolves establishment name from campaign tenant with tenant isolation', async () => {
+  repository.getCampaign = async (_tenantId, id) => {
+    if (id === 'campaign-a') {
+      return {
+        ...campaign(),
+        id: 'campaign-a',
+        tenant_id: 'tenant-a',
+        tenant: { id: 'tenant-a', nome_fantasia: 'Espaco A', slug: 'espaco-a' }
+      };
+    }
+    return {
+      ...campaign(),
+      id: 'campaign-b',
+      tenant_id: 'tenant-b',
+      tenant: { id: 'tenant-b', nome_fantasia: 'Espaco B', slug: 'espaco-b' }
+    };
+  };
+  repository.getTemplate = async () => template({
+    conteudo: 'Ola, {{1}}! A {{2}} preparou {{3}}.',
+    variaveis: ['nome_cliente', 'nome_estabelecimento', 'nome_servico'],
+    metadata: {
+      provider_template_name: 'campaign_promotion',
+      provider_variable_mapping: {
+        nome_cliente: 1,
+        nome_estabelecimento: 2,
+        nome_servico: 3
+      }
+    }
+  });
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => audienceRows();
+
+  const resultA = await service.preview('tenant-a', 'campaign-a');
+  const resultB = await service.preview('tenant-b', 'campaign-b');
+
+  assert.equal(resultA.params.nome_estabelecimento, 'Espaco A');
+  assert.equal(resultB.params.nome_estabelecimento, 'Espaco B');
+  assert.match(resultA.conteudo, /A Espaco A preparou Manicure/);
+  assert.match(resultB.conteudo, /A Espaco B preparou Manicure/);
+  assert.deepEqual(resultA.provider_params, ['Maria Souza', 'Espaco A', 'Manicure']);
+  assert.deepEqual(resultB.provider_params, ['Maria Souza', 'Espaco B', 'Manicure']);
+});
+
+test('preview fails without sending undefined when establishment name is unavailable', async () => {
+  repository.getCampaign = async () => ({
+    ...campaign(),
+    tenant: null,
+    metadata: { ...campaign().metadata, tenant_name: '', nome_tenant: '' }
+  });
+  repository.getTemplate = async () => template({
+    conteudo: 'Ola, {{1}}! A {{2}} preparou {{3}}.',
+    variaveis: ['nome_cliente', 'nome_estabelecimento', 'nome_servico']
+  });
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => audienceRows();
+
+  await assert.rejects(
+    () => service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111'),
+    (error) => error.code === 'CAMPAIGN_ESTABLISHMENT_NAME_REQUIRED'
+  );
+});
+
+test('preview keeps owner metadata client when there is no explicit internal identity', async () => {
+  const ownerManagedClient = {
     ...audienceRows()[0],
     cliente: {
       ...audienceRows()[0].cliente,
-      id: 'internal-owned-client',
-      nome: 'Mariana Santos - espaco-vivian-beauty - Funcionario 13'
+      id: 'owner-managed-client',
+      nome: 'Mariana Santos - espaco-vivian-beauty - Funcionario 13',
+      metadata: {
+        owner_role: 'Funcionario',
+        owner_user_id: 'user-funcionario'
+      }
     },
     metadata: {
       owner_role: 'Funcionario',
@@ -732,13 +1507,13 @@ test('preview skips campaign test clients marked with internal owner role in met
   repository.getCampaign = async () => commercialCampaign();
   repository.getTemplate = async () => commercialTemplate({ variaveis: ['nome_cliente', 'nome_servico'] });
   repository.getCoupon = async () => null;
-  repository.listAudienceBase = async () => [internalOwnedClient, finalClient];
+  repository.listAudienceBase = async () => [ownerManagedClient, finalClient];
 
   const result = await service.preview('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
 
   assert.equal(result.illustrative, false);
-  assert.equal(result.recipient.nome, 'Cliente Final Elegivel');
-  assert.doesNotMatch(result.conteudo, /Funcionario 13/);
+  assert.equal(result.recipient.nome, 'Mariana Santos - espaco-vivian-beauty - Funcionario 13');
+  assert.match(result.conteudo, /Funcionario 13/);
 });
 
 test('execution writes the same rendered campaign content and provider params to mensagens_whatsapp', async () => {
@@ -887,9 +1662,178 @@ test('create stores service reference and renders service name parameter', async
     }
   });
 
-  assert.equal(createdPayload.servico_id, '66666666-6666-4666-8666-666666666666');
+  assert.equal(createdPayload.servico_id, null);
+  assert.equal(createdPayload.servico_tenant_id, '66666666-6666-4666-8666-666666666666');
+  assert.equal(createdPayload.servico_catalogo_id, '77777777-7777-4777-8777-777777777777');
+  assert.equal(createdPayload.metadata.servico_tenant_id, '66666666-6666-4666-8666-666666666666');
   assert.equal(createdPayload.parametros_template.nome_servico.value, 'Manicure');
   assert.equal(result.servico.nome, 'Manicure');
+});
+
+test('create accepts coupon scoped to selected service-specialty combination', async () => {
+  let createdPayload = null;
+  repository.getTemplate = async () => template();
+  repository.getService = async () => serviceRow();
+  repository.getCoupon = async () => ({
+    id: '88888888-8888-4888-8888-888888888888',
+    tenant_id: '22222222-2222-4222-8222-222222222222',
+    codigo: 'COMBO10',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    ativo: true,
+    servicos: [{
+      escopo: 'combinacao',
+      servico_tenant_id: '66666666-6666-4666-8666-666666666666',
+      especialidade_id: 'specialty-nails',
+      servico_tenant_especialidade_id: 'service-tenant-specialty-nails'
+    }]
+  });
+  repository.createCampaign = async (payload) => {
+    createdPayload = payload;
+    return { ...campaign(), ...payload, template: template(), servico_tenant: serviceRow(), cupom: null };
+  };
+
+  await service.create({
+    tenantId: '22222222-2222-4222-8222-222222222222',
+    tenantSlug: 'tenant-test'
+  }, {
+    nome: 'Promocao combo',
+    tipo: 'promocao_servico',
+    template_id: '33333333-3333-4333-8333-333333333333',
+    servico_id: '66666666-6666-4666-8666-666666666666',
+    especialidade_id: 'specialty-nails',
+    servico_tenant_especialidade_id: 'service-tenant-specialty-nails',
+    cupom_id: '88888888-8888-4888-8888-888888888888',
+    criterios_segmentacao: { mode: 'all' },
+    parametros_template: {
+      validade_promocao: { source: 'fixed', value: '2026-12-31' }
+    }
+  });
+
+  assert.equal(createdPayload.servico_tenant_especialidade_id, 'service-tenant-specialty-nails');
+  assert.equal(createdPayload.especialidade_id, 'specialty-nails');
+});
+
+test('create rejects coupon scoped to a different service-specialty combination', async () => {
+  repository.getTemplate = async () => template();
+  repository.getService = async () => serviceRow();
+  repository.getCoupon = async () => ({
+    id: '88888888-8888-4888-8888-888888888888',
+    tenant_id: '22222222-2222-4222-8222-222222222222',
+    codigo: 'OTHERCOMBO',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    ativo: true,
+    servicos: [{
+      escopo: 'combinacao',
+      servico_tenant_id: '66666666-6666-4666-8666-666666666666',
+      especialidade_id: 'specialty-hair',
+      servico_tenant_especialidade_id: 'service-tenant-specialty-hair'
+    }]
+  });
+
+  await assert.rejects(
+    () => service.create({
+      tenantId: '22222222-2222-4222-8222-222222222222',
+      tenantSlug: 'tenant-test'
+    }, {
+      nome: 'Promocao combo invalido',
+      tipo: 'promocao_servico',
+      template_id: '33333333-3333-4333-8333-333333333333',
+      servico_id: '66666666-6666-4666-8666-666666666666',
+      especialidade_id: 'specialty-nails',
+      servico_tenant_especialidade_id: 'service-tenant-specialty-nails',
+      cupom_id: '88888888-8888-4888-8888-888888888888',
+      criterios_segmentacao: { mode: 'all' },
+      parametros_template: {
+        validade_promocao: { source: 'fixed', value: '2026-12-31' }
+      }
+    }),
+    /Cupom incompativel/
+  );
+});
+
+test('createCoupon stores a tenant-wide general scope', async () => {
+  let scopes = null;
+  repository.createCoupon = async (payload, receivedScopes) => {
+    scopes = receivedScopes;
+    return { id: 'coupon-general', ...payload, servicos: receivedScopes };
+  };
+
+  const result = await service.createCoupon({
+    tenantId: '22222222-2222-4222-8222-222222222222'
+  }, {
+    codigo: 'GERAL10',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    data_fim: '2026-12-31',
+    escopo: 'geral'
+  });
+
+  assert.equal(result.metadata.escopo, 'geral');
+  assert.deepEqual(scopes, [{ escopo: 'geral', metadata: { source: 'campaigns_phase6' } }]);
+});
+
+test('createCoupon stores a tenant service scope from servico_tenants', async () => {
+  let scopes = null;
+  repository.getService = async () => serviceRow();
+  repository.createCoupon = async (payload, receivedScopes) => {
+    scopes = receivedScopes;
+    return { id: 'coupon-service', ...payload, servicos: receivedScopes };
+  };
+
+  await service.createCoupon({
+    tenantId: '22222222-2222-4222-8222-222222222222'
+  }, {
+    codigo: 'SERV10',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    data_fim: '2026-12-31',
+    escopo: 'servico',
+    servico_tenant_id: '66666666-6666-4666-8666-666666666666'
+  });
+
+  assert.equal(scopes[0].escopo, 'servico');
+  assert.equal(scopes[0].servico_tenant_id, '66666666-6666-4666-8666-666666666666');
+  assert.equal(scopes[0].servico_catalogo_id, '77777777-7777-4777-8777-777777777777');
+});
+
+test('createCoupon stores specialty and service-specialty combination scopes', async () => {
+  const calls = [];
+  repository.getService = async () => serviceRow();
+  repository.createCoupon = async (payload, receivedScopes) => {
+    calls.push(receivedScopes);
+    return { id: `coupon-${calls.length}`, ...payload, servicos: receivedScopes };
+  };
+
+  await service.createCoupon({
+    tenantId: '22222222-2222-4222-8222-222222222222'
+  }, {
+    codigo: 'ESP10',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    data_fim: '2026-12-31',
+    escopo: 'especialidade',
+    especialidade_id: 'specialty-nails'
+  });
+  await service.createCoupon({
+    tenantId: '22222222-2222-4222-8222-222222222222'
+  }, {
+    codigo: 'COMBO10',
+    tipo_desconto: 'percentual',
+    percentual_desconto: 10,
+    data_fim: '2026-12-31',
+    escopo: 'combinacao',
+    servico_tenant_id: '66666666-6666-4666-8666-666666666666',
+    servico_tenant_especialidade_id: 'service-tenant-specialty-nails'
+  });
+
+  assert.equal(calls[0][0].escopo, 'especialidade');
+  assert.equal(calls[0][0].especialidade_id, 'specialty-nails');
+  assert.equal(calls[1][0].escopo, 'combinacao');
+  assert.equal(calls[1][0].servico_tenant_id, '66666666-6666-4666-8666-666666666666');
+  assert.equal(calls[1][0].especialidade_id, 'specialty-nails');
+  assert.equal(calls[1][0].servico_tenant_especialidade_id, 'service-tenant-specialty-nails');
 });
 
 test('start generates one queued WhatsApp message per eligible recipient with idempotency', async () => {
@@ -920,6 +1864,50 @@ test('start generates one queued WhatsApp message per eligible recipient with id
   assert.equal(result.metadata.status_processamento, 'CONCLUIDO');
   assert.equal(result.metadata.status_campanha, 'EM_ANDAMENTO');
   assert.equal(result.total_geradas, 1);
+});
+
+test('start generates immediate birthday campaign messages for all eligible current-month birthdays', async () => {
+  const sends = [];
+  const messages = [];
+  repository.getCampaign = async () => birthdayCampaign();
+  repository.getTemplate = async () => birthdayTemplate();
+  repository.getCoupon = async () => null;
+  repository.listAudienceBase = async () => [{
+    ...audienceRows()[0],
+    cliente: {
+      ...audienceRows()[0].cliente,
+      id: 'birthday-mid-month',
+      data_nascimento: birthdayInCurrentMonth(15)
+    }
+  }, {
+    ...audienceRows()[0],
+    id: 'link-last-day-start',
+    cliente: {
+      ...audienceRows()[0].cliente,
+      id: 'birthday-last-day-start',
+      nome: 'Cliente Ultimo Dia',
+      telefone: '+5511988888888',
+      data_nascimento: birthdayInCurrentMonth(31)
+    }
+  }];
+  repository.updateCampaign = async (_tenantId, _id, payload) => ({ ...birthdayCampaign(), ...payload });
+  repository.createCampaignSend = async (payload) => {
+    sends.push(payload);
+    return { id: `send-${sends.length}`, ...payload };
+  };
+  repository.createWhatsAppCampaignMessage = async (payload) => {
+    messages.push(payload);
+    return { id: `msg-${messages.length}`, ...payload };
+  };
+  repository.listCampaignMessages = async () => messages;
+
+  const result = await service.start('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111');
+
+  assert.equal(sends.length, 2);
+  assert.equal(messages.length, 2);
+  assert.deepEqual(messages.map((message) => message.status_envio), ['pendente', 'pendente']);
+  assert.deepEqual(messages.map((message) => message.agendado_para), [null, null]);
+  assert.equal(result.total_geradas, 2);
 });
 
 test('commercial cooldown blocks client temporarily across campaigns', async () => {
@@ -1053,12 +2041,13 @@ test('approve accepts promotional campaign with start date and gift', async () =
   repository.getCampaign = async () => ({ ...campaign(), data_inicio: null, metadata: { ...campaign().metadata, lifecycle_stage: 'suggestion' }, parametros_template: {} });
   repository.getCoupon = async () => null;
   repository.updateCampaign = async (_tenantId, _id, payload) => ({ ...campaign(), ...payload });
+  const scheduledStart = futureDateOnly(10);
 
   const result = await service.approve({
     tenantId: '22222222-2222-4222-8222-222222222222',
     userId: '77777777-7777-4777-8777-777777777777'
   }, '11111111-1111-4111-8111-111111111111', {
-    data_inicial: '2026-08-01',
+    data_inicial: scheduledStart,
     brinde: 'Hidratacao'
   });
 

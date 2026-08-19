@@ -65,6 +65,7 @@ const CAMPAIGN_TYPES = new Set([
 const TYPES_REQUIRING_SERVICE = new Set(['promocao_servico', 'novo_servico', 'horarios_disponiveis']);
 const TYPES_REQUIRING_OFFER = new Set(['promocao_servico']);
 const PROMOTIONAL_TYPES = new Set(['promocao_servico', 'novo_servico', 'aniversario', 'recuperacao_inativos', 'campanha_geral']);
+const DEFAULT_INACTIVE_CUSTOMER_DAYS = Math.max(1, Number(env.inactiveRecoveryFallbackDays || 45));
 const SUGGESTION_COOLDOWN_DAYS = {
   birthday_month: 25,
   inactive_recovery: 21,
@@ -76,7 +77,7 @@ const DEFAULT_SUGGESTIONS = [
     key: 'birthday_month',
     tipo: 'aniversario',
     title: 'Aniversariantes do mes',
-    description: 'Convide clientes aniversariantes para agendar com um beneficio simples.',
+    description: 'Campanha destinada aos clientes que fazem aniversario no mes corrente.',
     reason: 'A IA recomenda reforcar relacionamento em datas pessoais.',
     criteria: { mode: 'segment', birthday_month: true },
     templateHints: ['birthday', 'aniversario'],
@@ -89,8 +90,8 @@ const DEFAULT_SUGGESTIONS = [
     tipo: 'recuperacao_inativos',
     title: 'Recuperacao de inativos',
     description: 'Reative clientes sem atendimento recente.',
-    reason: 'Clientes inativos costumam responder melhor a convite direto com oferta clara.',
-    criteria: { mode: 'segment', inactive_days: 60, no_future_appointment: true },
+    reason: 'Clientes fora do prazo esperado de retorno por servico costumam responder melhor a convite direto com oferta clara.',
+    criteria: { mode: 'segment', inactive_by_service_return: true, fallback_inactive_days: DEFAULT_INACTIVE_CUSTOMER_DAYS, no_future_appointment: true },
     templateHints: ['inactive', 'inativo', 'recuperacao'],
     natureza_campanha: 'promocional',
     estrategia_envio: 'UNICO',
@@ -155,8 +156,42 @@ function normalizeCampaign(row) {
     prioridade_campanha: metadata.prioridade_campanha,
     template: normalizeTemplate(row.template),
     cupom: row.cupom || null,
-    servico: row.servico || null,
+    servico: normalizeCampaignService(row),
     metrics: calculateMetricRates(row)
+  };
+}
+
+function normalizeCampaignService(row = {}) {
+  if (row.servico_tenant) {
+    const catalog = row.servico_tenant.servico_catalogo || {};
+    return {
+      id: row.servico_tenant.id,
+      servico_tenant_id: row.servico_tenant.id,
+      servico_catalogo_id: row.servico_tenant.servico_catalogo_id || catalog.id || null,
+      codigo_canonico: catalog.codigo_canonico || null,
+      nome: catalog.nome || row.metadata?.nome_servico || null,
+      categoria: catalog.categoria_key || null,
+      natureza: catalog.natureza || null,
+      ativo: row.servico_tenant.ativo !== false
+    };
+  }
+  return row.servico || null;
+}
+
+function summarizeAudienceForCampaign(audience) {
+  return {
+    found: audience.found,
+    eligible: audience.eligible,
+    excluded: audience.excluded,
+    excluded_by_reason: audience.excluded_by_reason
+  };
+}
+
+async function attachAudienceMetrics(tenantId, campaign) {
+  const audience = await estimate(tenantId, campaign);
+  return {
+    ...campaign,
+    audience_metrics: summarizeAudienceForCampaign(audience)
   };
 }
 
@@ -276,9 +311,12 @@ async function list(tenantId, filters = {}) {
   const result = await repository.listCampaigns(tenantId, normalizedFilters);
   const pageSize = result.page_size;
   const total = result.count;
+  const items = await Promise.all(
+    result.rows.map((row) => attachAudienceMetrics(tenantId, normalizeCampaign(row)))
+  );
 
   return {
-    items: result.rows.map(normalizeCampaign),
+    items,
     pagination: {
       page: result.page,
       page_size: pageSize,
@@ -337,7 +375,11 @@ async function create(context, input) {
     tipo: input.tipo || 'campanha_geral',
     canal: 'whatsapp',
     template_id: input.template_id,
-    servico_id: input.servico_id || null,
+    servico_id: null,
+    servico_catalogo_id: validated.service?.servico_catalogo_id || null,
+    servico_tenant_id: validated.service?.servico_tenant_id || validated.service?.id || null,
+    servico_tenant_especialidade_id: input.servico_tenant_especialidade_id || input.metadata?.servico_tenant_especialidade_id || null,
+    especialidade_id: input.especialidade_id || input.metadata?.especialidade_id || null,
     status: input.agendada_para ? 'agendada' : 'rascunho',
     data_inicio: input.data_inicio || null,
     data_fim: input.data_fim || null,
@@ -359,7 +401,11 @@ async function create(context, input) {
       prioridade_campanha: input.prioridade ?? input.metadata?.prioridade_campanha ?? 50,
       cooldown_comercial_dias: input.metadata?.cooldown_comercial_dias || DEFAULT_COMMERCIAL_COOLDOWN_DAYS,
       cupom_id: input.cupom_id || null,
-      servico_id: input.servico_id || null,
+      servico_id: null,
+      servico_tenant_id: validated.service?.servico_tenant_id || validated.service?.id || null,
+      servico_catalogo_id: validated.service?.servico_catalogo_id || null,
+      servico_tenant_especialidade_id: input.servico_tenant_especialidade_id || input.metadata?.servico_tenant_especialidade_id || null,
+      especialidade_id: input.especialidade_id || input.metadata?.especialidade_id || null,
       nome_servico: validated.service?.nome || null,
       lifecycle_stage: lifecycleStage,
       requires_tenant_approval: input.metadata?.requires_tenant_approval === true || lifecycleStage === 'suggestion',
@@ -456,7 +502,9 @@ async function update(context, id, input) {
     ...current,
     ...input,
     cupom_id: input.cupom_id !== undefined ? input.cupom_id : current.metadata?.cupom_id || null,
-    servico_id: input.servico_id !== undefined ? input.servico_id : current.servico_id || current.metadata?.servico_id || null
+    servico_id: input.servico_id !== undefined ? input.servico_id : current.servico_tenant_id || current.metadata?.servico_tenant_id || null,
+    servico_tenant_especialidade_id: input.servico_tenant_especialidade_id !== undefined ? input.servico_tenant_especialidade_id : current.servico_tenant_especialidade_id || current.metadata?.servico_tenant_especialidade_id || null,
+    especialidade_id: input.especialidade_id !== undefined ? input.especialidade_id : current.especialidade_id || current.metadata?.especialidade_id || null
   };
   const validated = await validateCampaignDomain(context, mergedInput);
 
@@ -468,7 +516,6 @@ async function update(context, id, input) {
     'descricao',
     'tipo',
     'template_id',
-    'servico_id',
     'data_inicio',
     'data_fim',
     'criterios_segmentacao',
@@ -482,9 +529,23 @@ async function update(context, id, input) {
     payload.parametros_template = mergeCampaignParams(mergedInput.parametros_template, validated.service);
   }
 
+  if (input.servico_id !== undefined) {
+    payload.servico_id = null;
+    payload.servico_catalogo_id = validated.service?.servico_catalogo_id || null;
+    payload.servico_tenant_id = validated.service?.servico_tenant_id || validated.service?.id || null;
+  }
+  if (input.servico_tenant_especialidade_id !== undefined) {
+    payload.servico_tenant_especialidade_id = mergedInput.servico_tenant_especialidade_id || null;
+  }
+  if (input.especialidade_id !== undefined) {
+    payload.especialidade_id = mergedInput.especialidade_id || null;
+  }
+
   if (
     input.cupom_id !== undefined
     || input.servico_id !== undefined
+    || input.servico_tenant_especialidade_id !== undefined
+    || input.especialidade_id !== undefined
     || input.origem_campanha !== undefined
     || input.tipo_publico !== undefined
     || input.natureza_campanha !== undefined
@@ -516,7 +577,11 @@ async function update(context, id, input) {
           legacyStatus: payload.agendada_para ? 'agendada' : current.status
         }),
       cupom_id: mergedInput.cupom_id || null,
-      servico_id: mergedInput.servico_id || null,
+      servico_id: null,
+      servico_catalogo_id: validated.service?.servico_catalogo_id || null,
+      servico_tenant_id: validated.service?.servico_tenant_id || validated.service?.id || null,
+      servico_tenant_especialidade_id: mergedInput.servico_tenant_especialidade_id || null,
+      especialidade_id: mergedInput.especialidade_id || null,
       nome_servico: validated.service?.nome || null,
       booking_url: buildCampaignBookingUrl(context.tenantSlug, current.tracking_token, mergedInput.cupom_id)
     };
@@ -818,12 +883,22 @@ function isCouponAvailable(coupon, serviceId = null) {
   if (coupon.data_fim && new Date(`${coupon.data_fim}T23:59:59`) < today) return false;
   if (coupon.limite_uso && Number(coupon.total_usos || 0) >= Number(coupon.limite_uso)) return false;
 
-  const serviceLinks = Array.isArray(coupon.servicos)
-    ? coupon.servicos.map((item) => item.servico_id).filter(Boolean)
-    : [];
-  if (serviceId && serviceLinks.length && !serviceLinks.includes(serviceId)) return false;
+  if (serviceId && !couponAppliesToSelection(coupon, { servico_id: serviceId })) return false;
 
   return true;
+}
+
+function couponAppliesToSelection(coupon, selection = {}) {
+  const scopes = Array.isArray(coupon?.servicos) ? coupon.servicos : [];
+  if (!scopes.length) return true;
+  return scopes.some((scope) => {
+    const escopo = scope.escopo || 'servico';
+    if (escopo === 'geral') return true;
+    if (escopo === 'servico') return scope.servico_tenant_id === selection.servico_id || scope.servico_tenant_id === selection.servico_tenant_id;
+    if (escopo === 'especialidade') return scope.especialidade_id === selection.especialidade_id;
+    if (escopo === 'combinacao') return scope.servico_tenant_especialidade_id === selection.servico_tenant_especialidade_id;
+    return false;
+  });
 }
 
 function mergeCampaignParams(params = {}, service = null) {
@@ -882,14 +957,32 @@ async function validateCampaignDomain(context, input) {
     service = await repository.getService(context.tenantId, input.servico_id);
     if (!service) throw new AppError('Servico da campanha nao encontrado ou inativo.', 400, 'CAMPAIGN_SERVICE_INVALID');
   }
+  if (service && input.servico_tenant_especialidade_id) {
+    const config = service.especialidades_config?.find((item) => item.id === input.servico_tenant_especialidade_id);
+    if (!config) throw new AppError('Combinacao servico + especialidade indisponivel para esta campanha.', 400, 'CAMPAIGN_SERVICE_SPECIALTY_INVALID');
+    if (input.especialidade_id && config.especialidade_id !== input.especialidade_id) {
+      throw new AppError('Especialidade nao pertence a combinacao selecionada.', 400, 'CAMPAIGN_SPECIALTY_INVALID');
+    }
+  }
+  if (service && input.especialidade_id && !service.especialidades_config?.some((item) => item.especialidade_id === input.especialidade_id)) {
+    throw new AppError('Especialidade indisponivel para o servico da campanha.', 400, 'CAMPAIGN_SPECIALTY_INVALID');
+  }
 
   if (TYPES_REQUIRING_SERVICE.has(type) && !service) {
     throw new AppError('Selecione o servico da campanha.', 400, 'CAMPAIGN_SERVICE_REQUIRED');
   }
 
   const coupon = input.cupom_id ? await repository.getCoupon(context.tenantId, input.cupom_id) : null;
-  if (input.cupom_id && !isCouponAvailable(coupon, input.servico_id || null)) {
+  if (input.cupom_id && !isCouponAvailable(coupon)) {
     throw new AppError('Cupom indisponivel, expirado, sem beneficio valido ou incompativel com o servico.', 400, 'CAMPAIGN_COUPON_INVALID');
+  }
+  if (input.cupom_id && !couponAppliesToSelection(coupon, {
+    servico_id: null,
+    servico_tenant_id: input.servico_id || null,
+    especialidade_id: input.especialidade_id || null,
+    servico_tenant_especialidade_id: input.servico_tenant_especialidade_id || null
+  })) {
+    throw new AppError('Cupom incompativel com o escopo de servico/especialidade da campanha.', 400, 'CAMPAIGN_COUPON_SCOPE_INVALID');
   }
 
   const promotionalValue = moneyValue(getFixedParam(input.parametros_template, 'valor_promocional'));
@@ -921,15 +1014,170 @@ function hasInternalAudienceMarker(row = {}) {
     row.metadata?.tipo_usuario_operacional,
     row.metadata?.role,
     row.metadata?.user_role,
-    row.metadata?.owner_role,
     client.metadata?.tipo_usuario,
     client.metadata?.tipo_usuario_operacional,
     client.metadata?.role,
-    client.metadata?.user_role,
-    client.metadata?.owner_role
+    client.metadata?.user_role
   ].filter(Boolean);
 
   return values.some((role) => INTERNAL_TENANT_ROLES.has(String(role)));
+}
+
+function asPositiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function serviceTenantSpecialtyRecommendedReturnDays(link = {}) {
+  const metadata = link.metadata || {};
+  return asPositiveInteger(link.dias_retorno_recomendado)
+    || asPositiveInteger(metadata.dias_retorno_recomendado)
+    || asPositiveInteger(metadata.return_recommended_days)
+    || asPositiveInteger(metadata.retorno_recomendado_dias)
+    || null;
+}
+
+function isOccasionalService(item = {}) {
+  const catalog = item.servico_tenant?.servico_catalogo || {};
+  const legacyService = item.servico || {};
+  const metadata = {
+    ...(legacyService.metadata || {}),
+    ...(item.metadata || {})
+  };
+  return catalog.natureza === 'ocasional'
+    || legacyService.servico_ocasional === true
+    || metadata.servico_ocasional === true
+    || metadata.ocasional === true
+    || metadata.is_occasional === true
+    || metadata.return_frequency_mode === 'occasional';
+}
+
+function inactiveRecoveryPolicy(criteria = {}) {
+  if (criteria.inactive_by_service_return !== true && !criteria.inactive_days) return null;
+  return {
+    fallbackDays: asPositiveInteger(criteria.fallback_inactive_days) || DEFAULT_INACTIVE_CUSTOMER_DAYS
+  };
+}
+
+function completedHistoryDate(item) {
+  const date = new Date(item.data_atendimento);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function latestCompletedGroup(completed = []) {
+  const dated = completed
+    .map((item) => ({ item, date: completedHistoryDate(item) }))
+    .filter(({ date }) => date);
+
+  if (!dated.length) return null;
+
+  const latest = dated.sort((left, right) => right.date - left.date)[0];
+  const appointmentId = latest.item.agendamento_id || null;
+  const timestamp = latest.date.getTime();
+  const items = dated
+    .filter(({ item, date }) => (
+      appointmentId
+        ? item.agendamento_id === appointmentId
+        : date.getTime() === timestamp
+    ))
+    .map(({ item }) => item);
+
+  return {
+    date: latest.date,
+    items
+  };
+}
+
+function evaluateInactiveRecovery(completed = [], policy, now = new Date()) {
+  const latest = latestCompletedGroup(completed);
+  if (!latest) {
+    return {
+      inactiveDays: null,
+      eligible: false,
+      exclusion: 'sem_historico_concluido',
+      detail: {
+        status: 'sem_historico_concluido',
+        fallback_days: policy.fallbackDays
+      }
+    };
+  }
+
+  const inactiveDays = Math.floor((now - latest.date) / 86_400_000);
+  const evaluatedServices = latest.items.map((item) => {
+    const service = item.servico_tenant || {};
+    const catalog = item.servico_tenant?.servico_catalogo || {};
+    const serviceSpecialty = item.servico_tenant_especialidade || {};
+    const specialty = item.especialidade || {};
+    const serviceSpecialtyDays = serviceTenantSpecialtyRecommendedReturnDays(serviceSpecialty);
+    const configuredDays = serviceSpecialtyDays;
+    const occasional = isOccasionalService(item);
+    return {
+      historico_id: item.id,
+      agendamento_id: item.agendamento_id || null,
+      servico_id: item.servico_tenant_id || service.id || null,
+      legacy_servico_id: null,
+      servico_catalogo_id: item.servico_catalogo_id || service.servico_catalogo_id || catalog.id || null,
+      servico_tenant_id: item.servico_tenant_id || service.id || null,
+      especialidade_id: item.especialidade_id || specialty.id || null,
+      servico_especialidade_id: item.servico_tenant_especialidade_id || serviceSpecialty.id || null,
+      servico_tenant_especialidade_id: item.servico_tenant_especialidade_id || null,
+      servico_nome: catalog.nome || service.nome || item.metadata?.nome_servico || null,
+      especialidade_nome: specialty.nome || item.nome_especialidade || item.metadata?.nome_especialidade || null,
+      servico_ocasional: occasional,
+      dias_retorno_recomendado: configuredDays,
+      dias_retorno_aplicado: occasional ? null : (configuredDays || policy.fallbackDays),
+      origem_dias_retorno: serviceSpecialtyDays
+        ? 'servico_tenant_especialidade'
+        : occasional ? 'ocasional' : 'fallback'
+    };
+  });
+  const recurringServices = evaluatedServices.filter((item) => !item.servico_ocasional);
+
+  if (!recurringServices.length) {
+    return {
+      inactiveDays,
+      eligible: false,
+      exclusion: 'servico_ocasional_sem_recuperacao',
+      detail: {
+        status: 'servico_ocasional_sem_recuperacao',
+        last_completed_at: latest.date.toISOString(),
+        days_since_last_completed: inactiveDays,
+        fallback_days: policy.fallbackDays,
+        services: evaluatedServices
+      }
+    };
+  }
+
+  const selected = recurringServices
+    .sort((left, right) => left.dias_retorno_aplicado - right.dias_retorno_aplicado)[0];
+  const eligible = inactiveDays >= selected.dias_retorno_aplicado;
+  const lateDays = inactiveDays - selected.dias_retorno_aplicado;
+
+  return {
+    inactiveDays,
+    eligible,
+    exclusion: eligible ? null : 'dentro_prazo_retorno',
+    detail: {
+      status: eligible
+        ? (lateDays >= selected.dias_retorno_aplicado ? 'inativo_prolongado' : 'retorno_atrasado')
+        : 'dentro_prazo_retorno',
+      last_completed_at: latest.date.toISOString(),
+      last_service_id: selected.servico_id,
+      last_service_tenant_id: selected.servico_tenant_id,
+      last_service_catalog_id: selected.servico_catalogo_id,
+      last_service_name: selected.servico_nome,
+      last_specialty_id: selected.especialidade_id,
+      last_specialty_name: selected.especialidade_nome,
+      last_service_specialty_id: selected.servico_especialidade_id,
+      last_service_tenant_specialty_id: selected.servico_tenant_especialidade_id,
+      recommended_return_days: selected.dias_retorno_aplicado,
+      recommended_return_source: selected.origem_dias_retorno,
+      days_since_last_completed: inactiveDays,
+      days_late: eligible ? lateDays : 0,
+      fallback_days: policy.fallbackDays,
+      services: evaluatedServices
+    }
+  };
 }
 
 function normalizeAudienceRow(row, criteria = {}, now = new Date()) {
@@ -941,10 +1189,12 @@ function normalizeAudienceRow(row, criteria = {}, now = new Date()) {
     FUTURE_APPOINTMENT_STATUSES.has(item.status)
     && new Date(item.data_inicio) > now
   ));
+  const rawPhone = getClientPhone(row);
 
   let normalizedPhone = null;
   try {
-    normalizedPhone = normalizePhoneToE164(getClientPhone(row));
+    normalizedPhone = normalizePhoneToE164(rawPhone);
+    if (rawPhone && !normalizedPhone) exclusions.push('telefone_invalido');
   } catch (_) {
     exclusions.push('telefone_invalido');
   }
@@ -952,34 +1202,40 @@ function normalizeAudienceRow(row, criteria = {}, now = new Date()) {
   if (!client.id) exclusions.push('cliente_invalido');
   if (hasInternalAudienceMarker(row)) exclusions.push('usuario_interno_tenant');
   if (!client.ativo || client.deleted_at || row.status !== 'ativo' || row.ativo === false) exclusions.push('cliente_inativo');
-  if (!getClientPhone(row)) exclusions.push('sem_telefone');
+  if (!rawPhone) exclusions.push('sem_telefone');
   if (row.aceita_campanhas === false || row.metadata?.opt_out_whatsapp === true || row.metadata?.permite_marketing === false) exclusions.push('sem_consentimento');
   if (row.status === 'bloqueado' || row.metadata?.bloqueado_comunicacao === true) exclusions.push('bloqueado');
 
   const completed = histories.filter((item) => item.status === 'concluido');
   const noShows = histories.filter((item) => item.status === 'no_show');
-  const lastCompleted = completed
-    .map((item) => new Date(item.data_atendimento))
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .sort((left, right) => right - left)[0] || null;
-  const inactiveDays = lastCompleted ? Math.floor((now - lastCompleted) / 86_400_000) : null;
+  const inactivePolicy = inactiveRecoveryPolicy(criteria);
+  const inactiveEvaluation = inactivePolicy ? evaluateInactiveRecovery(completed, inactivePolicy, now) : null;
+  const lastCompleted = inactiveEvaluation
+    ? null
+    : completed
+      .map((item) => new Date(item.data_atendimento))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((left, right) => right - left)[0] || null;
+  const inactiveDays = inactiveEvaluation
+    ? inactiveEvaluation.inactiveDays
+    : lastCompleted ? Math.floor((now - lastCompleted) / 86_400_000) : null;
 
   if (criteria.mode === 'manual' && Array.isArray(criteria.client_ids) && !criteria.client_ids.includes(client.id)) exclusions.push('fora_da_selecao_manual');
   if (criteria.has_future_appointment === true && futureAppointments.length === 0) exclusions.push('sem_agendamento_futuro');
   if (criteria.no_future_appointment === true && futureAppointments.length > 0) exclusions.push('possui_agendamento_futuro');
-  if (criteria.inactive_days && (inactiveDays === null || inactiveDays < Number(criteria.inactive_days))) exclusions.push('nao_inativo_no_periodo');
+  if (inactiveEvaluation && !inactiveEvaluation.eligible) exclusions.push(inactiveEvaluation.exclusion);
   if (criteria.recurring === true && completed.length < Number(criteria.min_completed || 2)) exclusions.push('nao_recorrente');
   if (criteria.new_client === true && completed.length > 0) exclusions.push('nao_e_novo');
   if (criteria.has_no_show === true && noShows.length === 0) exclusions.push('sem_no_show');
   if (criteria.birthday_month === true) {
-    const month = client.data_nascimento ? new Date(`${client.data_nascimento}T12:00:00Z`).getUTCMonth() : -1;
-    if (month !== now.getMonth()) exclusions.push('fora_mes_aniversario');
+    const birthMonth = birthMonthFromDateOnly(client.data_nascimento);
+    if (birthMonth !== currentMonthNumber(now)) exclusions.push('fora_mes_aniversario');
   }
 
   return {
     cliente_id: client.id,
     nome: getClientName(row),
-    telefone: normalizedPhone || getClientPhone(row),
+    telefone: normalizedPhone || rawPhone,
     email: client.email || null,
     eligible: exclusions.length === 0,
     exclusions,
@@ -987,11 +1243,23 @@ function normalizeAudienceRow(row, criteria = {}, now = new Date()) {
       completed_count: completed.length,
       no_show_count: noShows.length,
       future_appointments: futureAppointments.length,
-      inactive_days: inactiveDays
+      inactive_days: inactiveDays,
+      inactive_recovery: inactiveEvaluation?.detail || null
     },
     internal_user_roles: row.internal_user_roles || [],
     raw: row
   };
+}
+
+function birthMonthFromDateOnly(value) {
+  const match = String(value || '').match(/^\d{4}-(\d{2})-\d{2}/);
+  if (!match) return -1;
+  const month = Number(match[1]);
+  return month >= 1 && month <= 12 ? month : -1;
+}
+
+function currentMonthNumber(now = new Date()) {
+  return now.getMonth() + 1;
 }
 
 function normalizeSaasAudienceRow(user, criteria = {}) {
@@ -1023,10 +1291,11 @@ function normalizeSaasAudienceRow(user, criteria = {}) {
   };
 }
 
-async function estimate(tenantId, campaignOrInput) {
+async function estimate(tenantId, campaignOrInput, options = {}) {
   const criteria = campaignOrInput.criterios_segmentacao || campaignOrInput.publico_alvo || {};
   const origin = resolveCampaignOrigin(campaignOrInput);
   const audienceType = resolveAudienceType(campaignOrInput, origin);
+  const now = options.now || new Date();
 
   if (audienceType === 'usuarios_saas') {
     const base = await repository.listSaasUsers(criteria);
@@ -1049,7 +1318,7 @@ async function estimate(tenantId, campaignOrInput) {
   }
 
   const base = await repository.listAudienceBase(tenantId);
-  const rows = base.map((row) => normalizeAudienceRow(row, criteria));
+  const rows = base.map((row) => normalizeAudienceRow(row, criteria, now));
   const excludedByReason = {};
   rows.forEach((row) => {
     row.exclusions.forEach((reason) => {
@@ -1068,14 +1337,23 @@ async function estimate(tenantId, campaignOrInput) {
 }
 
 function resolveDynamicValue(variable, campaign, recipient, coupon) {
-  const tenantName = campaign.tenant?.nome_fantasia || campaign.metadata?.tenant_name || APP_BRAND.appName;
+  const origin = campaign.metadata?.origem_campanha || campaign.origem_campanha || resolveCampaignOrigin(campaign);
+  const tenantVariables = new Set(['nome_estabelecimento', 'nome_salao']);
+  const responsibleVariables = new Set(['nome_empresa', 'nome_responsavel', 'origem_campanha']);
+  const needsTenantName = tenantVariables.has(variable) || (responsibleVariables.has(variable) && origin !== 'plataforma');
+  const tenantName = needsTenantName ? resolveCampaignEstablishmentName(campaign) : '';
+  const responsibleName = origin === 'plataforma' ? APP_BRAND.appName : tenantName;
   const couponValue = coupon?.codigo || '';
   const commercialFields = buildCampaignCommercialFields(campaign, coupon);
   const map = {
     nome_cliente: recipient.nome,
     telefone: recipient.telefone,
+    nome_estabelecimento: tenantName,
     nome_salao: tenantName,
-    nome_empresa: tenantName,
+    nome_saas: APP_BRAND.appName,
+    nome_empresa: responsibleName,
+    nome_responsavel: responsibleName,
+    origem_campanha: responsibleName,
     desconto: commercialFields.desconto,
     valor_promocional: commercialFields.valor_promocional,
     valor_especial: commercialFields.valor_promocional,
@@ -1089,6 +1367,22 @@ function resolveDynamicValue(variable, campaign, recipient, coupon) {
     link_campanha: campaign.metadata?.booking_url || ''
   };
   return map[variable] || '';
+}
+
+function resolveCampaignEstablishmentName(campaign = {}) {
+  const name = campaign.tenant?.nome_fantasia || campaign.tenant?.nome || '';
+  if (String(name).trim()) return String(name).trim();
+
+  throw new AppError(
+    'Nome do estabelecimento nao resolvido para campanha WhatsApp.',
+    422,
+    'CAMPAIGN_ESTABLISHMENT_NAME_REQUIRED',
+    {
+      campaign_id: campaign.id || null,
+      tenant_id: campaign.tenant_id || null,
+      template_id: campaign.template_id || null
+    }
+  );
 }
 
 function resolveParams(template, campaign, recipient, coupon, overrideParams = {}) {
@@ -1667,6 +1961,7 @@ function maskPhone(phone = '') {
 }
 
 async function createCoupon(context, input) {
+  const scopes = await resolveCouponScopes(context, input);
   const coupon = await repository.createCoupon({
     tenant_id: context.tenantId,
     campanha_id: input.campanha_id || null,
@@ -1683,9 +1978,76 @@ async function createCoupon(context, input) {
     limite_uso: input.limite_uso ?? null,
     limite_usos_por_cliente: input.limite_usos_por_cliente ?? null,
     ativo: input.ativo !== false,
-    metadata: input.metadata || {}
-  }, input.servico_ids || []);
+    metadata: {
+      ...(input.metadata || {}),
+      escopo: input.escopo || 'geral'
+    }
+  }, scopes);
   return coupon;
+}
+
+async function resolveCouponScopes(context, input) {
+  const scope = input.escopo || (input.servico_tenant_especialidade_id ? 'combinacao' : input.especialidade_id ? 'especialidade' : (input.servico_tenant_id || input.servico_ids?.length) ? 'servico' : 'geral');
+  if (scope === 'geral') {
+    return [{
+      escopo: 'geral',
+      metadata: { source: 'campaigns_phase6' }
+    }];
+  }
+
+  if (scope === 'servico') {
+    const serviceIds = input.servico_tenant_id ? [input.servico_tenant_id] : input.servico_ids || [];
+    const services = await Promise.all(serviceIds.map((id) => repository.getService(context.tenantId, id)));
+    return services.map((service, index) => {
+      if (!service) throw new AppError('Servico do cupom nao encontrado ou inativo.', 400, 'COUPON_SERVICE_INVALID');
+      return {
+        escopo: 'servico',
+        servico_tenant_id: service.id,
+        servico_catalogo_id: service.servico_catalogo_id || null,
+        metadata: { source: 'campaigns_phase6', input_index: index }
+      };
+    });
+  }
+
+  if (scope === 'especialidade') {
+    if (!input.especialidade_id) throw new AppError('Informe a especialidade do cupom.', 400, 'COUPON_SPECIALTY_REQUIRED');
+    return [{
+      escopo: 'especialidade',
+      especialidade_id: input.especialidade_id,
+      metadata: { source: 'campaigns_phase6' }
+    }];
+  }
+
+  if (scope === 'combinacao') {
+    const service = input.servico_tenant_id
+      ? await repository.getService(context.tenantId, input.servico_tenant_id)
+      : null;
+    const config = service?.especialidades_config?.find((item) => item.id === input.servico_tenant_especialidade_id);
+    if (!service || !config) {
+      const services = await repository.listServices(context.tenantId);
+      const owner = services.find((item) => item.especialidades_config?.some((configItem) => configItem.id === input.servico_tenant_especialidade_id));
+      const ownerConfig = owner?.especialidades_config?.find((configItem) => configItem.id === input.servico_tenant_especialidade_id);
+      if (!owner || !ownerConfig) throw new AppError('Combinacao servico + especialidade do cupom nao encontrada.', 400, 'COUPON_COMBINATION_INVALID');
+      return [{
+        escopo: 'combinacao',
+        servico_tenant_id: owner.id,
+        servico_catalogo_id: owner.servico_catalogo_id || null,
+        especialidade_id: ownerConfig.especialidade_id,
+        servico_tenant_especialidade_id: ownerConfig.id,
+        metadata: { source: 'campaigns_phase6' }
+      }];
+    }
+    return [{
+      escopo: 'combinacao',
+      servico_tenant_id: service.id,
+      servico_catalogo_id: service.servico_catalogo_id || null,
+      especialidade_id: config.especialidade_id,
+      servico_tenant_especialidade_id: config.id,
+      metadata: { source: 'campaigns_phase6' }
+    }];
+  }
+
+  throw new AppError('Escopo de cupom invalido.', 400, 'COUPON_SCOPE_INVALID');
 }
 
 module.exports = {

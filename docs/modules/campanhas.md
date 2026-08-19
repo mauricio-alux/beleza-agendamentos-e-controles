@@ -1,3 +1,12 @@
+> Nota de reconciliacao 2026-08-15:
+> a regra vigente de Campanhas esta nas atualizacoes datadas deste arquivo,
+> em `docs/project-context.md`, `docs/roadmap.md` e nas ADRs 014-018.
+> Em caso de divergencia com os blocos conceituais antigos abaixo, prevalecem:
+> campanha como entidade unica, modo de entrega por capacidade do tenant,
+> templates WhatsApp obrigatorios, dry-run em desenvolvimento, exclusao de
+> usuarios internos, novo MER de Servicos como fonte oficial, Fase 8.3 com
+> legado removido e campanhas sugeridas por IA/regras com aprovacao do tenant.
+
 O `campanhas.md` é um dos módulos mais estratégicos comercialmente no Bellory, porque ele representa:
 
 * crescimento automático do salão
@@ -429,6 +438,12 @@ Esses templates nao disparam mensagens automaticamente. Eles apenas
 disponibilizam modelos preparados para futura aprovacao na WhatsApp Business
 Platform, usando parametros posicionais (`{{1}}`, `{{2}}`, etc.) e linguagem
 comercial cordial.
+
+O template `campaign_birthday` representa a campanha "Aniversariantes do mes".
+Ele deve comunicar que o beneficio e referente ao mes do aniversario, sem
+induzir que a mensagem sera enviada exatamente no dia do aniversario. Caso uma
+versao ja esteja aprovada na Meta, qualquer mudanca de conteudo exige nova
+versao/reaprovacao antes de envio real.
 
 Templates promocionais do catalogo (`campaign_promotion` e
 `campaign_flash_sale`) usam blocos comerciais condicionais:
@@ -1002,8 +1017,80 @@ Atualizacao 2026-07-22:
 
 * `campanha_geral`: todos os clientes elegiveis;
 * `promocao_servico`: todos os clientes elegiveis;
-* `recuperacao_inativos`: clientes inativos ha pelo menos 60 dias;
-* `aniversario`: aniversariantes do mes;
+* `recuperacao_inativos`: clientes cujo ultimo atendimento concluido ultrapassou
+  o prazo esperado de retorno da combinacao servico + especialidade realizada.
+  A regra usa os snapshots do novo MER em `cliente_historico_atendimentos` e
+  `servico_tenant_especialidades.dias_retorno_recomendado`. Quando a
+  combinacao recorrente nao tiver retorno recomendado, usa fallback de 45 dias.
+  Servicos cujo catalogo tenha `servicos_catalogo.natureza = ocasional` nao
+  usam fallback e nao classificam o cliente como inativo por si so. Em um mesmo
+  atendimento com multiplos servicos, a campanha ignora ocasionais, avalia as
+  combinacoes recorrentes e usa o menor prazo vencido como combinacao principal,
+  sem duplicar destinatarios. A regra preserva telefone valido, consentimento,
+  opt-out, usuarios internos reais, multi-tenant e exclusao por agendamento
+  futuro valido; agendamentos futuros cancelados ou terminais nao bloqueiam a
+  elegibilidade. A mesma funcao central alimenta estimativa, previa e inicio da
+  campanha e expõe explicabilidade em `stats.inactive_recovery`;
+* `aniversario`: aniversariantes do mes. Seleciona clientes cujo
+  `clientes.data_nascimento` pertence ao mes atual, mantendo telefone valido,
+  consentimento, opt-out, usuario interno e demais filtros existentes. As
+  mensagens sao geradas no start da campanha para todos os aniversariantes
+  elegiveis do mes; o dia do aniversario nao agenda individualmente o envio.
+  A automacao `Feliz aniversario` e outro fluxo, documentado em
+  `docs/modules/automacoes-relacionamento.md`, com trigger diario por dia/mes,
+  horario configuravel por tenant e idempotencia anual por tenant, cliente,
+  ano e tipo de automacao;
 * `novo_servico`: todos os clientes elegiveis;
 * `horarios_disponiveis`: clientes sem agendamento futuro;
 * `relacionamento`: clientes recorrentes.
+
+Atualizacao 2026-07-29 - Fase 6 do MER de Servicos:
+
+* campanhas e cupons devem usar `servicos_catalogo`, `servico_tenants`,
+  `servico_catalogo_especialidades` e `servico_tenant_especialidades` como
+  fontes oficiais;
+* novas campanhas por servico gravam `servico_tenant_id` e, quando aplicavel,
+  `servico_tenant_especialidade_id`/`especialidade_id`;
+* `servico_id` legado permanece apenas como compatibilidade de leitura, nao
+  como fonte oficial para novas campanhas;
+* cupons podem ter escopo `geral`, `servico`, `especialidade` ou `combinacao`;
+* escopo `servico` aponta para `servico_tenants`;
+* escopo `combinacao` aponta para `servico_tenant_especialidades`;
+* `servico_tenants` pode conter servicos apenas disponibilizados pelos tipos de
+  negocio; campanhas e cupons devem listar somente servicos com
+  `servico_tenants.ativo = true` e especialidades configuradas para o servico
+  selecionado;
+* cupom rapido deve enviar `escopo`, `servico_tenant_id`,
+  `especialidade_id` e/ou `servico_tenant_especialidade_id` conforme a selecao.
+
+Atualizacao 2026-07-29 - Fase 7 da massa de testes:
+
+* a massa ativa de campanhas/cupons usa a seed `campaign_test_v3`;
+* os scripts `campaign-test:*` foram migrados para o novo MER de Servicos;
+* clientes de teste usam nomes naturais, com chaves tecnicas somente em
+  `metadata`;
+* os cenarios cobrem recuperacao por retorno recomendado da combinacao,
+  servico ocasional, aniversario, opt-out, telefone invalido e agendamento
+  futuro;
+* cupons de teste cobrem escopos `geral`, `servico`, `especialidade` e
+  `combinacao`;
+* mensagens WhatsApp criadas pela massa permanecem em dry-run e nao devem
+  chamar provider externo.
+
+Atualizacao 2026-07-29 - Fase 8.2:
+
+* as FKs legadas de campanhas e cupons para `servicos` e
+  `servico_especialidades` foram removidas pela migration `20260729180000`;
+* `cupom_servicos` nao aceita mais o escopo `servico_legado`;
+* campanhas e cupons permanecem ancorados nos escopos `geral`, `servico`,
+  `especialidade` e `combinacao`, usando as referencias do novo MER.
+
+Atualizacao 2026-07-29 - Fase 8.3:
+
+* o MER legado fisico foi removido do schema `public`;
+* campanhas e cupons nao possuem fallback para `servicos` legado;
+* previews, estimates, start em dry-run, recuperacao de inativos,
+  aniversariantes, cupons e massa `campaign_test_v3` foram validados usando
+  somente o novo MER;
+* scripts antigos de massa de campanhas foram removidos fisicamente; a rota npm
+  ativa permanece em `campaign-test-data-v3.js`.

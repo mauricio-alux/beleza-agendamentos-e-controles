@@ -27,14 +27,43 @@ export type CampaignCoupon = {
   limite_uso?: number | null;
   total_usos?: number | null;
   ativo: boolean;
-  servicos?: Array<{ servico_id: string }>;
+  servicos?: Array<{
+    escopo?: "geral" | "servico" | "especialidade" | "combinacao" | "servico_legado";
+    servico_id?: string | null;
+    servico_tenant_id?: string | null;
+    especialidade_id?: string | null;
+    servico_tenant_especialidade_id?: string | null;
+  }>;
+};
+
+export type CampaignServiceSpecialtyConfig = {
+  id: string;
+  especialidade_id: string;
+  nome?: string | null;
+  preco?: number | null;
+  duracao_minutos?: number | null;
+  dias_retorno_recomendado?: number | null;
+  aceita_agendamento_online?: boolean | null;
+  ativo?: boolean | null;
 };
 
 export type CampaignService = {
   id: string;
+  servico_tenant_id?: string | null;
+  servico_catalogo_id?: string | null;
+  codigo_canonico?: string | null;
   nome: string;
   categoria?: string | null;
+  natureza?: string | null;
   preco?: number | null;
+  especialidades_config?: CampaignServiceSpecialtyConfig[];
+};
+
+export type CampaignAudienceMetrics = {
+  found: number;
+  eligible: number;
+  excluded: number;
+  excluded_by_reason: Record<string, number>;
 };
 
 export type Campaign = {
@@ -45,6 +74,10 @@ export type Campaign = {
   canal: "whatsapp";
   template_id?: string | null;
   servico_id?: string | null;
+  servico_tenant_id?: string | null;
+  servico_catalogo_id?: string | null;
+  especialidade_id?: string | null;
+  servico_tenant_especialidade_id?: string | null;
   status: string;
   origem_campanha?: "tenant" | "plataforma" | "ia";
   tipo_publico?: "clientes" | "usuarios_saas";
@@ -80,6 +113,7 @@ export type Campaign = {
     taxa_leitura: number;
     taxa_falha: number;
   };
+  audience_metrics?: CampaignAudienceMetrics;
   created_at: string;
   updated_at: string;
 };
@@ -144,11 +178,7 @@ export type CampaignMessage = {
   } | null;
 };
 
-export type CampaignEstimate = {
-  found: number;
-  eligible: number;
-  excluded: number;
-  excluded_by_reason: Record<string, number>;
+export type CampaignEstimate = CampaignAudienceMetrics & {
   sample: Array<{
     cliente_id: string;
     nome: string;
@@ -160,6 +190,7 @@ export type CampaignEstimate = {
 
 export type CampaignPreview = {
   conteudo: string;
+  template?: CampaignTemplate | null;
   params: Record<string, string>;
   provider_params: string[];
   preview_source?: "templates_mensagem" | "mensagens_whatsapp";
@@ -195,7 +226,7 @@ async function request<T>(session: AuthSession | null, path: string, init: Reque
   });
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || "Nao foi possivel carregar campanhas.");
+    throw new Error(payload.error?.message || "Não foi possível carregar campanhas.");
   }
   return payload.data;
 }
