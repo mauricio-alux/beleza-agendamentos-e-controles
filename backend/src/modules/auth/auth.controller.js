@@ -1,5 +1,11 @@
 const authService = require('./auth.service');
-const { registerSchema, loginSchema, refreshTokenSchema } = require('./auth.validators');
+const {
+  registerSchema,
+  loginSchema,
+  recoverPasswordSchema,
+  resetPasswordSchema,
+  refreshTokenSchema
+} = require('./auth.validators');
 
 async function register(req, res) {
   const input = registerSchema.parse(req.body);
@@ -14,6 +20,26 @@ async function register(req, res) {
 async function login(req, res) {
   const input = loginSchema.parse(req.body);
   const result = await authService.login(input, {
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
+
+  return res.json({ data: result });
+}
+
+async function recoverPassword(req, res) {
+  const input = recoverPasswordSchema.parse(req.body);
+  const result = await authService.recoverPassword(input, {
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
+
+  return res.json({ data: result });
+}
+
+async function resetPassword(req, res) {
+  const input = resetPasswordSchema.parse(req.body);
+  const result = await authService.resetPassword(input, {
     ipAddress: req.ip,
     userAgent: req.headers['user-agent']
   });
@@ -42,6 +68,8 @@ async function me(req, res) {
 module.exports = {
   register,
   login,
+  recoverPassword,
+  resetPassword,
   refresh,
   logout,
   me

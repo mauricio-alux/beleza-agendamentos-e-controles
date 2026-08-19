@@ -79,6 +79,20 @@ type LoginPayload = {
   persist?: boolean;
 };
 
+type RecoverPasswordPayload = {
+  email: string;
+};
+
+type ResetPasswordPayload = {
+  access_token: string;
+  senha: string;
+};
+
+type AuthActionResponse = {
+  success: boolean;
+  message: string;
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   code?: string;
@@ -103,11 +117,11 @@ function getFriendlyError(status: number, code?: string, message?: string) {
   }
 
   if (status === 403) {
-    return "Não foi possível acessar este tenant. Tente novamente.";
+    return "Não foi possível acessar este estabelecimento. Tente novamente.";
   }
 
   if (status === 404) {
-    return "Usuário ou tenant não encontrado.";
+    return "Usuário ou estabelecimento não encontrado.";
   }
 
   if (status >= 500) {
@@ -212,6 +226,22 @@ async function login(payload: LoginPayload) {
   return session;
 }
 
+async function recoverPassword(payload: RecoverPasswordPayload) {
+  return request<AuthActionResponse>("/auth/recover-password", {
+    method: "POST",
+    body: JSON.stringify({
+      email: payload.email
+    })
+  });
+}
+
+async function resetPassword(payload: ResetPasswordPayload) {
+  return request<AuthActionResponse>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 async function refreshToken(refreshTokenValue: string) {
   const session = await request<AuthSession>("/auth/refresh", {
     method: "POST",
@@ -256,6 +286,8 @@ async function me(accessToken: string) {
 
 export const authService = {
   login,
+  recoverPassword,
+  resetPassword,
   logout,
   refreshToken,
   me,

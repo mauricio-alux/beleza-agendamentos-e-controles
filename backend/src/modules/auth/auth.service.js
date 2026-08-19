@@ -1,5 +1,5 @@
 const { supabase, supabaseAdmin } = require('../../config/supabase');
-const { APP_BRAND } = require('../../config/app-brand');
+const { APP_BRAND, buildPublicAppUrl } = require('../../config/app-brand');
 const { AppError, forbidden, unauthorized } = require('../../utils/errors');
 const { normalizeEmail, normalizePhoneToE164 } = require('../../utils/normalize');
 const usuariosRepository = require('../usuarios/usuarios.repository');
@@ -421,6 +421,141 @@ async function login(input, requestContext = {}) {
   return formatSessionResponse(data.session, data.user, context);
 }
 
+async function recoverPassword(input, requestContext = {}) {
+  const email = normalizeEmail(input.email);
+  const redirectTo = buildPublicAppUrl('/redefinir-senha');
+  let response;
+
+  try {
+    response = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo
+    });
+  } catch (error) {
+    const recoveryError = classifyPasswordRecoveryError(error);
+    await eventLogsService.logEvent('password_recovery_failed', {
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+      payload: {
+        email,
+        redirect_to: redirectTo,
+        reason: error.message,
+        code: recoveryError.code
+      }
+    });
+
+    throw recoveryError;
+  }
+
+  const { error } = response;
+
+  if (error) {
+    const recoveryError = classifyPasswordRecoveryError(error);
+    await eventLogsService.logEvent('password_recovery_failed', {
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+      payload: {
+        email,
+        redirect_to: redirectTo,
+        reason: error.message,
+        status: error.status || null,
+        code: recoveryError.code
+      }
+    });
+
+    throw recoveryError;
+  }
+
+  await eventLogsService.logEvent('password_recovery_requested', {
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+    payload: { email, redirect_to: redirectTo }
+  });
+
+  return {
+    success: true,
+    message: 'Se o email estiver cadastrado, enviaremos instrucoes para redefinir sua senha.'
+  };
+}
+
+function classifyPasswordRecoveryError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = Number(error?.status || error?.statusCode || 0);
+
+  if (status === 429 || /rate|too many|limit/.test(message)) {
+    return new AppError(
+      'Limite temporario de envio atingido. Tente novamente em alguns minutos.',
+      429,
+      'PASSWORD_RECOVERY_RATE_LIMIT'
+    );
+  }
+
+  if (/redirect|not allowed|not permitted|site url|url/.test(message)) {
+    return new AppError(
+      'A URL de redefinicao nao esta permitida na configuracao do Supabase Auth.',
+      502,
+      'PASSWORD_RECOVERY_REDIRECT_NOT_ALLOWED',
+      { expected_redirect_to: buildPublicAppUrl('/redefinir-senha') }
+    );
+  }
+
+  if (/smtp|email|mail|send|sender/.test(message)) {
+    return new AppError(
+      'O provedor nao conseguiu enviar o email de recuperacao. Verifique SMTP e logs do Supabase Auth.',
+      502,
+      'PASSWORD_RECOVERY_EMAIL_NOT_SENT'
+    );
+  }
+
+  if (/fetch failed|network|econn|eacces|timeout|dns|getaddrinfo/.test(message)) {
+    return new AppError(
+      'Nao foi possivel conectar ao Supabase Auth para solicitar a recuperacao.',
+      502,
+      'PASSWORD_RECOVERY_PROVIDER_UNREACHABLE'
+    );
+  }
+
+  return new AppError(
+    'Nao foi possivel enviar as instrucoes de recuperacao. Tente novamente.',
+    502,
+    'PASSWORD_RECOVERY_FAILED'
+  );
+}
+
+async function resetPassword(input, requestContext = {}) {
+  const { data, error } = await supabaseAdmin.auth.getUser(input.access_token);
+
+  if (error || !data.user) {
+    throw new AppError('Link de redefinicao invalido ou expirado. Solicite um novo link.', 401, 'PASSWORD_RESET_TOKEN_INVALID');
+  }
+
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+    password: input.senha
+  });
+
+  if (updateError) {
+    await eventLogsService.logEvent('password_reset_failed', {
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+      payload: { auth_user_id: data.user.id, reason: updateError.message }
+    });
+
+    throw new AppError('Nao foi possivel redefinir sua senha. Tente novamente.', 502, 'PASSWORD_RESET_FAILED');
+  }
+
+  await supabaseAdmin.auth.admin.signOut(input.access_token, 'global').catch(() => null);
+
+  await eventLogsService.logEvent('password_reset_completed', {
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+    payload: { auth_user_id: data.user.id }
+  });
+
+  return {
+    success: true,
+    message: 'Senha redefinida com sucesso. Entre novamente para continuar.'
+  };
+}
+
 async function refreshToken(refreshTokenValue) {
   const { data, error } = await supabase.auth.refreshSession({
     refresh_token: refreshTokenValue
@@ -482,6 +617,8 @@ async function getMe(authUser) {
 module.exports = {
   register,
   login,
+  recoverPassword,
+  resetPassword,
   refreshToken,
   logout,
   validateToken,

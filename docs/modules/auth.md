@@ -171,10 +171,14 @@ frontend/src/
 
 ---
 
-## Recuperação futura
+## Recuperacao de senha
 
 ```text id="vh8sm2"
 /recuperar-senha
+```
+
+```text
+/redefinir-senha
 ```
 
 ---
@@ -193,6 +197,22 @@ POST /auth/login
 
 ```text id="0f7gde"
 POST /auth/register
+```
+
+---
+
+## Solicitar recuperacao de senha
+
+```text
+POST /auth/recover-password
+```
+
+---
+
+## Redefinir senha
+
+```text
+POST /auth/reset-password
 ```
 
 ---

@@ -7,6 +7,8 @@ const router = Router();
 
 router.post('/register', asyncHandler(authController.register));
 router.post('/login', asyncHandler(authController.login));
+router.post('/recover-password', asyncHandler(authController.recoverPassword));
+router.post('/reset-password', asyncHandler(authController.resetPassword));
 router.post('/refresh', asyncHandler(authController.refresh));
 router.post('/logout', authMiddleware, asyncHandler(authController.logout));
 router.get('/me', authMiddleware, asyncHandler(authController.me));
