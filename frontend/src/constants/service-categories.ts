@@ -15,7 +15,8 @@ export const SERVICE_CATEGORY_LABELS: Record<ServiceCategory, string> = {
   terapia_capilar: "Terapia Capilar",
   sobrancelhas: "Sobrancelhas",
   cilios: "Cilios",
-  maquiagem: "Maquiagem"
+  maquiagem: "Maquiagem",
+  depilacao: "Depilacao"
 };
 
 export const SERVICE_CATEGORY_ALIASES: Record<string, ServiceCategory> = {

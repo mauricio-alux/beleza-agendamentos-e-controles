@@ -11,7 +11,9 @@ const router = Router();
 router.use(authMiddleware, tenantMiddleware, requireValidSubscription);
 
 router.get('/compatible-specialties', requirePermission('servicos.read'), asyncHandler(servicesController.listCompatibleSpecialties));
+router.get('/catalog', requirePermission('servicos.read'), asyncHandler(servicesController.catalog));
 router.get('/', requirePermission('servicos.read'), asyncHandler(servicesController.list));
+router.get('/:id', requirePermission('servicos.read'), asyncHandler(servicesController.detail));
 router.post('/', requirePermission('servicos.write', 'servicos.manage'), asyncHandler(servicesController.create));
 router.patch('/:id', requirePermission('servicos.write', 'servicos.manage'), asyncHandler(servicesController.update));
 router.delete('/:id', requirePermission('servicos.manage'), asyncHandler(servicesController.remove));

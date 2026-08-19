@@ -3,7 +3,7 @@ import { OperationalCatalogManager } from "@/components/operational/OperationalC
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Servicos x Especialidades"
+  title: "Serviços e Especialidades"
 };
 
 export default function ServicoEspecialidadesSettingsPage() {

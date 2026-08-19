@@ -17,6 +17,7 @@ const cargosRoutes = require('./cargos.routes');
 const especialidadesRoutes = require('./especialidades.routes');
 const profissionaisRoutes = require('./profissionais.routes');
 const adminRoutes = require('./admin.routes');
+const businessTypesRoutes = require('./business-types.routes');
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use('/cargos', cargosRoutes);
 router.use('/especialidades', especialidadesRoutes);
 router.use('/profissionais', profissionaisRoutes);
 router.use('/admin', adminRoutes);
+router.use('/tipos-negocio', businessTypesRoutes);
 
 module.exports = router;

@@ -1,21 +1,12 @@
+const crypto = require('node:crypto');
 const servicesRepository = require('./services.repository');
 const teamRepository = require('../team/team.repository');
-const { filterCompatibleServices } = require('../../constants/team-service-compatibility');
-const {
-  hasExactServiceCompatibility
-} = require('../team/professional-service-compatibility');
-const {
-  BELLORY_OFFICIAL_SERVICES,
-  normalizeOfficialCategoryKey,
-  getOfficialServiceByName
-} = require('../../constants/bellory-taxonomy');
-const {
-  isValidServiceCategory,
-  normalizeServiceCategory
-} = require('../../constants/service-categories');
+const businessTypesService = require('../business-types/business-types.service');
+const tenantServiceCatalogSync = require('./tenant-service-catalog-sync.service');
+const { isValidServiceCategory, normalizeServiceCategory } = require('../../constants/service-categories');
 const { AppError } = require('../../utils/errors');
 
-function normalizeTaxonomyName(value) {
+function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -23,88 +14,18 @@ function normalizeTaxonomyName(value) {
     .trim();
 }
 
-function normalizeLoose(value) {
-  return normalizeTaxonomyName(value).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function toTaxonomyKey(value) {
-  return normalizeLoose(value).replace(/\s+/g, '_');
-}
-
-function isValidServiceNameForCompatibility(nome) {
-  return normalizeLoose(nome).length >= 2;
-}
-
-function isValidCategory(categoria) {
-  return isValidServiceCategory(categoria);
-}
-
-function officialCategoryMatches(serviceCategoryKey, selectedCategory) {
-  return normalizeOfficialCategoryKey(serviceCategoryKey) === normalizeOfficialCategoryKey(selectedCategory);
-}
-
-function findOfficialServiceMatches(nome, categoria) {
-  const normalizedName = normalizeLoose(nome);
-
-  return BELLORY_OFFICIAL_SERVICES.filter((service) => {
-    if (!officialCategoryMatches(service.categoryKey, categoria)) {
-      return false;
-    }
-
-    const serviceName = normalizeLoose(service.name);
-    const serviceAction = normalizeLoose(service.action);
-    const specialtyNames = service.specialties.map(normalizeLoose);
-
-    return serviceName.includes(normalizedName)
-      || normalizedName.includes(serviceName)
-      || serviceAction.includes(normalizedName)
-      || specialtyNames.some((specialtyName) => specialtyName.includes(normalizedName) || normalizedName.includes(specialtyName))
-      || normalizedName.split(' ').some((term) => term.length >= 4 && serviceName.includes(term));
-  });
-}
-
-function getOfficialSpecialtyNameSet(nome, categoria) {
-  const matches = findOfficialServiceMatches(nome, categoria);
-  const names = new Set();
-
-  matches.forEach((service) => {
-    (service.specialties || []).forEach((specialtyName) => {
-      names.add(normalizeTaxonomyName(specialtyName));
-    });
-  });
-
-  return names;
-}
-
-function matchesOfficialSpecialty(specialty, officialNames) {
-  if (!officialNames.size) return false;
-  return officialNames.has(normalizeTaxonomyName(specialty?.nome));
-}
-
-function uniqueSpecialties(specialties = []) {
-  const byId = new Map();
-  specialties.forEach((specialty) => {
-    if (specialty?.id && specialty.ativo !== false) {
-      byId.set(specialty.id, specialty);
-    }
-  });
-
-  return Array.from(byId.values()).sort((a, b) => {
-    const cargoDiff = String(a.cargo?.nome || '').localeCompare(String(b.cargo?.nome || ''));
-    if (cargoDiff !== 0) return cargoDiff;
-    return String(a.nome || '').localeCompare(String(b.nome || ''));
-  });
+function normalizeCodePart(value) {
+  return normalizeText(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase();
 }
 
 function sanitizeSpecialty(specialty) {
+  if (!specialty) return null;
   return {
     id: specialty.id,
     cargo_id: specialty.cargo_id,
     nome: specialty.nome,
     descricao: specialty.descricao,
     ativo: specialty.ativo !== false,
-    catalogo_ativo: specialty.catalogo_ativo !== false,
-    tenant_ativo: specialty.tenant_ativo !== false,
     tenant_id: specialty.tenant_id || null,
     taxonomy_category_key: normalizeServiceCategory(specialty.taxonomy_category_key),
     is_official: specialty.is_official !== false,
@@ -114,396 +35,422 @@ function sanitizeSpecialty(specialty) {
       nome: specialty.cargo.nome,
       descricao: specialty.cargo.descricao,
       categoria_profissional: specialty.cargo.categoria_profissional,
-      ativo: specialty.cargo.ativo !== false
+      ativo: specialty.cargo.ativo !== false && !specialty.cargo.deleted_at
     } : null
   };
 }
 
-async function resolveCompatibleSpecialties(tenantId, input = {}) {
-  const nome = input.nome;
-  const categoria = input.categoria;
+function activeSpecialtyFromConfig(config) {
+  const specialty = sanitizeSpecialty(config.especialidade);
+  if (!specialty || specialty.ativo === false || specialty.cargo?.ativo === false) return null;
+  return specialty;
+}
 
-  if (!isValidServiceNameForCompatibility(nome) || !categoria) {
-    return [];
-  }
+function sanitizeCatalog(catalog) {
+  const compatibilities = (catalog.compatibilidades || [])
+    .filter((item) => item && item.ativo !== false)
+    .map((item) => ({
+      id: item.id,
+      especialidade_id: item.especialidade_id,
+      ativo: item.ativo !== false,
+      metadata: item.metadata || {},
+      especialidade: sanitizeSpecialty(item.especialidade)
+    }))
+    .filter((item) => item.especialidade && item.especialidade.ativo !== false && item.especialidade.cargo?.ativo !== false);
 
-  if (!isValidCategory(categoria)) {
+  return {
+    id: catalog.id,
+    servico_catalogo_id: catalog.id,
+    codigo_canonico: catalog.codigo_canonico,
+    nome: catalog.nome,
+    descricao: catalog.descricao,
+    categoria: normalizeServiceCategory(catalog.categoria_key),
+    categoria_key: normalizeServiceCategory(catalog.categoria_key),
+    natureza: catalog.natureza,
+    servico_ocasional: catalog.natureza === 'ocasional',
+    ativo: catalog.ativo !== false,
+    recomendado: catalog.recomendado === true,
+    aplicavel: catalog.aplicavel === true,
+    tipo_negocio_ids: catalog.tipo_negocio_ids || [],
+    tipos_negocio: catalog.tipos_negocio || [],
+    metadata: catalog.metadata || {},
+    especialidades_compativeis: compatibilities.map((item) => item.especialidade),
+    compatibilidades: compatibilities
+  };
+}
+
+function sanitizeOffer(offer) {
+  const catalog = offer.servico_catalogo || {};
+  const configs = (offer.configuracoes || [])
+    .filter((item) => item && item.especialidade)
+    .map((item) => ({
+      id: item.id,
+      servico_tenant_especialidade_id: item.id,
+      servico_tenant_id: item.servico_tenant_id,
+      especialidade_id: item.especialidade_id,
+      preco: item.preco ?? null,
+      duracao_minutos: item.duracao_minutos ?? null,
+      dias_retorno_recomendado: item.dias_retorno_recomendado ?? null,
+      aceita_agendamento_online: item.ativo === false ? false : item.aceita_agendamento_online !== false,
+      ativo: item.ativo !== false,
+      metadata: item.metadata || {},
+      especialidade: activeSpecialtyFromConfig(item),
+      source: {
+        preco: 'servico_tenant_especialidades',
+        duracao_minutos: 'servico_tenant_especialidades',
+        dias_retorno_recomendado: 'servico_tenant_especialidades',
+        aceita_agendamento_online: 'servico_tenant_especialidades'
+      }
+    }))
+    .filter((item) => item.especialidade);
+  const activeConfigs = configs.filter((item) => item.ativo !== false);
+  const firstConfig = activeConfigs[0] || configs[0] || {};
+
+  return {
+    id: offer.id,
+    servico_tenant_id: offer.id,
+    tenant_id: offer.tenant_id,
+    servico_catalogo_id: offer.servico_catalogo_id,
+    codigo_canonico: catalog.codigo_canonico,
+    nome: catalog.nome,
+    descricao: catalog.descricao,
+    categoria: normalizeServiceCategory(catalog.categoria_key),
+    categoria_key: normalizeServiceCategory(catalog.categoria_key),
+    taxonomy_category_key: normalizeServiceCategory(catalog.categoria_key),
+    natureza: catalog.natureza,
+    servico_ocasional: catalog.natureza === 'ocasional',
+    ativo: offer.ativo !== false,
+    oferta_ativa: offer.ativo !== false,
+    disponivel_ao_tenant: true,
+    catalogo_ativo: catalog.ativo !== false,
+    metadata: offer.metadata || {},
+    catalogo_metadata: catalog.metadata || {},
+    preco: firstConfig.preco ?? null,
+    duracao_minutos: firstConfig.duracao_minutos ?? null,
+    dias_retorno_recomendado: firstConfig.dias_retorno_recomendado ?? null,
+    permite_online: firstConfig.aceita_agendamento_online !== false,
+    especialidades: activeConfigs.map((item) => item.especialidade),
+    especialidade_ids: activeConfigs.map((item) => item.especialidade_id),
+    especialidades_config: configs,
+    created_at: offer.created_at,
+    legacy: offer.metadata?.legacy_servico_ids ? {
+      servico_ids: offer.metadata.legacy_servico_ids
+    } : null
+  };
+}
+
+function resolveConfigInput(input = {}) {
+  const explicitConfigs = input.especialidades_config || [];
+  const ids = explicitConfigs.length
+    ? explicitConfigs.map((item) => item.especialidade_id)
+    : input.especialidade_ids || [];
+
+  return ids.map((especialidadeId) => {
+    const config = explicitConfigs.find((item) => item.especialidade_id === especialidadeId) || {};
+    return {
+      especialidade_id: especialidadeId,
+      duracao_minutos: config.duracao_minutos ?? input.duracao_minutos ?? null,
+      preco: config.preco ?? input.preco ?? null,
+      dias_retorno_recomendado: config.dias_retorno_recomendado ?? input.dias_retorno_recomendado ?? null,
+      aceita_agendamento_online: (config.ativo ?? true) === false ? false : config.aceita_agendamento_online ?? input.permite_online ?? true,
+      ativo: config.ativo ?? true
+    };
+  });
+}
+
+function ensureCategory(category) {
+  const normalized = normalizeServiceCategory(category);
+  if (!isValidServiceCategory(normalized)) {
     throw new AppError('Categoria de servico invalida.', 422, 'INVALID_SERVICE_CATEGORY');
   }
-
-  const specialties = (await teamRepository.listSpecialties({
-    tenantId,
-    categoryKey: normalizeServiceCategory(categoria)
-  })).map((specialty) => sanitizeSpecialty(specialty));
-  const statuses = await teamRepository.listTenantSpecialtyStatuses(tenantId);
-  const statusBySpecialty = new Map(statuses.map((item) => [item.especialidade_id, item.ativo !== false]));
-  const activeSpecialties = specialties
-    .map((specialty) => ({
-      ...specialty,
-      ativo: statusBySpecialty.has(specialty.id) ? statusBySpecialty.get(specialty.id) : specialty.ativo !== false,
-      tenant_ativo: statusBySpecialty.has(specialty.id) ? statusBySpecialty.get(specialty.id) : true
-    }))
-    .filter((specialty) => specialty.ativo !== false && specialty.catalogo_ativo !== false && specialty.tenant_ativo !== false);
-
-  const officialNames = getOfficialSpecialtyNameSet(nome, categoria);
-  const officialMatches = activeSpecialties.filter((specialty) => matchesOfficialSpecialty(specialty, officialNames));
-  const categoryMatches = activeSpecialties.filter((specialty) => (
-    normalizeServiceCategory(specialty.taxonomy_category_key) === normalizeServiceCategory(categoria)
-  ));
-
-  return uniqueSpecialties([...officialMatches, ...categoryMatches]);
+  return normalized;
 }
 
-function sanitize(service) {
-  const links = (service.servico_especialidades || [])
-    .filter((item) => (
-      item
-      && !item.deleted_at
-      && item.ativo !== false
-      && item.especialidade
-      && item.especialidade.ativo !== false
-      && !item.especialidade.deleted_at
-      && item.especialidade.cargo
-      && item.especialidade.cargo.ativo !== false
-      && !item.especialidade.cargo.deleted_at
-    ))
-    .map((item) => item.especialidade);
-
-  return {
-    id: service.id,
-    tenant_id: service.tenant_id,
-    nome: service.nome,
-    descricao: service.descricao,
-    duracao_minutos: service.duracao_minutos,
-    preco: Number(service.preco || 0),
-    categoria: normalizeServiceCategory(service.categoria),
-    taxonomy_category_key: normalizeServiceCategory(service.taxonomy_category_key || service.metadata?.taxonomy_category_key || service.categoria),
-    taxonomy_service_key: service.taxonomy_service_key || service.metadata?.taxonomy_service_key || null,
-    is_official: service.is_official === true || service.metadata?.taxonomy_origin === 'official',
-    is_custom: service.is_custom !== false && service.metadata?.taxonomy_origin !== 'official',
-    permite_online: service.permite_online !== false,
-    ordem_exibicao: service.ordem_exibicao || 0,
-    metadata: service.metadata || {},
-    especialidades: links,
-    especialidade_ids: links.map((item) => item.id),
-    ativo: service.ativo !== false,
-    created_at: service.created_at
-  };
-}
-
-function sanitizePayload(input) {
-  const officialService = getOfficialServiceByName(input.nome);
-  const categoria = normalizeServiceCategory(input.categoria || officialService?.categoryKey);
-  const isOfficial = Boolean(officialService && officialCategoryMatches(officialService.categoryKey, categoria));
-
-  return {
-    nome: input.nome,
-    descricao: input.descricao || null,
-    duracao_minutos: input.duracao_minutos,
-    preco: input.preco ?? 0,
-    categoria,
-    taxonomy_category_key: categoria,
-    taxonomy_service_key: isOfficial ? toTaxonomyKey(officialService.name) : null,
-    is_official: isOfficial,
-    is_custom: !isOfficial,
-    permite_online: input.permite_online !== false,
-    ordem_exibicao: input.ordem_exibicao ?? 0,
-    metadata: {
-      ...(input.metadata || {}),
-      taxonomy_origin: isOfficial ? 'official' : 'custom',
-      ...(isOfficial ? {
-        taxonomy_version: 'bellory_taxonomy_v1',
-        taxonomy_category_key: officialService.categoryKey,
-        taxonomy_service_key: toTaxonomyKey(officialService.name),
-        acao_servico: officialService.action,
-        especialidades_oficiais: officialService.specialties
-      } : {
-        taxonomy_category_key: categoria
-      })
-    }
-  };
+function buildCustomCode(tenantId, nome, categoria) {
+  const hash = crypto.createHash('sha1').update(`${tenantId}:${categoria}:${nome}`).digest('hex').slice(0, 10).toUpperCase();
+  return `CUSTOM_${normalizeCodePart(categoria)}_${normalizeCodePart(nome).slice(0, 40)}_${hash}`;
 }
 
 async function list(tenantId, filters = {}) {
-  let services = await servicesRepository.listByTenant(tenantId);
-
-  if (!filters.especialidadeIds?.length) {
-    return services.map(sanitize);
+  await tenantServiceCatalogSync.syncTenant(tenantId, { reason: 'services_list' });
+  let offers = await servicesRepository.listByTenant(tenantId, { activeOnly: false });
+  if (filters.especialidadeIds?.length) {
+    const selected = new Set(filters.especialidadeIds);
+    offers = offers.filter((offer) => (
+      (offer.configuracoes || []).some((config) => config.ativo !== false && selected.has(config.especialidade_id))
+    ));
   }
-
-  const explicitServices = await servicesRepository.listBySpecialtyIds(tenantId, filters.especialidadeIds);
-  if (explicitServices.length) {
-    const specialties = await teamRepository.listSpecialtiesByIds(filters.especialidadeIds, tenantId);
-    const selectedSpecialtyIds = new Set(specialties.map((specialty) => specialty.id));
-    const specialtyById = new Map(specialties.map((specialty) => [specialty.id, specialty]));
-
-    return explicitServices
-      .map(sanitize)
-      .filter((service) => {
-        service.especialidades.forEach((specialty) => {
-          if (!specialtyById.has(specialty.id)) {
-            specialtyById.set(specialty.id, specialty);
-          }
-        });
-
-        return hasExactServiceCompatibility({
-          service,
-          professionalSpecialtyIds: selectedSpecialtyIds,
-          serviceSpecialtyIds: new Set(service.especialidade_ids),
-          specialtyById
-        });
-      });
-  }
-
-  const specialties = await teamRepository.listSpecialtiesByIds(filters.especialidadeIds, tenantId);
-  return filterCompatibleServices(services, specialties).map(sanitize);
+  return offers
+    .map(sanitizeOffer)
+    .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
 }
 
-async function ensureSpecialtiesExist(tenantId, specialtyIds = []) {
-  const uniqueIds = [...new Set(specialtyIds.filter(Boolean))];
-  if (!uniqueIds.length) return [];
+async function listCatalog(tenantId) {
+  const segmented = await businessTypesService.listTenantApplicableCatalog(tenantId);
+  return [...(segmented.recomendados || []), ...(segmented.aplicaveis || [])]
+    .map(sanitizeCatalog)
+    .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
+}
 
-  const activeSpecialties = await teamRepository.listSpecialtiesByIds(uniqueIds, tenantId);
-  if (activeSpecialties.length === uniqueIds.length) {
-    return activeSpecialties.map(sanitizeSpecialty);
+async function getById(tenantId, id) {
+  const offer = await servicesRepository.findOfferById(tenantId, id);
+  if (!offer) {
+    throw new AppError('Servico nao encontrado.', 404, 'SERVICE_NOT_FOUND');
+  }
+  return sanitizeOffer(offer);
+}
+
+async function resolveCatalog(input) {
+  if (input.servico_catalogo_id) {
+    const catalog = await servicesRepository.findCatalogById(input.servico_catalogo_id);
+    if (!catalog || catalog.ativo === false) {
+      throw new AppError('Servico do catalogo nao encontrado.', 404, 'SERVICE_CATALOG_NOT_FOUND');
+    }
+    return catalog;
   }
 
-  const activeById = new Map(activeSpecialties.map((specialty) => [specialty.id, specialty]));
-  const missingIds = uniqueIds.filter((id) => !activeById.has(id));
-  const [legacyReferences, activeCatalog] = await Promise.all([
-    teamRepository.listSpecialtyReferencesByIds(missingIds, tenantId),
-    teamRepository.listSpecialties({ tenantId })
-  ]);
-  const legacyById = new Map(legacyReferences.map((specialty) => [specialty.id, specialty]));
-  const resolved = [];
-  const unresolvedIds = [];
-
-  uniqueIds.forEach((id) => {
-    const active = activeById.get(id);
-    if (active) {
-      resolved.push(active);
-      return;
+  if (input.codigo_canonico) {
+    const catalog = await servicesRepository.findCatalogByCode(input.codigo_canonico);
+    if (!catalog || catalog.ativo === false) {
+      throw new AppError('Servico do catalogo nao encontrado.', 404, 'SERVICE_CATALOG_NOT_FOUND');
     }
+    return catalog;
+  }
 
-    const legacy = legacyById.get(id);
-    const replacement = legacy
-      ? activeCatalog.find((candidate) => (
-        normalizeTaxonomyName(candidate.nome) === normalizeTaxonomyName(legacy.nome)
-        && normalizeServiceCategory(candidate.taxonomy_category_key)
-          === normalizeServiceCategory(legacy.taxonomy_category_key)
-      ))
-      : null;
+  throw new AppError('Tenant nao pode criar ou alterar servico canonico global. Selecione um servico permitido do catalogo.', 403, 'SERVICE_CATALOG_CREATE_FORBIDDEN');
+}
 
-    if (replacement) {
-      resolved.push(replacement);
-    } else {
-      unresolvedIds.push(id);
-    }
+async function ensureCustomCatalogCompatibilities(catalog, configurations) {
+  if (catalog.metadata?.custom !== true || compatibleSpecialtyIds(catalog).size) {
+    return catalog;
+  }
+
+  const uniqueIds = [...new Set(configurations.map((item) => item.especialidade_id))];
+  const compatibilities = await servicesRepository.upsertCatalogCompatibilities(catalog.id, uniqueIds, {
+    source: 'services_backend_phase_3',
+    custom_scope: 'tenant'
   });
 
-  if (unresolvedIds.length) {
-    throw new AppError('Uma ou mais especialidades sao invalidas.', 422, 'INVALID_SPECIALTY', {
-      especialidade_ids: unresolvedIds
+  return {
+    ...catalog,
+    compatibilidades: compatibilities
+  };
+}
+
+function compatibleSpecialtyIds(catalog) {
+  return new Set((catalog.compatibilidades || [])
+    .filter((item) => item && item.ativo !== false && item.especialidade?.ativo !== false)
+    .map((item) => item.especialidade_id));
+}
+
+function ensureBookableDurations(configurations) {
+  const invalidIds = configurations
+    .filter((item) => item.ativo !== false && item.aceita_agendamento_online !== false)
+    .filter((item) => !Number.isInteger(item.duracao_minutos) || item.duracao_minutos <= 0)
+    .map((item) => item.especialidade_id);
+
+  if (invalidIds.length) {
+    throw new AppError('Duracao maior que zero e obrigatoria para combinacoes disponiveis no agendamento online.', 422, 'SERVICE_SPECIALTY_DURATION_REQUIRED', {
+      especialidade_ids: invalidIds
     });
   }
-
-  return uniqueSpecialties(resolved).map(sanitizeSpecialty);
 }
 
-function ensureServiceCategory(serviceInput) {
-  if (!isValidServiceNameForCompatibility(serviceInput.nome) || !serviceInput.categoria) {
-    throw new AppError('Informe nome e categoria para vincular especialidades ao servico.', 422, 'SERVICE_COMPATIBILITY_CONTEXT_REQUIRED');
-  }
-
-  if (!isValidCategory(serviceInput.categoria)) {
-    throw new AppError('Categoria de servico invalida.', 422, 'INVALID_SERVICE_CATEGORY');
-  }
-
-  return normalizeServiceCategory(serviceInput.categoria);
-}
-
-async function ensureUniqueService(tenantId, serviceInput, excludedServiceId = null) {
-  const category = normalizeServiceCategory(serviceInput.categoria) || null;
-  const normalizedName = normalizeTaxonomyName(serviceInput.nome);
-  const services = await servicesRepository.listActiveByCategory(tenantId, category);
-  const duplicate = services.find((service) => (
-    service.id !== excludedServiceId
-    && normalizeTaxonomyName(service.nome) === normalizedName
-  ));
-
-  if (duplicate) {
-    throw new AppError(
-      'Ja existe um servico ativo com este nome e categoria.',
-      409,
-      'SERVICE_ALREADY_EXISTS'
-    );
-  }
-}
-
-async function ensureCompatibleSpecialtiesForService(tenantId, serviceInput, specialtyIds = []) {
-  const categoryKey = ensureServiceCategory(serviceInput);
-  const specialties = await ensureSpecialtiesExist(tenantId, specialtyIds);
-
-  if (!specialties.length) {
+async function ensureConfigurationsAreCompatible(catalog, configurations, tenantId = null) {
+  if (!configurations.length) {
     throw new AppError('Selecione ao menos uma especialidade compativel para este servico.', 422, 'SERVICE_SPECIALTY_REQUIRED');
   }
 
-  const incompatible = specialties.filter((specialty) => (
-    normalizeServiceCategory(specialty.taxonomy_category_key) !== categoryKey
-    || specialty.cargo?.categoria_profissional === 'administrativo'
-  ));
+  const allowed = compatibleSpecialtyIds(catalog);
+  let invalidIds = configurations
+    .map((item) => item.especialidade_id)
+    .filter((id) => !allowed.has(id));
 
-  if (incompatible.length) {
-    throw new AppError('Uma ou mais especialidades sao incompativeis com o servico informado.', 422, 'INCOMPATIBLE_SERVICE_SPECIALTY', {
-      especialidade_ids: incompatible.map((specialty) => specialty.id),
-      categoria: categoryKey,
-      nome: serviceInput.nome
-    });
+  if (invalidIds.length && tenantId) {
+    const customSpecialties = await teamRepository.listSpecialtiesByIds(invalidIds, tenantId);
+    const catalogCategory = normalizeServiceCategory(catalog.categoria_key);
+    const allowedCustomIds = new Set(customSpecialties
+      .filter((specialty) => specialty.tenant_id === tenantId)
+      .filter((specialty) => specialty.is_custom === true && specialty.is_official === false)
+      .filter((specialty) => normalizeServiceCategory(specialty.taxonomy_category_key) === catalogCategory)
+      .map((specialty) => specialty.id));
+    invalidIds = invalidIds.filter((id) => !allowedCustomIds.has(id));
   }
 
-  return specialties.map((specialty) => specialty.id);
+  if (invalidIds.length) {
+    throw new AppError('Uma ou mais especialidades sao incompativeis com o servico informado.', 422, 'INCOMPATIBLE_SERVICE_SPECIALTY', {
+      especialidade_ids: invalidIds,
+      servico_catalogo_id: catalog.id
+    });
+  }
+}
+
+async function resolveCatalogForCompatibility(current) {
+  if (current.servico_catalogo?.compatibilidades?.length) {
+    return current.servico_catalogo;
+  }
+
+  const catalog = await servicesRepository.findCatalogById(current.servico_catalogo_id);
+  if (!catalog || catalog.ativo === false) {
+    throw new AppError('Servico do catalogo nao encontrado.', 404, 'SERVICE_CATALOG_NOT_FOUND');
+  }
+  return catalog;
+}
+
+function mergeConfigurations(inputConfigs, currentConfigs = []) {
+  const currentBySpecialty = new Map(currentConfigs.map((item) => [item.especialidade_id, item]));
+  return inputConfigs.map((item) => {
+    const current = currentBySpecialty.get(item.especialidade_id) || {};
+    return {
+      especialidade_id: item.especialidade_id,
+      duracao_minutos: item.duracao_minutos ?? current.duracao_minutos ?? null,
+      preco: item.preco ?? current.preco ?? null,
+      dias_retorno_recomendado: item.dias_retorno_recomendado ?? current.dias_retorno_recomendado ?? null,
+      aceita_agendamento_online: (item.ativo ?? current.ativo ?? true) === false ? false : item.aceita_agendamento_online ?? current.aceita_agendamento_online ?? true,
+      ativo: item.ativo ?? current.ativo ?? true,
+      metadata: {
+        ...(current.metadata || {}),
+        source: 'services_backend_phase_3'
+      }
+    };
+  });
 }
 
 async function create(tenantId, input) {
-  await ensureUniqueService(tenantId, input);
-  const specialtyIds = await ensureCompatibleSpecialtiesForService(tenantId, input, input.especialidade_ids || []);
-  let created;
-
-  try {
-    created = await servicesRepository.create(tenantId, sanitizePayload(input));
-  } catch (error) {
-    if (error.code === '23505') {
-      throw new AppError(
-        'Ja existe um servico ativo com este nome e categoria.',
-        409,
-        'SERVICE_ALREADY_EXISTS'
-      );
-    }
-    throw error;
+  let catalog = await resolveCatalog({ ...input, tenantId });
+  await businessTypesService.ensureCatalogAllowedForTenant(tenantId, catalog.id);
+  const existingOffer = await servicesRepository.findOfferByCatalogId(tenantId, catalog.id);
+  if (existingOffer && existingOffer.ativo !== false) {
+    throw new AppError('Este servico ja esta ativo para o tenant.', 409, 'SERVICE_ALREADY_EXISTS');
   }
 
-  await servicesRepository.replaceSpecialties(tenantId, created.id, specialtyIds);
-  return sanitize(await servicesRepository.findById(tenantId, created.id));
+  const configurations = resolveConfigInput(input);
+  ensureBookableDurations(configurations);
+  catalog = await ensureCustomCatalogCompatibilities(catalog, configurations);
+  await ensureConfigurationsAreCompatible(catalog, configurations, tenantId);
+
+  const offer = await servicesRepository.upsertOffer(tenantId, catalog.id, {
+    ativo: input.ativo !== false,
+    metadata: {
+      ...(existingOffer?.metadata || {}),
+      source: 'services_backend_phase_3'
+    }
+  });
+
+  await servicesRepository.replaceConfigurations(offer.id, configurations);
+  return getById(tenantId, offer.id);
 }
 
 async function update(tenantId, id, input) {
-  const current = await servicesRepository.findById(tenantId, id);
+  const current = await servicesRepository.findOfferById(tenantId, id);
   if (!current) {
     throw new AppError('Servico nao encontrado.', 404, 'SERVICE_NOT_FOUND');
   }
 
-  const payload = {};
-
-  Object.entries(input).forEach(([key, value]) => {
-    if (key === 'especialidade_ids') {
-      return;
-    }
-    if (value !== undefined) {
-      payload[key] = value;
-    }
-  });
-
-  if (Object.prototype.hasOwnProperty.call(payload, 'categoria')) {
-    payload.categoria = normalizeServiceCategory(payload.categoria) || null;
-    payload.taxonomy_category_key = payload.categoria;
+  if (
+    input.nome !== undefined
+    || input.descricao !== undefined
+    || input.categoria !== undefined
+    || input.natureza !== undefined
+    || input.servico_ocasional !== undefined
+    || input.servico_catalogo_id !== undefined
+    || input.codigo_canonico !== undefined
+  ) {
+    throw new AppError('Conceitos globais do catalogo nao podem ser alterados pelo tenant nesta fase.', 403, 'SERVICE_CATALOG_UPDATE_FORBIDDEN');
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, 'descricao')) {
-    payload.descricao = payload.descricao || null;
-  }
-
-  const serviceCompatibilityInput = {
-    nome: input.nome !== undefined ? input.nome : current.nome,
-    categoria: input.categoria !== undefined
-      ? normalizeServiceCategory(input.categoria)
-      : normalizeServiceCategory(
-        current.categoria
-        || current.taxonomy_category_key
-        || current.metadata?.taxonomy_category_key
-      )
-  };
-
-  if (process.env.NODE_ENV !== 'production') {
-    console.debug('[services:update]', {
-      tenant_id: tenantId,
-      service_id: id,
-      nome: serviceCompatibilityInput.nome,
-      categoria: serviceCompatibilityInput.categoria,
-      especialidade_ids: input.especialidade_ids,
-      validacoes: {
-        contexto_compatibilidade: true,
-        unicidade: true,
-        especialidades: input.especialidade_ids !== undefined
+  let offer = current;
+  if (input.ativo !== undefined) {
+    if (input.ativo !== false) {
+      await businessTypesService.ensureCatalogAllowedForTenant(tenantId, current.servico_catalogo_id);
+    }
+    offer = await servicesRepository.updateOffer(tenantId, id, {
+      ativo: input.ativo !== false,
+      metadata: {
+        ...(current.metadata || {}),
+        source: 'services_backend_phase_3'
       }
     });
   }
 
-  await ensureUniqueService(tenantId, serviceCompatibilityInput, id);
+  const hasConfigUpdate = input.especialidades_config !== undefined
+    || input.especialidade_ids !== undefined
+    || input.preco !== undefined
+    || input.duracao_minutos !== undefined
+    || input.dias_retorno_recomendado !== undefined
+    || input.permite_online !== undefined;
 
-  if (Object.prototype.hasOwnProperty.call(payload, 'nome') || Object.prototype.hasOwnProperty.call(payload, 'categoria')) {
-    const officialService = getOfficialServiceByName(serviceCompatibilityInput.nome);
-    const isOfficial = Boolean(officialService && officialCategoryMatches(officialService.categoryKey, serviceCompatibilityInput.categoria));
-    payload.metadata = {
-      ...(current.metadata || {}),
-      ...(payload.metadata || {}),
-      taxonomy_origin: isOfficial ? 'official' : 'custom',
-      ...(isOfficial ? {
-        taxonomy_version: 'bellory_taxonomy_v1',
-        taxonomy_category_key: officialService.categoryKey,
-        taxonomy_service_key: toTaxonomyKey(officialService.name),
-        acao_servico: officialService.action,
-        especialidades_oficiais: officialService.specialties
-      } : {
-        taxonomy_category_key: serviceCompatibilityInput.categoria
-      })
-    };
-    payload.taxonomy_category_key = serviceCompatibilityInput.categoria;
-    payload.taxonomy_service_key = isOfficial ? toTaxonomyKey(officialService.name) : null;
-    payload.is_official = isOfficial;
-    payload.is_custom = !isOfficial;
+  if (hasConfigUpdate) {
+    await businessTypesService.ensureCatalogAllowedForTenant(tenantId, current.servico_catalogo_id);
+    const requested = resolveConfigInput(input);
+    const base = requested.length
+      ? requested
+      : (current.configuracoes || []).map((item) => ({ especialidade_id: item.especialidade_id }));
+    const catalog = await resolveCatalogForCompatibility(current);
+    await ensureConfigurationsAreCompatible(catalog, base, tenantId);
+    const configs = mergeConfigurations(base, current.configuracoes || []);
+    ensureBookableDurations(configs);
+    await servicesRepository.replaceConfigurations(id, configs);
+    await servicesRepository.deactivateConfigurations(id, configs.map((item) => item.especialidade_id));
   }
 
-  const specialtyIds = input.especialidade_ids !== undefined
-    ? await ensureCompatibleSpecialtiesForService(tenantId, serviceCompatibilityInput, input.especialidade_ids)
-    : null;
-
-  if (specialtyIds === null && (Object.prototype.hasOwnProperty.call(payload, 'nome') || Object.prototype.hasOwnProperty.call(payload, 'categoria'))) {
-    const currentSpecialtyIds = (current.servico_especialidades || [])
-      .filter((item) => item && !item.deleted_at && item.ativo !== false && item.especialidade_id)
-      .map((item) => item.especialidade_id);
-    await ensureCompatibleSpecialtiesForService(tenantId, serviceCompatibilityInput, currentSpecialtyIds);
-  }
-
-  let updated;
-
-  try {
-    updated = Object.keys(payload).length
-      ? await servicesRepository.update(tenantId, id, payload)
-      : await servicesRepository.findById(tenantId, id);
-  } catch (error) {
-    if (error.code === '23505') {
-      throw new AppError(
-        'Ja existe um servico ativo com este nome e categoria.',
-        409,
-        'SERVICE_ALREADY_EXISTS'
-      );
-    }
-    throw error;
-  }
-
-  if (specialtyIds) {
-    await servicesRepository.replaceSpecialties(tenantId, id, specialtyIds);
-  }
-
-  return sanitize(await servicesRepository.findById(tenantId, updated.id));
+  return getById(tenantId, offer.id);
 }
 
 async function remove(tenantId, id) {
-  return servicesRepository.softDelete(tenantId, id);
+  const current = await servicesRepository.findOfferById(tenantId, id);
+  if (!current) {
+    throw new AppError('Servico nao encontrado.', 404, 'SERVICE_NOT_FOUND');
+  }
+
+  await servicesRepository.updateOffer(tenantId, id, {
+    ativo: false,
+    metadata: {
+      ...(current.metadata || {}),
+      deactivated_by: 'services_backend_phase_3'
+    }
+  });
+  await servicesRepository.deactivateConfigurations(id);
+
+  return { id, servico_tenant_id: id, removed: true };
+}
+
+async function resolveCompatibleSpecialties(tenantId, input = {}) {
+  let catalog = null;
+
+  if (input.servico_catalogo_id) {
+    catalog = await servicesRepository.findCatalogById(input.servico_catalogo_id);
+  } else if (input.codigo_canonico) {
+    catalog = await servicesRepository.findCatalogByCode(input.codigo_canonico);
+  } else if (input.nome && input.categoria) {
+    catalog = await servicesRepository.findCatalogByNameAndCategory(input.nome, ensureCategory(input.categoria));
+  }
+
+  if (!catalog) return [];
+  await businessTypesService.ensureCatalogAllowedForTenant(tenantId, catalog.id);
+
+  const rows = await servicesRepository.listCompatibleSpecialties(catalog.id);
+  const tenantSpecialties = await teamRepository.listSpecialties({ tenantId, categoryKey: normalizeServiceCategory(catalog.categoria_key) });
+  const statuses = await teamRepository.listTenantSpecialtyStatuses(tenantId);
+  const inactive = new Set(statuses.filter((item) => item.ativo === false).map((item) => item.especialidade_id));
+
+  const officialSpecialties = rows
+    .map((item) => sanitizeSpecialty(item.especialidade))
+    .filter((specialty) => specialty && specialty.ativo !== false && !inactive.has(specialty.id))
+  const customSpecialties = (tenantSpecialties || [])
+    .filter((specialty) => specialty.tenant_id === tenantId)
+    .filter((specialty) => specialty.is_custom === true && specialty.is_official === false)
+    .filter((specialty) => specialty.ativo !== false && !inactive.has(specialty.id))
+    .map(sanitizeSpecialty);
+  const byId = new Map([...officialSpecialties, ...customSpecialties].map((specialty) => [specialty.id, specialty]));
+
+  return [...byId.values()].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
 }
 
 module.exports = {
   list,
+  listCatalog,
+  getById,
   resolveCompatibleSpecialties,
   create,
   update,

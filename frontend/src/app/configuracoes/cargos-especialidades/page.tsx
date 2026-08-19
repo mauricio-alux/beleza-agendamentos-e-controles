@@ -3,7 +3,7 @@ import { OperationalCatalogManager } from "@/components/operational/OperationalC
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Cargos x Especialidades"
+  title: "Cargos e especialidades profissionais"
 };
 
 export default function CargosEspecialidadesSettingsPage() {

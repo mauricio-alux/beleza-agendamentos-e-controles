@@ -4,6 +4,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 const { requirePlatformAdmin } = require('../middlewares/platform.middleware');
 const { requirePermission } = require('../middlewares/permission.middleware');
 const platformController = require('../modules/platform/platform.controller');
+const businessTypesController = require('../modules/business-types/business-types.controller');
 
 const router = Router();
 
@@ -29,5 +30,24 @@ router.get('/communication/whatsapp/queue', requirePermission('platform.communic
 router.get('/communication/providers', requirePermission('platform.communication.templates.manage'), asyncHandler(platformController.communicationProviders));
 router.post('/communication/templates', requirePermission('platform.communication.templates.manage'), asyncHandler(platformController.createCommunicationTemplate));
 router.patch('/communication/templates/:id', requirePermission('platform.communication.templates.manage'), asyncHandler(platformController.updateCommunicationTemplate));
+router.get('/tipos-negocio', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminList));
+router.get('/tipos-negocio-catalogo', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCatalog));
+router.post('/tipos-negocio-catalogo', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateCatalog));
+router.patch('/tipos-negocio-catalogo/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateCatalog));
+router.get('/tipos-negocio-catalogo/:id/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCatalogSpecialties));
+router.put('/tipos-negocio-catalogo/:id/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminReplaceCatalogSpecialties));
+router.get('/tipos-negocio-especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminSpecialties));
+router.get('/taxonomia/cargos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminRoles));
+router.post('/taxonomia/cargos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateRole));
+router.patch('/taxonomia/cargos/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateRole));
+router.get('/taxonomia/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminGlobalSpecialties));
+router.post('/taxonomia/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateSpecialty));
+router.patch('/taxonomia/especialidades/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateSpecialty));
+router.get('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminDetail));
+router.post('/tipos-negocio', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreate));
+router.patch('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdate));
+router.patch('/tipos-negocio/:id/status', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminStatus));
+router.get('/tipos-negocio/:id/servicos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminServices));
+router.put('/tipos-negocio/:id/servicos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminReplaceServices));
 
 module.exports = router;

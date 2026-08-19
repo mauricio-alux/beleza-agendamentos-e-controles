@@ -10,8 +10,20 @@ async function list(req, res) {
   return res.json({ data });
 }
 
+async function catalog(req, res) {
+  const data = await servicesService.listCatalog(req.tenantId);
+  return res.json({ data });
+}
+
+async function detail(req, res) {
+  const data = await servicesService.getById(req.tenantId, req.params.id);
+  return res.json({ data });
+}
+
 async function listCompatibleSpecialties(req, res) {
   const data = await servicesService.resolveCompatibleSpecialties(req.tenantId, {
+    servico_catalogo_id: req.query.servico_catalogo_id,
+    codigo_canonico: req.query.codigo_canonico,
     nome: req.query.nome,
     categoria: req.query.categoria
   });
@@ -38,6 +50,8 @@ async function remove(req, res) {
 
 module.exports = {
   list,
+  catalog,
+  detail,
   listCompatibleSpecialties,
   create,
   update,

@@ -16,7 +16,8 @@ const BELLORY_OFFICIAL_CATEGORIES = [
   { key: 'massoterapia', label: 'Massoterapia' },
   { key: 'terapia_capilar', label: 'Terapia Capilar' },
   { key: 'sobrancelhas', label: 'Sobrancelhas' },
-  { key: 'cilios', label: 'Cilios' }
+  { key: 'cilios', label: 'Cilios' },
+  { key: 'depilacao', label: 'Depilacao' }
 ];
 
 const BELLORY_OFFICIAL_OPERATIONAL_CARGOS = [
@@ -69,6 +70,11 @@ const BELLORY_OFFICIAL_OPERATIONAL_CARGOS = [
     name: 'Terapeuta Capilar',
     categoryKey: 'terapia_capilar',
     description: 'Profissional de tratamentos do couro cabeludo e fios.'
+  },
+  {
+    name: 'Depiladora',
+    categoryKey: 'depilacao',
+    description: 'Profissional de depilacao com cera, facial e laser.'
   }
 ];
 
@@ -87,10 +93,64 @@ const BELLORY_OFFICIAL_ADMINISTRATIVE_CARGOS = [
 
 const BELLORY_OFFICIAL_SERVICES = [
   {
+    name: 'Manicure Tradicional',
+    action: 'Fazer manicure tradicional',
+    categoryKey: 'unhas',
+    specialties: ['Manicure']
+  },
+  {
+    name: 'Esmaltacao em Gel',
+    action: 'Fazer esmaltacao em gel',
+    categoryKey: 'unhas',
+    specialties: ['Esmaltacao em Gel']
+  },
+  {
+    name: 'Alongamento de Unhas',
+    action: 'Fazer alongamento de unhas',
+    categoryKey: 'unhas',
+    specialties: ['Alongamento de Unhas', 'Gel']
+  },
+  {
+    name: 'Manutencao de Alongamento',
+    action: 'Fazer manutencao de alongamento',
+    categoryKey: 'unhas',
+    specialties: ['Alongamento de Unhas', 'Gel']
+  },
+  {
+    name: 'Banho de Gel',
+    action: 'Fazer banho de gel',
+    categoryKey: 'unhas',
+    specialties: ['Alongamento de Unhas', 'Gel']
+  },
+  {
+    name: 'Nail Art',
+    action: 'Fazer nail art',
+    categoryKey: 'unhas',
+    specialties: ['Nail Art']
+  },
+  {
     name: 'Corte de Cabelo',
     action: 'Cortar cabelo',
     categoryKey: 'cabelo',
     specialties: ['Corte Feminino', 'Corte Masculino', 'Corte Infantil', 'Corte Degrade']
+  },
+  {
+    name: 'Corte Masculino',
+    action: 'Cortar cabelo masculino',
+    categoryKey: 'cabelo',
+    specialties: ['Corte Masculino']
+  },
+  {
+    name: 'Corte Feminino',
+    action: 'Cortar cabelo feminino',
+    categoryKey: 'cabelo',
+    specialties: ['Corte Feminino']
+  },
+  {
+    name: 'Corte Infantil',
+    action: 'Cortar cabelo infantil',
+    categoryKey: 'cabelo',
+    specialties: ['Corte Infantil']
   },
   {
     name: 'Escova',
@@ -99,16 +159,118 @@ const BELLORY_OFFICIAL_SERVICES = [
     specialties: ['Escova Simples', 'Escova Modelada', 'Escova Progressiva']
   },
   {
+    name: 'Coloracao de Raiz',
+    action: 'Colorir raiz',
+    categoryKey: 'cabelo',
+    specialties: ['Coloracao']
+  },
+  {
+    name: 'Coloracao Global',
+    action: 'Colorir cabelo',
+    categoryKey: 'cabelo',
+    specialties: ['Coloracao']
+  },
+  {
     name: 'Coloracao',
     action: 'Colorir cabelo',
     categoryKey: 'cabelo',
-    specialties: ['Coloracao Global', 'Tonalizacao', 'Mechas', 'Luzes']
+    specialties: ['Coloracao', 'Tonalizacao', 'Mechas', 'Luzes']
+  },
+  {
+    name: 'Tonalizacao',
+    action: 'Tonalizar cabelo',
+    categoryKey: 'cabelo',
+    specialties: ['Coloracao', 'Tonalizacao']
+  },
+  {
+    name: 'Luzes',
+    action: 'Fazer luzes',
+    categoryKey: 'cabelo',
+    specialties: ['Mechas', 'Luzes']
+  },
+  {
+    name: 'Mechas',
+    action: 'Fazer mechas',
+    categoryKey: 'cabelo',
+    specialties: ['Mechas', 'Luzes']
+  },
+  {
+    name: 'Balayage',
+    action: 'Fazer balayage',
+    categoryKey: 'cabelo',
+    specialties: ['Mechas', 'Luzes']
   },
   {
     name: 'Hidratacao',
     action: 'Hidratar cabelo',
     categoryKey: 'terapia_capilar',
-    specialties: ['Hidratacao Capilar', 'Reconstrucao Capilar', 'Tratamento do Couro Cabeludo']
+    specialties: ['Tratamento Capilar']
+  },
+  {
+    name: 'Nutricao Capilar',
+    action: 'Nutrir cabelo',
+    categoryKey: 'terapia_capilar',
+    specialties: ['Tratamento Capilar']
+  },
+  {
+    name: 'Reconstrucao Capilar',
+    action: 'Reconstruir cabelo',
+    categoryKey: 'terapia_capilar',
+    specialties: ['Tratamento Capilar']
+  },
+  {
+    name: 'Terapia Capilar',
+    action: 'Tratar couro cabeludo',
+    categoryKey: 'terapia_capilar',
+    specialties: ['Terapia Capilar']
+  },
+  {
+    name: 'Progressiva',
+    action: 'Fazer progressiva',
+    categoryKey: 'cabelo',
+    specialties: ['Alisamento e Transformacao']
+  },
+  {
+    name: 'Alisamento',
+    action: 'Fazer alisamento',
+    categoryKey: 'cabelo',
+    specialties: ['Alisamento e Transformacao']
+  },
+  {
+    name: 'Relaxamento',
+    action: 'Fazer relaxamento',
+    categoryKey: 'cabelo',
+    specialties: ['Alisamento e Transformacao']
+  },
+  {
+    name: 'Botox Capilar',
+    action: 'Fazer botox capilar',
+    categoryKey: 'terapia_capilar',
+    specialties: ['Tratamento Capilar']
+  },
+  {
+    name: 'Trancas',
+    action: 'Fazer trancas',
+    categoryKey: 'cabelo',
+    specialties: ['Trancas']
+  },
+  {
+    name: 'Manutencao de Trancas',
+    action: 'Fazer manutencao de trancas',
+    categoryKey: 'cabelo',
+    specialties: ['Trancas']
+  },
+  {
+    name: 'Extensao Capilar',
+    action: 'Fazer extensao capilar',
+    categoryKey: 'cabelo',
+    specialties: ['Extensao Capilar']
+  },
+  {
+    name: 'Manutencao de Extensao',
+    action: 'Fazer manutencao de extensao',
+    categoryKey: 'cabelo',
+    specialties: ['Extensao Capilar']
   },
   {
     name: 'Barba',
@@ -117,46 +279,208 @@ const BELLORY_OFFICIAL_SERVICES = [
     specialties: ['Barba Tradicional', 'Barba Desenhada']
   },
   {
+    name: 'Corte e Barba',
+    action: 'Fazer corte e barba',
+    categoryKey: 'barba',
+    specialties: ['Corte Masculino', 'Barba']
+  },
+  {
+    name: 'Acabamento',
+    action: 'Fazer acabamento',
+    categoryKey: 'barba',
+    specialties: ['Acabamento']
+  },
+  {
+    name: 'Pigmentacao de Barba',
+    action: 'Pigmentar barba',
+    categoryKey: 'barba',
+    specialties: ['Pigmentacao e Coloracao Masculina']
+  },
+  {
+    name: 'Camuflagem de Fios Brancos',
+    action: 'Camuflar fios brancos',
+    categoryKey: 'barba',
+    specialties: ['Pigmentacao e Coloracao Masculina']
+  },
+  {
     name: 'Manicure',
     action: 'Fazer manicure',
     categoryKey: 'unhas',
-    specialties: ['Nail Art', 'Blindagem', 'Fibra', 'Banho em Gel']
+    specialties: ['Manicure', 'Nail Art', 'Alongamento de Unhas', 'Gel']
   },
   {
     name: 'Pedicure',
     action: 'Fazer pedicure',
     categoryKey: 'unhas',
-    specialties: ['Pedicure Tradicional', 'Spa dos Pes']
+    specialties: ['Pedicure']
   },
   {
     name: 'Maquiagem',
     action: 'Fazer maquiagem',
     categoryKey: 'maquiagem',
-    specialties: ['Maquiagem Social', 'Maquiagem Noiva']
+    specialties: ['Maquiagem']
+  },
+  {
+    name: 'Maquiagem Social',
+    action: 'Fazer maquiagem social',
+    categoryKey: 'maquiagem',
+    specialties: ['Maquiagem']
+  },
+  {
+    name: 'Maquiagem para Noiva',
+    action: 'Fazer maquiagem para noiva',
+    categoryKey: 'maquiagem',
+    specialties: ['Maquiagem']
+  },
+  {
+    name: 'Penteado para Eventos',
+    action: 'Fazer penteado para eventos',
+    categoryKey: 'maquiagem',
+    specialties: ['Penteados']
+  },
+  {
+    name: 'Penteado para Noiva',
+    action: 'Fazer penteado para noiva',
+    categoryKey: 'maquiagem',
+    specialties: ['Penteados']
+  },
+  {
+    name: 'Producao para Festas',
+    action: 'Fazer producao para festas',
+    categoryKey: 'maquiagem',
+    specialties: ['Maquiagem', 'Penteados']
+  },
+  {
+    name: 'Dia da Noiva',
+    action: 'Fazer dia da noiva',
+    categoryKey: 'maquiagem',
+    specialties: ['Maquiagem', 'Penteados']
   },
   {
     name: 'Limpeza de Pele',
     action: 'Fazer limpeza de pele',
     categoryKey: 'estetica_facial',
-    specialties: ['Limpeza de Pele', 'Hidratacao Facial']
+    specialties: ['Estetica Facial']
+  },
+  {
+    name: 'Hidratacao Facial',
+    action: 'Fazer hidratacao facial',
+    categoryKey: 'estetica_facial',
+    specialties: ['Estetica Facial']
+  },
+  {
+    name: 'Peeling Estetico Superficial',
+    action: 'Fazer peeling estetico superficial',
+    categoryKey: 'estetica_facial',
+    specialties: ['Peeling']
+  },
+  {
+    name: 'Revitalizacao Facial',
+    action: 'Fazer revitalizacao facial',
+    categoryKey: 'estetica_facial',
+    specialties: ['Estetica Facial']
+  },
+  {
+    name: 'Drenagem Facial',
+    action: 'Fazer drenagem facial',
+    categoryKey: 'estetica_facial',
+    specialties: ['Drenagem Facial']
   },
   {
     name: 'Massagem',
     action: 'Fazer massagem',
     categoryKey: 'massoterapia',
-    specialties: ['Massagem Relaxante', 'Massagem Terapeutica', 'Drenagem Linfatica']
+    specialties: ['Massoterapia']
+  },
+  {
+    name: 'Massagem Relaxante',
+    action: 'Fazer massagem relaxante',
+    categoryKey: 'massoterapia',
+    specialties: ['Massoterapia']
+  },
+  {
+    name: 'Massagem Modeladora',
+    action: 'Fazer massagem modeladora',
+    categoryKey: 'estetica_corporal',
+    specialties: ['Massoterapia', 'Estetica Corporal']
+  },
+  {
+    name: 'Drenagem Linfatica',
+    action: 'Fazer drenagem linfatica',
+    categoryKey: 'estetica_corporal',
+    specialties: ['Drenagem Linfatica']
+  },
+  {
+    name: 'Tratamento Corporal Recorrente',
+    action: 'Fazer tratamento corporal recorrente',
+    categoryKey: 'estetica_corporal',
+    specialties: ['Estetica Corporal']
+  },
+  {
+    name: 'Spa Corporal',
+    action: 'Fazer spa corporal',
+    categoryKey: 'estetica_corporal',
+    specialties: ['Estetica Corporal']
+  },
+  {
+    name: 'Depilacao com Cera',
+    action: 'Fazer depilacao com cera',
+    categoryKey: 'depilacao',
+    specialties: ['Depilacao']
+  },
+  {
+    name: 'Depilacao Facial',
+    action: 'Fazer depilacao facial',
+    categoryKey: 'depilacao',
+    specialties: ['Depilacao']
+  },
+  {
+    name: 'Depilacao a Laser',
+    action: 'Fazer depilacao a laser',
+    categoryKey: 'depilacao',
+    specialties: ['Depilacao a Laser']
   },
   {
     name: 'Design de Sobrancelhas',
     action: 'Fazer design de sobrancelhas',
     categoryKey: 'sobrancelhas',
-    specialties: ['Design de Sobrancelhas', 'Henna']
+    specialties: ['Design de Sobrancelhas']
+  },
+  {
+    name: 'Design com Henna',
+    action: 'Fazer design com henna',
+    categoryKey: 'sobrancelhas',
+    specialties: ['Design de Sobrancelhas']
+  },
+  {
+    name: 'Brow Lamination',
+    action: 'Fazer brow lamination',
+    categoryKey: 'sobrancelhas',
+    specialties: ['Brow Lamination']
+  },
+  {
+    name: 'Micropigmentacao Manutencao',
+    action: 'Fazer manutencao de micropigmentacao',
+    categoryKey: 'sobrancelhas',
+    specialties: ['Micropigmentacao']
   },
   {
     name: 'Extensao de Cilios',
     action: 'Fazer extensao de cilios',
     categoryKey: 'cilios',
     specialties: ['Extensao de Cilios', 'Manutencao de Cilios']
+  },
+  {
+    name: 'Manutencao de Cilios',
+    action: 'Fazer manutencao de cilios',
+    categoryKey: 'cilios',
+    specialties: ['Extensao de Cilios']
+  },
+  {
+    name: 'Lash Lifting',
+    action: 'Fazer lash lifting',
+    categoryKey: 'cilios',
+    specialties: ['Lash Lifting']
   }
 ];
 

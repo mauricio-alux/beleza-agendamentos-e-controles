@@ -16,7 +16,8 @@ export const BELLORY_OFFICIAL_CATEGORIES = [
   { key: "massoterapia", label: "Massoterapia" },
   { key: "terapia_capilar", label: "Terapia Capilar" },
   { key: "sobrancelhas", label: "Sobrancelhas" },
-  { key: "cilios", label: "Cilios" }
+  { key: "cilios", label: "Cilios" },
+  { key: "depilacao", label: "Depilacao" }
 ] as const;
 
 export const BELLORY_OFFICIAL_OPERATIONAL_CARGOS = [
@@ -69,6 +70,11 @@ export const BELLORY_OFFICIAL_OPERATIONAL_CARGOS = [
     name: "Terapeuta Capilar",
     categoryKey: "terapia_capilar",
     description: "Profissional de tratamentos do couro cabeludo e fios."
+  },
+  {
+    name: "Depiladora",
+    categoryKey: "depilacao",
+    description: "Profissional de depilacao com cera, facial e laser."
   }
 ] as const;
 
@@ -156,7 +162,7 @@ export const BELLORY_OFFICIAL_SERVICES = [
     name: "Extensao de Cilios",
     action: "Fazer extensao de cilios",
     categoryKey: "cilios",
-    specialties: ["Extensao de Cilios", "Manutencao de Cilios"]
+    specialties: ["Extensão de Cílios", "Manutenção de Cílios"]
   }
 ] as const;
 

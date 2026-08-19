@@ -2,8 +2,28 @@ const {
   BELLORY_OFFICIAL_OPERATIONAL_CARGOS,
   BELLORY_OFFICIAL_SERVICES,
   normalizeTaxonomyKey,
-  normalizeOfficialCategoryKey
+  normalizeOfficialCategoryKey,
+  getOfficialCategoryLabel
 } = require('./bellory-taxonomy');
+
+const ROLE_CATEGORY_COMPATIBILITY = {
+  barbeiro: ['cabelo', 'barba'],
+  cabeleireira: ['cabelo', 'terapia_capilar'],
+  cabeleireiro: ['cabelo', 'terapia_capilar'],
+  manicure: ['unhas'],
+  pedicure: ['unhas', 'podologia'],
+  podologa: ['podologia'],
+  podologo: ['podologia'],
+  esteticista: ['estetica_facial', 'estetica_corporal'],
+  maquiadora: ['maquiagem'],
+  maquiador: ['maquiagem'],
+  massoterapeuta: ['massoterapia', 'estetica_corporal'],
+  'lash designer': ['cilios'],
+  'designer de sobrancelhas': ['sobrancelhas', 'cilios'],
+  'terapeuta capilar': ['cabelo', 'terapia_capilar'],
+  depiladora: ['depilacao'],
+  depilador: ['depilacao']
+};
 
 function normalizeName(value) {
   return normalizeTaxonomyKey(value);
@@ -39,6 +59,31 @@ function getCargoCategory(cargoName) {
   const normalizedCargo = normalizeName(cargoName);
   const officialCargo = BELLORY_OFFICIAL_OPERATIONAL_CARGOS.find((cargo) => normalizeName(cargo.name) === normalizedCargo);
   return officialCargo ? normalizeOfficialCategoryKey(officialCargo.categoryKey) : null;
+}
+
+function getAllowedCategoryKeysForRole(role) {
+  const roleName = typeof role === 'string' ? role : role?.nome;
+  const normalizedCargo = normalizeName(roleName);
+  const configured = ROLE_CATEGORY_COMPATIBILITY[normalizedCargo];
+
+  if (configured) {
+    return configured.map(normalizeOfficialCategoryKey).filter(Boolean);
+  }
+
+  const fallbackCategory = getCargoCategory(roleName);
+  return fallbackCategory ? [fallbackCategory] : [];
+}
+
+function isRoleCategoryCompatible(role, categoryKey) {
+  const normalizedCategory = normalizeOfficialCategoryKey(categoryKey);
+  if (!normalizedCategory) return false;
+  return getAllowedCategoryKeysForRole(role).includes(normalizedCategory);
+}
+
+function describeAllowedCategoriesForRole(role) {
+  return getAllowedCategoryKeysForRole(role)
+    .map((categoryKey) => getOfficialCategoryLabel(categoryKey) || categoryKey)
+    .join(', ');
 }
 
 function getOfficialServicesForSpecialty(specialtyName) {
@@ -107,9 +152,13 @@ function filterRolesWithCompatibleTenantServices(roles = [], specialties = [], s
 }
 
 module.exports = {
+  ROLE_CATEGORY_COMPATIBILITY,
   buildCompatibilityContext,
+  describeAllowedCategoriesForRole,
   filterRolesWithCompatibleTenantServices,
   filterCompatibleServices,
+  getAllowedCategoryKeysForRole,
   isServiceCompatibleWithContext,
+  isRoleCategoryCompatible,
   roleHasCompatibleTenantServices
 };

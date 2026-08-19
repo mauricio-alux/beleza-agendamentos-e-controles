@@ -3,7 +3,7 @@ import { OperationalCatalogManager } from "@/components/operational/OperationalC
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Servicos"
+  title: "Serviços"
 };
 
 export default function ServicosSettingsPage() {

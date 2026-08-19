@@ -26,8 +26,15 @@ type ServiceFormState = {
   preco: string;
   categoria: ServiceCategory | "";
   especialidade_ids: string[];
+  especialidades_config: Record<string, {
+    duracao_minutos: string;
+    preco: string;
+    dias_retorno_recomendado: string;
+    aceita_agendamento_online: boolean;
+  }>;
 };
 
+// Legacy: mantido temporariamente para auditoria. A rota /servicos usa ServicesMerManager.
 const DEFAULT_SERVICE_PRICE = "R$ 80,00";
 
 const EMPTY_FORM: ServiceFormState = {
@@ -36,7 +43,8 @@ const EMPTY_FORM: ServiceFormState = {
   customDuration: "",
   preco: DEFAULT_SERVICE_PRICE,
   categoria: "",
-  especialidade_ids: []
+  especialidade_ids: [],
+  especialidades_config: {}
 };
 
 export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
@@ -59,7 +67,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
       const data = await servicesService.list(session);
       setServices(data || []);
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel carregar os servicos."));
+      setError(getErrorMessage(err, "Não foi possível carregar os serviços."));
     } finally {
       setIsLoading(false);
     }
@@ -70,13 +78,25 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
   }, [session]);
 
   function toPayload(state: ServiceFormState): SalonServicePayload {
+    const duration = state.duracao_minutos === 0 ? Number(state.customDuration) : state.duracao_minutos;
+    const price = parseCurrency(state.preco);
     return {
       nome: state.nome.trim(),
-      duracao_minutos: state.duracao_minutos === 0 ? Number(state.customDuration) : state.duracao_minutos,
-      preco: parseCurrency(state.preco),
+      duracao_minutos: duration,
+      preco: price,
       categoria: state.categoria || null,
       permite_online: true,
-      especialidade_ids: state.especialidade_ids
+      especialidade_ids: state.especialidade_ids,
+      especialidades_config: state.especialidade_ids.map((especialidadeId) => {
+        const config = state.especialidades_config[especialidadeId];
+        return {
+          especialidade_id: especialidadeId,
+          duracao_minutos: Number(config?.duracao_minutos || duration),
+          preco: config?.preco ? parseCurrency(config.preco) : price,
+          dias_retorno_recomendado: config?.dias_retorno_recomendado ? Number(config.dias_retorno_recomendado) : undefined,
+          aceita_agendamento_online: config?.aceita_agendamento_online !== false
+        };
+      })
     };
   }
 
@@ -92,7 +112,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
       setServices((current) => [...current, created]);
       setForm(EMPTY_FORM);
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel criar o servico."));
+      setError(getErrorMessage(err, "Não foi possível criar o serviço."));
     } finally {
       setIsSaving(false);
     }
@@ -121,7 +141,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
       setServices((current) => current.map((service) => (service.id === id ? updated : service)));
       setEditingId(null);
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel atualizar o servico."));
+      setError(getErrorMessage(err, "Não foi possível atualizar o serviço."));
     } finally {
       setIsSaving(false);
     }
@@ -137,25 +157,35 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
       await servicesService.remove(session, id);
       setServices((current) => current.filter((service) => service.id !== id));
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel remover o servico."));
+      setError(getErrorMessage(err, "Não foi possível remover o serviço."));
     } finally {
       setIsSaving(false);
     }
   }
 
   function startEdit(service: SalonService) {
+    const serviceDuration = service.duracao_minutos || 45;
     setEditingId(service.id);
     setEditingForm({
       nome: service.nome,
-      duracao_minutos: SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as never) ? service.duracao_minutos : 0,
-      customDuration: SERVICE_DURATION_OPTIONS.includes(service.duracao_minutos as never) ? "" : String(service.duracao_minutos),
-      preco: formatCurrency(service.preco),
+      duracao_minutos: SERVICE_DURATION_OPTIONS.includes(serviceDuration as never) ? serviceDuration : 0,
+      customDuration: SERVICE_DURATION_OPTIONS.includes(serviceDuration as never) ? "" : String(serviceDuration),
+      preco: formatCurrency(service.preco || 0),
       categoria: normalizeServiceCategory(
         service.categoria
         || service.taxonomy_category_key
         || (service.metadata?.taxonomy_category_key as string | undefined)
       ),
-      especialidade_ids: service.especialidade_ids || []
+      especialidade_ids: service.especialidade_ids || [],
+      especialidades_config: Object.fromEntries((service.especialidades_config || []).map((config) => [
+        config.especialidade_id,
+        {
+          duracao_minutos: String(config.duracao_minutos || service.duracao_minutos || 45),
+          preco: formatCurrency(Number(config.preco ?? service.preco ?? 0)),
+          dias_retorno_recomendado: config.dias_retorno_recomendado ? String(config.dias_retorno_recomendado) : "",
+          aceita_agendamento_online: config.aceita_agendamento_online !== false
+        }
+      ]))
     });
   }
 
@@ -164,7 +194,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
       {!embedded ? (
       <div className="rounded-[1.75rem] border border-white/80 bg-white/82 p-5 shadow-soft backdrop-blur-xl sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Catalogo operacional</p>
-        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Servicos do salao</h1>
+        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Serviços do salão</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Cadastre nome, duracao, preco e categoria para alimentar agenda, KPIs e campanhas futuras.
         </p>
@@ -189,7 +219,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
         </DashboardCard>
       ) : null}
 
-      <DashboardCard title="Servicos cadastrados" description="Duracao e preco ja impactam a agenda e os indicadores.">
+      <DashboardCard title="Serviços cadastrados" description="Duração e preço já impactam a agenda e os indicadores.">
         {isLoading ? (
           <p className="text-sm font-semibold text-muted-foreground">Carregando servicos...</p>
         ) : services.length ? (
@@ -217,7 +247,7 @@ export function ServicesManager({ embedded = false }: { embedded?: boolean }) {
                     <div>
                       <h2 className="text-base font-bold text-foreground">{service.nome}</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {service.duracao_minutos} min · {formatCurrency(service.preco)}
+                        {service.duracao_minutos || 0} min · {formatCurrency(service.preco || 0)}
                         {normalizeServiceCategory(service.categoria) ? ` · ${SERVICE_CATEGORY_LABELS[normalizeServiceCategory(service.categoria) as ServiceCategory]}` : ""}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -288,11 +318,6 @@ function ServiceForm({
   const [customSpecialtyName, setCustomSpecialtyName] = useState("");
   const [customSpecialtyRoleId, setCustomSpecialtyRoleId] = useState("");
   const hasCompatibilityContext = form.nome.trim().length >= 2 && Boolean(form.categoria);
-  const isOriginalEditContext = Boolean(
-    editingService
-    && normalizeComparableName(editingService.nome) === normalizeComparableName(form.nome)
-    && normalizeServiceCategory(editingService.categoria) === form.categoria
-  );
   const hasDuplicateService = hasCompatibilityContext && existingServices.some((service) => (
     service.id !== excludedServiceId
     && normalizeComparableName(service.nome) === normalizeComparableName(form.nome)
@@ -328,21 +353,6 @@ function ServiceForm({
       return;
     }
 
-    if (isOriginalEditContext && editingService) {
-      const linkedSpecialties = editingService.especialidades || [];
-      const linkedIds = new Set(linkedSpecialties.map((specialty) => specialty.id));
-      setCompatibleSpecialties(linkedSpecialties);
-      setSpecialtyError("");
-      setIsLoadingSpecialties(false);
-      setForm((current) => {
-        const persistedIds = current.especialidade_ids.filter((id) => linkedIds.has(id));
-        return persistedIds.length === current.especialidade_ids.length
-          ? current
-          : { ...current, especialidade_ids: persistedIds };
-      });
-      return;
-    }
-
     let isActive = true;
     setIsLoadingSpecialties(true);
     setSpecialtyError("");
@@ -369,7 +379,7 @@ function ServiceForm({
       } catch (err) {
         if (!isActive) return;
         setCompatibleSpecialties([]);
-        setSpecialtyError(getErrorMessage(err, "Nao foi possivel carregar especialidades compativeis."));
+        setSpecialtyError(getErrorMessage(err, "Não foi possível carregar especialidades compatíveis."));
       } finally {
         if (isActive) {
           setIsLoadingSpecialties(false);
@@ -382,11 +392,9 @@ function ServiceForm({
       window.clearTimeout(timeoutId);
     };
   }, [
-    editingService,
     form.nome,
     form.categoria,
     hasCompatibilityContext,
-    isOriginalEditContext,
     session,
     setForm
   ]);
@@ -406,7 +414,7 @@ function ServiceForm({
         setCustomSpecialtyRoleId((current) => current || operationalRoles[0]?.id || "");
       })
       .catch((err) => {
-        if (isActive) setCustomSpecialtyError(getErrorMessage(err, "Nao foi possivel carregar cargos operacionais."));
+        if (isActive) setCustomSpecialtyError(getErrorMessage(err, "Não foi possível carregar cargos operacionais."));
       })
       .finally(() => {
         if (isActive) setIsLoadingRoles(false);
@@ -438,11 +446,22 @@ function ServiceForm({
         ...current,
         especialidade_ids: current.especialidade_ids.includes(specialty.id)
           ? current.especialidade_ids
-          : [...current.especialidade_ids, specialty.id]
+          : [...current.especialidade_ids, specialty.id],
+        especialidades_config: current.especialidades_config[specialty.id]
+          ? current.especialidades_config
+          : {
+            ...current.especialidades_config,
+            [specialty.id]: {
+              duracao_minutos: current.duracao_minutos === 0 ? current.customDuration || "45" : String(current.duracao_minutos),
+              preco: current.preco,
+              dias_retorno_recomendado: "",
+              aceita_agendamento_online: true
+            }
+          }
       }));
       setCustomSpecialtyName("");
     } catch (err) {
-      setCustomSpecialtyError(getErrorMessage(err, "Nao foi possivel criar a especialidade customizada."));
+      setCustomSpecialtyError(getErrorMessage(err, "Não foi possível criar a especialidade customizada."));
     } finally {
       setIsCreatingSpecialty(false);
     }
@@ -456,7 +475,7 @@ function ServiceForm({
           onChange={(event) => {
             setCompatibleSpecialties([]);
             setSpecialtyError("");
-            setForm((current) => ({ ...current, nome: event.target.value, especialidade_ids: [] }));
+            setForm((current) => ({ ...current, nome: event.target.value, especialidade_ids: [], especialidades_config: {} }));
           }}
           placeholder="Nome do servico"
         />
@@ -471,7 +490,7 @@ function ServiceForm({
           onChange={(categoria) => {
             setCompatibleSpecialties([]);
             setSpecialtyError("");
-            setForm((current) => ({ ...current, categoria, especialidade_ids: [] }));
+            setForm((current) => ({ ...current, categoria, especialidade_ids: [], especialidades_config: {} }));
           }}
         />
         <Button type="submit" variant="accent" disabled={!canSubmitService}>
@@ -500,17 +519,37 @@ function ServiceForm({
             onToggle={(specialtyId) => {
               setForm((current) => {
                 const selected = current.especialidade_ids.includes(specialtyId);
+                const nextConfig = { ...current.especialidades_config };
+                if (selected) {
+                  delete nextConfig[specialtyId];
+                } else if (!nextConfig[specialtyId]) {
+                  const duration = current.duracao_minutos === 0 ? current.customDuration : String(current.duracao_minutos);
+                  nextConfig[specialtyId] = {
+                    duracao_minutos: duration || "45",
+                    preco: current.preco,
+                    dias_retorno_recomendado: "",
+                    aceita_agendamento_online: true
+                  };
+                }
                 return {
                   ...current,
                   especialidade_ids: selected
                     ? current.especialidade_ids.filter((id) => id !== specialtyId)
-                    : [...current.especialidade_ids, specialtyId]
+                    : [...current.especialidade_ids, specialtyId],
+                  especialidades_config: nextConfig
                 };
               });
             }}
           />
           {!form.especialidade_ids.length ? (
             <FeedbackMessage tone="warning" message="Selecione ao menos uma especialidade para salvar este servico." />
+          ) : null}
+          {form.especialidade_ids.length ? (
+            <SpecialtyConfigEditor
+              form={form}
+              setForm={setForm}
+              specialties={compatibleSpecialties}
+            />
           ) : null}
           <CustomSpecialtyCreator
             name={customSpecialtyName}
@@ -616,9 +655,9 @@ function SpecialtyPicker({
 }) {
   return (
     <div className="rounded-2xl border border-primary/15 bg-white/85 p-3 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Especialidades vinculadas</p>
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Especialidades disponiveis</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Marque quais especialidades podem executar este servico.
+        Marque quais especialidades compativeis ficarao vinculadas a este servico.
       </p>
       {specialties.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -643,6 +682,84 @@ function SpecialtyPicker({
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">Nenhuma especialidade cadastrada para vincular.</p>
       )}
+    </div>
+  );
+}
+
+function SpecialtyConfigEditor({
+  form,
+  setForm,
+  specialties
+}: {
+  form: ServiceFormState;
+  setForm: Dispatch<SetStateAction<ServiceFormState>>;
+  specialties: TeamSpecialty[];
+}) {
+  const specialtyById = new Map(specialties.map((specialty) => [specialty.id, specialty]));
+
+  function updateConfig(specialtyId: string, patch: Partial<ServiceFormState["especialidades_config"][string]>) {
+    setForm((current) => ({
+      ...current,
+      especialidades_config: {
+        ...current.especialidades_config,
+        [specialtyId]: {
+          duracao_minutos: current.especialidades_config[specialtyId]?.duracao_minutos || String(current.duracao_minutos || 45),
+          preco: current.especialidades_config[specialtyId]?.preco || current.preco,
+          dias_retorno_recomendado: current.especialidades_config[specialtyId]?.dias_retorno_recomendado || "",
+          aceita_agendamento_online: current.especialidades_config[specialtyId]?.aceita_agendamento_online !== false,
+          ...patch
+        }
+      }
+    }));
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-white/80">
+      <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.5fr] gap-2 border-b border-border px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <span>Especialidade</span>
+        <span>Duracao</span>
+        <span>Preco</span>
+        <span>Retorno</span>
+        <span>Online</span>
+      </div>
+      <div className="grid gap-2 p-3">
+        {form.especialidade_ids.map((specialtyId) => {
+          const config = form.especialidades_config[specialtyId] || {
+            duracao_minutos: String(form.duracao_minutos || 45),
+            preco: form.preco,
+            dias_retorno_recomendado: "",
+            aceita_agendamento_online: true
+          };
+          return (
+            <div key={specialtyId} className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.7fr_0.5fr] items-center gap-2 text-sm">
+              <span className="min-w-0 truncate font-semibold text-foreground">{specialtyById.get(specialtyId)?.nome || "Especialidade"}</span>
+              <Input
+                type="number"
+                min={1}
+                value={config.duracao_minutos}
+                onChange={(event) => updateConfig(specialtyId, { duracao_minutos: event.target.value })}
+              />
+              <Input
+                value={config.preco}
+                onChange={(event) => updateConfig(specialtyId, { preco: formatCurrencyInput(event.target.value) })}
+              />
+              <Input
+                type="number"
+                min={1}
+                value={config.dias_retorno_recomendado}
+                placeholder="dias"
+                onChange={(event) => updateConfig(specialtyId, { dias_retorno_recomendado: event.target.value })}
+              />
+              <input
+                type="checkbox"
+                checked={config.aceita_agendamento_online !== false}
+                onChange={(event) => updateConfig(specialtyId, { aceita_agendamento_online: event.target.checked })}
+                aria-label="Aceita agendamento online"
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ export const BUSINESS_TYPES = [
 export type BusinessType = (typeof BUSINESS_TYPES)[number];
 
 export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
-  salao_beleza: "Salao de beleza",
+  salao_beleza: "Salão de beleza",
   barbearia: "Barbearia",
   manicure_pedicure: "Manicure/Pedicure",
   estetica: "Estetica",

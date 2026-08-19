@@ -6,32 +6,100 @@ import { API_URL } from "@/config/app-brand";
 
 export type SalonService = {
   id: string;
+  servico_tenant_id?: string;
   tenant_id: string;
+  servico_catalogo_id?: string;
+  codigo_canonico?: string;
   nome: string;
   descricao?: string | null;
-  duracao_minutos: number;
-  preco: number;
+  natureza?: "recorrente" | "ocasional" | string | null;
+  servico_ocasional?: boolean;
+  oferta_ativa?: boolean;
+  disponivel_ao_tenant?: boolean;
+  catalogo_ativo?: boolean;
+  duracao_minutos: number | null;
+  preco: number | null;
+  dias_retorno_recomendado?: number | null;
   categoria?: ServiceCategory | null;
+  categoria_key?: ServiceCategory | null;
   permite_online: boolean;
-  ordem_exibicao: number;
+  ativo?: boolean;
+  ordem_exibicao?: number;
   metadata?: Record<string, unknown>;
+  catalogo_metadata?: Record<string, unknown>;
   taxonomy_category_key?: ServiceCategory | "";
   taxonomy_service_key?: string | null;
   is_official?: boolean;
   is_custom?: boolean;
   especialidade_ids?: string[];
   especialidades?: TeamSpecialty[];
+  especialidades_config?: Array<{
+    id?: string;
+    servico_tenant_especialidade_id?: string;
+    servico_tenant_id?: string;
+    especialidade_id: string;
+    duracao_minutos?: number | null;
+    preco?: number | null;
+    dias_retorno_recomendado?: number | null;
+    aceita_agendamento_online?: boolean;
+    ativo?: boolean;
+    especialidade?: TeamSpecialty | null;
+  }>;
+};
+
+export type ServiceCatalogSpecialty = {
+  id?: string;
+  especialidade_id: string;
+  ativo?: boolean;
+  metadata?: Record<string, unknown>;
+  especialidade?: TeamSpecialty | null;
+};
+
+export type ServiceCatalog = {
+  id: string;
+  servico_catalogo_id?: string;
+  codigo_canonico: string;
+  nome: string;
+  descricao?: string | null;
+  categoria: ServiceCategory;
+  categoria_key?: ServiceCategory;
+  natureza: "recorrente" | "ocasional" | string;
+  servico_ocasional?: boolean;
+  ativo?: boolean;
+  recomendado?: boolean;
+  aplicavel?: boolean;
+  tipo_negocio_ids?: string[];
+  tipos_negocio?: Array<{
+    id: string;
+    nome?: string;
+    slug?: string;
+    principal?: boolean;
+  }>;
+  metadata?: Record<string, unknown>;
+  especialidades_compativeis?: TeamSpecialty[];
+  compatibilidades?: ServiceCatalogSpecialty[];
 };
 
 export type SalonServicePayload = {
-  nome: string;
+  servico_catalogo_id?: string;
+  codigo_canonico?: string;
+  nome?: string;
   descricao?: string | null;
-  duracao_minutos: number;
-  preco: number;
+  duracao_minutos?: number | null;
+  preco?: number | null;
   categoria?: ServiceCategory | null;
   permite_online?: boolean;
+  ativo?: boolean;
   ordem_exibicao?: number;
   especialidade_ids?: string[];
+  especialidades_config?: Array<{
+    especialidade_id: string;
+    duracao_minutos?: number | null;
+    preco?: number | null;
+    dias_retorno_recomendado?: number | null;
+    aceita_agendamento_online?: boolean;
+    ativo?: boolean;
+  }>;
 };
 
 type ApiEnvelope<T> = {
@@ -53,7 +121,8 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   duracao_minutos: "Duracao",
   preco: "Preco",
   categoria: "Categoria",
-  especialidade_ids: "Especialidades vinculadas"
+  especialidade_ids: "Especialidades vinculadas",
+  especialidades_config: "Configuração por especialidade"
 };
 
 function getValidationDetailsMessage(payload: ApiEnvelope<unknown>) {
@@ -114,12 +183,28 @@ async function list(session: AuthSession | null, filters: { especialidadeIds?: s
   return request<SalonService[]>(session, `/services${query ? `?${query}` : ""}`);
 }
 
+async function listCatalog(session: AuthSession | null) {
+  return request<ServiceCatalog[]>(session, "/services/catalog");
+}
+
+async function detail(session: AuthSession | null, id: string) {
+  return request<SalonService>(session, `/services/${id}`);
+}
+
 async function listCompatibleSpecialties(
   session: AuthSession | null,
-  filters: { nome: string; categoria: ServiceCategory | "" | null }
+  filters: { servico_catalogo_id?: string; codigo_canonico?: string; nome?: string; categoria?: ServiceCategory | "" | null }
 ) {
   const params = new URLSearchParams();
-  params.set("nome", filters.nome);
+  if (filters.servico_catalogo_id) {
+    params.set("servico_catalogo_id", filters.servico_catalogo_id);
+  }
+  if (filters.codigo_canonico) {
+    params.set("codigo_canonico", filters.codigo_canonico);
+  }
+  if (filters.nome) {
+    params.set("nome", filters.nome);
+  }
   if (filters.categoria) {
     params.set("categoria", filters.categoria);
   }
@@ -149,6 +234,8 @@ async function remove(session: AuthSession | null, id: string) {
 
 export const servicesService = {
   list,
+  listCatalog,
+  detail,
   listCompatibleSpecialties,
   create,
   update,

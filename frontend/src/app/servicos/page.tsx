@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { ServicesManager } from "@/components/services/ServicesManager";
+import { ServicesMerManager } from "@/components/services/ServicesMerManager";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Servicos"
+  title: "Serviços"
 };
 
 export default function ServicosPage() {
   return (
     <DashboardLayout>
-      <ServicesManager />
+      <ServicesMerManager />
     </DashboardLayout>
   );
 }
