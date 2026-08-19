@@ -5,7 +5,7 @@ const APPOINTMENT_COMMUNICATION_SELECT = `
   tenant:tenants(id, slug, nome_fantasia, telefone),
   cliente:clientes(*),
   profissional:profissionais(*, usuario:usuarios(*)),
-  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+  servicos:agendamento_servicos(*, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id, nome, codigo_canonico, categoria_key, natureza)))
 `;
 
 const APPOINTMENT_COMMUNICATION_SELECT_WITHOUT_USER = `
@@ -13,7 +13,7 @@ const APPOINTMENT_COMMUNICATION_SELECT_WITHOUT_USER = `
   tenant:tenants(id, slug, nome_fantasia, telefone),
   cliente:clientes(*),
   profissional:profissionais(*),
-  servicos:agendamento_servicos(*, servico:servicos(id, nome, preco, duracao_minutos))
+  servicos:agendamento_servicos(*, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id, nome, codigo_canonico, categoria_key, natureza)))
 `;
 
 function isMissingColumnError(error) {

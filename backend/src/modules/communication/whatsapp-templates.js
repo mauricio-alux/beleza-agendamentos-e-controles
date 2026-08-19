@@ -1,5 +1,39 @@
 const { buildOperationalLinks } = require('../agenda/domain/appointment-operational-token');
 
+const ESTABLISHMENT_REQUIRED_TEMPLATES = new Set([
+  'appointment_created',
+  'appointment_pending_client',
+  'appointment_confirmed',
+  'appointment_rescheduled',
+  'appointment_cancelled_by_attendant',
+  'appointment_cancelled_by_client',
+  'appointment_reminder_24h',
+  'appointment_reminder_2h',
+  'appointment_no_show_client',
+  'appointment_completed',
+  'appointment_cancelled_salon',
+  'appointment_rescheduled_salon',
+  'appointment_pending_attendant_reminder_2h'
+]);
+
+function resolveEstablishmentName(appointment = {}, templateName = '') {
+  const name = appointment.tenant?.nome_fantasia || appointment.tenant?.nome || '';
+  if (String(name).trim()) return String(name).trim();
+
+  if (ESTABLISHMENT_REQUIRED_TEMPLATES.has(templateName)) {
+    const error = new Error('Nome do estabelecimento nao resolvido para mensagem WhatsApp.');
+    error.code = 'WHATSAPP_ESTABLISHMENT_NAME_REQUIRED';
+    error.details = {
+      template_name: templateName,
+      tenant_id: appointment.tenant_id || null,
+      appointment_id: appointment.id || null
+    };
+    throw error;
+  }
+
+  return '';
+}
+
 function formatDateParts(value) {
   const date = value ? new Date(value) : null;
 
@@ -21,19 +55,27 @@ function formatDateParts(value) {
 }
 
 function getPrimaryService(appointment) {
-  return appointment?.servicos?.[0]?.servico || appointment?.servicos?.[0] || null;
+  const link = appointment?.servicos?.[0] || null;
+  return link
+    ? {
+        ...link,
+        nome: link.nome_servico || link.servico_tenant?.servico_catalogo?.nome || null
+      }
+    : null;
 }
 
-function buildParams(appointment = {}) {
+function buildParams(appointment = {}, templateName = '') {
   const service = getPrimaryService(appointment);
   const dateParts = formatDateParts(appointment.data_inicio);
   const links = appointment.token_confirmacao
     ? buildOperationalLinks(appointment.token_confirmacao)
     : {};
+  const establishmentName = resolveEstablishmentName(appointment, templateName);
 
   return {
     nome_cliente: appointment.cliente?.nome || 'cliente',
-    nome_salao: appointment.tenant?.nome_fantasia || 'salao',
+    nome_estabelecimento: establishmentName,
+    nome_salao: establishmentName,
     nome_profissional: appointment.profissional?.nome_publico || appointment.profissional?.nome || 'profissional',
     nome_servico: service?.nome || service?.nome_servico || 'atendimento',
     data_agendamento: dateParts.data_agendamento,
@@ -71,6 +113,7 @@ function buildOperationalActions(eventType, appointment = {}) {
     return [];
   }
 
+  const links = buildOperationalLinks(appointment.token_confirmacao);
   const basePayload = {
     tenant_id: appointment.tenant_id || null,
     appointment_id: appointment.id || null,
@@ -89,6 +132,7 @@ function buildOperationalActions(eventType, appointment = {}) {
         title: 'Confirmar',
         action_type: 'appointment.confirm',
         appointment_token: appointment.token_confirmacao,
+        url: links.confirmar,
         payload: basePayload,
         expires_at: appointment.data_inicio || null
       },
@@ -110,12 +154,18 @@ function buildOperationalActions(eventType, appointment = {}) {
     return [];
   }
 
+  if (!appointment.token_confirmacao) {
+    return [];
+  }
+
   return [
     {
       id: 'reschedule',
       title: 'Reagendar',
       action_type: 'reschedule',
       appointment_token: appointment.token_confirmacao,
+      url: links.reagendar,
+      route: '/reagendar',
       payload: basePayload,
       expires_at: appointment.data_inicio || null
     },
@@ -124,6 +174,8 @@ function buildOperationalActions(eventType, appointment = {}) {
       title: 'Cancelar',
       action_type: 'cancel',
       appointment_token: appointment.token_confirmacao,
+      url: links.cancelar,
+      route: '/acao_agendamento',
       payload: basePayload,
       expires_at: appointment.data_inicio || null
     }
@@ -199,26 +251,26 @@ const CLIENT_TEMPLATES = {
     body: [
       'Ol\u00e1, {{nome_cliente}}!',
       '',
-      'Recebemos sua solicita\u00e7\u00e3o de atendimento.',
+      'Recebemos sua solicita\u00e7\u00e3o de atendimento em {{nome_estabelecimento}}.',
       '',
       'Servi\u00e7o: {{nome_servico}}',
       'Profissional: {{nome_profissional}}',
       'Data: {{data_agendamento}}',
       'Hor\u00e1rio: {{hora_agendamento}}',
       '',
-      'Aguarde a confirma\u00e7\u00e3o do sal\u00e3o.'
+      'Aguarde a confirma\u00e7\u00e3o do estabelecimento.'
     ].join('\n')
   },
   'appointment.pending_client': {
     name: 'appointment_pending_client',
     body: [
-      'Ola {{nome_cliente}}! O salao recebeu sua solicitacao de atendimento.',
-      'Servico: {{nome_servico}}',
+      'Ol\u00e1, {{nome_cliente}}! {{nome_estabelecimento}} recebeu sua solicita\u00e7\u00e3o de atendimento.',
+      'Servi\u00e7o: {{nome_servico}}',
       'Profissional: {{nome_profissional}}',
       'Data: {{data_agendamento}}',
-      'Horario: {{hora_agendamento}}',
-      'Para confirmar sua presenca, acesse: {{link_confirmar}}',
-      'Caso necessario:',
+      'Hor\u00e1rio: {{hora_agendamento}}',
+      'Para confirmar sua presen\u00e7a, acesse: {{link_confirmar}}',
+      'Caso necess\u00e1rio:',
       'Cancelar: {{link_cancelar}}',
       'Reagendar: {{link_reagendar}}'
     ].join('\n')
@@ -228,7 +280,7 @@ const CLIENT_TEMPLATES = {
     body: [
       'Ol\u00e1, {{nome_cliente}}!',
       '',
-      'Seu atendimento foi confirmado com sucesso.',
+      '{{nome_estabelecimento}} confirmou seu atendimento.',
       '',
       '\u{1F4C5} Data: {{data_agendamento}}',
       '',
@@ -240,20 +292,16 @@ const CLIENT_TEMPLATES = {
       '',
       'Estamos aguardando voc\u00ea.',
       '',
-      'Caso precise alterar seu atendimento, utilize uma das op\u00e7\u00f5es abaixo:',
-      '',
-      '[Reagendar]',
-      '',
-      '[Cancelar]'
+      'Caso precise alterar seu atendimento, utilize uma das op\u00e7\u00f5es abaixo.'
     ].join('\n')
   },
   'appointment.rescheduled': {
     name: 'appointment_rescheduled',
     body: [
-      'Seu atendimento foi reagendado.',
-      'Servico: {{nome_servico}}',
+      '{{nome_estabelecimento}} reagendou seu atendimento.',
+      'Servi\u00e7o: {{nome_servico}}',
       'Nova data: {{data_agendamento}}',
-      'Novo horario: {{hora_agendamento}}'
+      'Novo hor\u00e1rio: {{hora_agendamento}}'
     ].join('\n')
   },
   'appointment.cancelled': {
@@ -261,7 +309,7 @@ const CLIENT_TEMPLATES = {
     body: [
       'Ol\u00e1, {{nome_cliente}}.',
       '',
-      'Seu atendimento foi cancelado pelo seguinte motivo:',
+      '{{nome_estabelecimento}} cancelou seu atendimento pelo seguinte motivo:',
       '',
       '{{motivo_cancelamento}}',
       '',
@@ -277,22 +325,22 @@ const CLIENT_TEMPLATES = {
   'appointment.reminder_24h': {
     name: 'appointment_reminder_24h',
     body: [
-      'Voce possui atendimento amanha.',
-      'Servico: {{nome_servico}}',
+      'Voc\u00ea possui atendimento amanh\u00e3 em {{nome_estabelecimento}}.',
+      'Servi\u00e7o: {{nome_servico}}',
       'Profissional: {{nome_profissional}}',
-      'Horario: {{hora_agendamento}}'
+      'Hor\u00e1rio: {{hora_agendamento}}'
     ].join('\n')
   },
   'appointment.reminder_2h': {
     name: 'appointment_reminder_2h',
-    body: 'Seu atendimento de {{nome_servico}} ocorrera em aproximadamente 2 horas, as {{hora_agendamento}}.'
+    body: 'Seu atendimento de {{nome_servico}} em {{nome_estabelecimento}} ocorrer\u00e1 em aproximadamente 2 horas, \u00e0s {{hora_agendamento}}.'
   },
   'appointment.no_show': {
     name: 'appointment_no_show_client',
     body: [
       'Ol\u00e1, {{nome_cliente}}.',
       '',
-      'Identificamos que voc\u00ea n\u00e3o compareceu ao atendimento agendado.',
+      'Identificamos que voc\u00ea n\u00e3o compareceu ao atendimento agendado em {{nome_estabelecimento}}.',
       '',
       'Servi\u00e7o: {{nome_servico}}',
       'Data: {{data_agendamento}}',
@@ -305,7 +353,7 @@ const CLIENT_TEMPLATES = {
   },
   'appointment.completed': {
     name: 'appointment_completed',
-    body: 'Obrigado por utilizar os servicos de {{nome_salao}}. Esperamos ve-lo novamente em breve.'
+    body: 'Obrigado por realizar seu atendimento em {{nome_estabelecimento}}. Esperamos v\u00ea-lo novamente em breve.'
   }
 };
 
@@ -366,7 +414,7 @@ const SALON_TEMPLATES = {
     body: [
       'Prioridade alta!',
       '',
-      'Faltam aproximadamente 2 horas para um atendimento ainda sem confirmacao operacional.',
+      'Faltam aproximadamente 2 horas para um atendimento em {{nome_estabelecimento}} ainda sem confirma\u00e7\u00e3o operacional.',
       '',
       'Cliente: {{nome_cliente}}',
       'Servico: {{nome_servico}}',
@@ -380,11 +428,11 @@ const SALON_TEMPLATES = {
   },
   'appointment.cancelled': {
     name: 'appointment_cancelled_salon',
-    body: '{{nome_cliente}} cancelou o atendimento de {{nome_servico}} em {{data_agendamento}} as {{hora_agendamento}}.'
+    body: '{{nome_cliente}} cancelou o atendimento de {{nome_servico}} em {{nome_estabelecimento}} em {{data_agendamento}} \u00e0s {{hora_agendamento}}.'
   },
   'appointment.rescheduled': {
     name: 'appointment_rescheduled_salon',
-    body: '{{nome_cliente}} reagendou o atendimento de {{nome_servico}} para {{data_agendamento}} as {{hora_agendamento}}.'
+    body: '{{nome_cliente}} reagendou o atendimento de {{nome_servico}} em {{nome_estabelecimento}} para {{data_agendamento}} \u00e0s {{hora_agendamento}}.'
   },
   'appointment.no_show': {
     name: 'appointment_no_show_salon',
@@ -403,7 +451,7 @@ function buildWhatsAppMessage(eventType, appointment, recipientType = 'client', 
       body: [
         'Ol\u00e1, {{nome_cliente}}.',
         '',
-        'Seu atendimento foi cancelado conforme solicitado.',
+        'Seu atendimento em {{nome_estabelecimento}} foi cancelado conforme solicitado.',
         '',
         'Servi\u00e7o: {{nome_servico}}',
         'Data: {{data_agendamento}}',
@@ -417,7 +465,7 @@ function buildWhatsAppMessage(eventType, appointment, recipientType = 'client', 
   }
 
   const params = sanitizeParamsForEvent(eventType, {
-    ...buildParams(appointment),
+    ...buildParams(appointment, template.name),
     motivo_cancelamento: getCancellationReason(eventPayload, appointment)
   });
   const actions = buildOperationalActions(eventType, appointment);

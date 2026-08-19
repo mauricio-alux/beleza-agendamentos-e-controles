@@ -44,8 +44,34 @@ function normalizeTemplateParameters(params = {}) {
     }));
 }
 
+function normalizeTemplateComponents(components = []) {
+  if (!Array.isArray(components)) return [];
+
+  return components
+    .filter((component) => component?.type)
+    .map((component) => ({
+      type: component.type,
+      ...(component.sub_type ? { sub_type: component.sub_type } : {}),
+      ...(component.index !== null && component.index !== undefined ? { index: String(component.index) } : {}),
+      parameters: normalizeTemplateParameters(component.parameters || [])
+    }))
+    .filter((component) => component.parameters.length);
+}
+
 function buildTemplatePayload(to, message) {
   const parameters = normalizeTemplateParameters(message.providerParams || message.params);
+  const providerComponents = normalizeTemplateComponents(message.providerComponents);
+  const components = providerComponents.length
+    ? providerComponents
+    : parameters.length
+      ? [
+          {
+            type: 'body',
+            parameters
+          }
+        ]
+      : [];
+
   return {
     messaging_product: 'whatsapp',
     to: onlyDigits(to),
@@ -55,14 +81,7 @@ function buildTemplatePayload(to, message) {
       language: {
         code: message.language || 'pt_BR'
       },
-      ...(parameters.length ? {
-        components: [
-          {
-            type: 'body',
-            parameters
-          }
-        ]
-      } : {})
+      ...(components.length ? { components } : {})
     }
   };
 }
@@ -135,6 +154,7 @@ module.exports = {
   PROVIDER_NAME,
   TEMPLATE_NOT_APPROVED_ERROR,
   buildTemplatePayload,
+  normalizeTemplateComponents,
   normalizeTemplateParameters,
   shouldDryRun,
   sendOperationalMessage

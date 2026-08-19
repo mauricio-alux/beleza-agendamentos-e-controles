@@ -53,11 +53,11 @@ const EMPTY_FORM: TemplateForm = {
 type CommunicationTab = "templates" | "messages" | "approved" | "queue" | "providers";
 
 const NAV_ITEMS: Array<{ id: CommunicationTab; label: string }> = [
-  { id: "templates", label: "Templates de Comunicacao" },
+  { id: "templates", label: "Templates de Comunicação" },
   { id: "messages", label: "Mensagens WhatsApp" },
   { id: "approved", label: "Templates Aprovados" },
   { id: "queue", label: "Fila de Envio" },
-  { id: "providers", label: "Configuracao dos Providers" }
+  { id: "providers", label: "Configuração dos Providers" }
 ];
 
 function extractVariables(content: string) {
@@ -230,7 +230,7 @@ function MessagesPanel({ title, description, messages }: {
                   <strong>Evento:</strong> {message.tipo_evento || "-"}
                 </span>
                 <span className="min-w-0 rounded-lg border border-border px-3 py-2 break-words">
-                  <strong>Tenant:</strong> {message.tenant_id || "-"}
+                  <strong>Estabelecimento:</strong> {message.tenant_id || "-"}
                 </span>
                 <span className="min-w-0 rounded-lg border border-border px-3 py-2 break-words">
                   <strong>Provider ID:</strong> {message.provider_message_id || "-"}
@@ -271,9 +271,9 @@ function ProvidersPanel({ provider }: { provider: CommunicationProviderStatus | 
   return (
     <div className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft">
       <div className="mb-4">
-        <h2 className="text-lg font-bold text-foreground">Configuracao dos Providers</h2>
+        <h2 className="text-lg font-bold text-foreground">Configuração dos Providers</h2>
         <p className="text-sm text-muted-foreground">
-          Leitura segura da configuracao do provider. Tokens e secrets nao sao exibidos.
+          Leitura segura da configuração do provider. Tokens e secrets não são exibidos.
         </p>
       </div>
 
@@ -301,7 +301,7 @@ function ProvidersPanel({ provider }: { provider: CommunicationProviderStatus | 
           </div>
 
           <div className="rounded-xl border border-border bg-background/70 p-4">
-            <p className="font-bold text-foreground">Variaveis de ambiente</p>
+            <p className="font-bold text-foreground">Variáveis de ambiente</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {provider.required_env.map((item) => (
                 <code key={item} className="rounded-full border border-border px-3 py-1 text-xs">
@@ -318,7 +318,7 @@ function ProvidersPanel({ provider }: { provider: CommunicationProviderStatus | 
           </div>
         </div>
       ) : (
-        <EmptyPanel title="Configuracao indisponivel" description="Nao foi possivel carregar a leitura segura do provider." />
+        <EmptyPanel title="Configuração indisponível" description="Não foi possível carregar a leitura segura do provider." />
       )}
     </div>
   );
@@ -386,6 +386,12 @@ export function CommunicationTemplatesManager() {
     )),
     [templates]
   );
+  const appointmentConfirmedActions = form.nome === "appointment_confirmed"
+    ? [
+        { title: "Reagendar", action_type: "reschedule", route: "/reagendar?tk={token_operacional}" },
+        { title: "Cancelar", action_type: "cancel", route: "/acao_agendamento?cmd=cancelar&tk={token_operacional}" }
+      ]
+    : [];
 
   async function load() {
     if (!session) return;
@@ -406,7 +412,7 @@ export function CommunicationTemplatesManager() {
       setQueueMessages(nextQueue);
       setProviderStatus(nextProvider);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar templates.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar templates.");
     } finally {
       setIsRefreshing(false);
     }
@@ -472,7 +478,7 @@ export function CommunicationTemplatesManager() {
       }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar o template.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o template.");
     } finally {
       setIsSaving(false);
     }
@@ -493,7 +499,7 @@ export function CommunicationTemplatesManager() {
         setForm((current) => ({ ...current, ativo: false }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel desativar o template.");
+      setError(err instanceof Error ? err.message : "Não foi possível desativar o template.");
     } finally {
       setIsSaving(false);
     }
@@ -507,9 +513,9 @@ export function CommunicationTemplatesManager() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">
               {APP_BRAND.appName} Plataforma
             </p>
-            <h1 className="mt-1 text-2xl font-bold text-foreground">Templates de Comunicacao</h1>
+            <h1 className="mt-1 text-2xl font-bold text-foreground">Templates de Comunicação</h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Manutencao MasterAdmin de templates globais ou por tenant usados pela fila operacional.
+              Manutenção MasterAdmin de templates globais ou por estabelecimento usados pela fila operacional.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -546,7 +552,7 @@ export function CommunicationTemplatesManager() {
           <aside className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-soft">
             <div className="flex items-center gap-2">
               <MessageSquareText className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-bold text-foreground">Comunicacao</h2>
+              <h2 className="text-lg font-bold text-foreground">Comunicação</h2>
             </div>
             <div className="mt-4 grid gap-2">
               {NAV_ITEMS.map((item) => (
@@ -620,7 +626,7 @@ export function CommunicationTemplatesManager() {
                           <strong>Categoria:</strong> {template.categoria_provider || "-"}
                         </span>
                         <span className="min-w-0 rounded-lg border border-border px-3 py-2 break-words">
-                          <strong>Tenant:</strong> {template.tenant_id || "global"}
+                          <strong>Estabelecimento:</strong> {template.tenant_id || "global"}
                         </span>
                       </div>
                     </article>
@@ -662,7 +668,7 @@ export function CommunicationTemplatesManager() {
                           {template.canal} / {template.tipo}
                         </p>
                         <p className="mt-2 break-words text-sm text-muted-foreground">
-                          Tenant: {template.tenant_id || "global"}
+                          Estabelecimento: {template.tenant_id || "global"}
                         </p>
                       </div>
                       <StatusBadge template={template} />
@@ -709,14 +715,14 @@ export function CommunicationTemplatesManager() {
                   {form.canal === "whatsapp" ? (
                     <>WhatsApp usa placeholders posicionais <code>{"{{1}}"}</code>, <code>{"{{2}}"}</code> e variaveis ordenadas.</>
                   ) : (
-                    <>Variaveis usam o formato <code>{"{{nome_variavel}}"}</code>.</>
+                    <>Variáveis usam o formato <code>{"{{nome_variavel}}"}</code>.</>
                   )}
                 </p>
               </div>
 
               <div className="grid gap-3">
                 <label className="grid gap-1 text-sm font-semibold text-foreground">
-                  Tenant ID
+                  ID do estabelecimento
                   <input
                     className="h-11 rounded-xl border border-border bg-background px-3 text-sm disabled:opacity-60"
                     value={form.tenant_id}
@@ -765,7 +771,7 @@ export function CommunicationTemplatesManager() {
                 </div>
 
                 <label className="grid gap-1 text-sm font-semibold text-foreground">
-                  Conteudo
+                  Conteúdo
                   <textarea
                     className="min-h-32 rounded-xl border border-border bg-background p-3 text-sm"
                     value={form.conteudo}
@@ -775,7 +781,7 @@ export function CommunicationTemplatesManager() {
                 </label>
 
                 <label className="grid gap-1 text-sm font-semibold text-foreground">
-                  Variaveis declaradas
+                  Variáveis declaradas
                   <textarea
                     className="min-h-24 rounded-xl border border-border bg-background p-3 text-sm"
                     value={form.variaveis}
@@ -797,6 +803,25 @@ export function CommunicationTemplatesManager() {
                   </div>
                 ) : null}
 
+                {appointmentConfirmedActions.length ? (
+                  <div className="rounded-xl border border-primary/20 bg-secondary/70 p-3 text-sm">
+                    <p className="font-bold text-foreground">Ações obrigatórias {APP_BRAND.appName}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      A regra funcional pertence ao {APP_BRAND.appName}; o provider apenas define se isso será botão URL, CTA ou outro formato aprovado.
+                    </p>
+                    <div className="mt-3 grid gap-2">
+                      {appointmentConfirmedActions.map((action) => (
+                        <div key={action.action_type} className="rounded-lg border border-border bg-white/70 px-3 py-2">
+                          <p className="font-bold text-foreground">{action.title}</p>
+                          <p className="break-words text-muted-foreground">
+                            action = <code>{action.action_type}</code> · rota = <code>{action.route}</code>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {(missingVariables.length || unusedVariables.length || whatsappValidationMessages.length) ? (
                   <div className="rounded-xl border border-primary/25 bg-secondary p-3 text-sm font-semibold text-primary">
                     {missingVariables.length ? <p>Faltam em variaveis: {missingVariables.join(", ")}</p> : null}
@@ -810,7 +835,7 @@ export function CommunicationTemplatesManager() {
                 <div className="rounded-xl border border-border bg-background/70 p-3">
                   <p className="text-sm font-bold text-foreground">Previa formatada</p>
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                    {form.conteudo || "Conteudo ainda nao informado."}
+                    {form.conteudo || "Conteúdo ainda não informado."}
                   </p>
                 </div>
 

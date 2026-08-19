@@ -35,8 +35,12 @@ function buildAppointment() {
     },
     servicos: [
       {
-        servico: {
-          nome: 'Maquiagem'
+        servico_tenant_id: '55555555-5555-4555-8555-555555555555',
+        nome_servico: 'Maquiagem',
+        servico_tenant: {
+          servico_catalogo: {
+            nome: 'Maquiagem'
+          }
         }
       }
     ]
@@ -107,6 +111,165 @@ test('sendAppointmentEvent uses active templates_mensagem as message source', as
   assert.equal(providerCalled, false);
   assert.equal(result.status_envio, 'pendente');
   assert.equal(result.provider_message_id, undefined);
+});
+
+test('sendAppointmentEvent uses appointment_confirmed DB actions for reschedule and cancel', async () => {
+  const createdLogs = [];
+
+  communicationRepository.findExistingWhatsAppMessageLog = async () => null;
+  communicationRepository.findActiveMessageTemplate = async () => ({
+    id: '55555555-5555-4555-8555-555555555557',
+    nome: 'appointment_confirmed',
+    conteudo: [
+      'Ol\u00e1, {{1}}!',
+      '',
+      '{{2}} confirmou seu atendimento.',
+      '',
+      'Data: {{5}}',
+      'Hor\u00e1rio: {{6}}',
+      'Servi\u00e7o: {{3}}',
+      'Profissional: {{4}}',
+      '',
+      'Estamos aguardando voc\u00ea.',
+      '',
+      'Caso precise alterar seu atendimento, utilize uma das op\u00e7\u00f5es abaixo.'
+    ].join('\n'),
+    variaveis: ['nome_cliente', 'nome_estabelecimento', 'nome_servico', 'nome_profissional', 'data_agendamento', 'hora_agendamento'],
+    aprovado_provider: false,
+    metadata: {
+      provider_template_name: 'appointment_confirmed',
+      language: 'pt_BR',
+      actions: [
+        { id: 'reschedule', title: 'Reagendar', action_type: 'reschedule', route: '/reagendar' },
+        { id: 'cancel', title: 'Cancelar', action_type: 'cancel', route: '/acao_agendamento' }
+      ]
+    }
+  });
+  communicationRepository.createWhatsAppMessageLog = async (payload) => {
+    const log = { id: '66666666-6666-4666-8666-666666666668', ...payload };
+    createdLogs.push(log);
+    return log;
+  };
+  communicationRepository.updateWhatsAppMessageLog = async (id, payload) => ({
+    id,
+    ...createdLogs[0],
+    ...payload
+  });
+  whatsappProvider.shouldDryRun = () => true;
+
+  await communicationService.sendAppointmentEvent('appointment.confirmed', {
+    tenantId: '22222222-2222-4222-8222-222222222222',
+    payload: {
+      appointment_id: '11111111-1111-4111-8111-111111111111',
+      appointment: buildAppointment()
+    }
+  });
+
+  assert.equal(createdLogs[0].template_nome, 'appointment_confirmed');
+  assert.equal(createdLogs[0].payload.template_source, 'templates_mensagem');
+  assert.doesNotMatch(createdLogs[0].conteudo, /\[Reagendar\]/);
+  assert.doesNotMatch(createdLogs[0].conteudo, /\[Cancelar\]/);
+  assert.deepEqual(createdLogs[0].payload.actions.map((action) => action.id), ['reschedule', 'cancel']);
+  assert.deepEqual(createdLogs[0].payload.actions.map((action) => action.source), ['templates_mensagem', 'templates_mensagem']);
+  assert.match(createdLogs[0].payload.actions[0].url, /\/reagendar\?tk=apt_test_token$/);
+  assert.match(createdLogs[0].payload.actions[1].url, /\/acao_agendamento\?cmd=cancelar&tk=apt_test_token$/);
+  assert.doesNotMatch(createdLogs[0].payload.actions[0].url, /11111111-1111-4111-8111-111111111111/);
+  assert.doesNotMatch(createdLogs[0].payload.actions[1].url, /11111111-1111-4111-8111-111111111111/);
+  assert.equal(createdLogs[0].payload.operational_context.appointment_token, 'apt_test_token');
+  assert.deepEqual(createdLogs[0].payload.provider_params, [
+    'Marcia Maria',
+    'Bella Rosa Studio',
+    'Maquiagem',
+    'Rosely Cordeiro',
+    '22/06/2026',
+    '14:00'
+  ]);
+  assert.deepEqual(createdLogs[0].payload.provider_buttons.map((button) => ({
+    id: button.id,
+    index: button.index,
+    sub_type: button.sub_type,
+    parameter_value: button.parameter_value
+  })), [
+    { id: 'reschedule', index: 0, sub_type: 'url', parameter_value: 'apt_test_token' },
+    { id: 'cancel', index: 1, sub_type: 'url', parameter_value: 'apt_test_token' }
+  ]);
+  assert.deepEqual(createdLogs[0].payload.provider_components, [
+    {
+      type: 'body',
+      parameters: ['Marcia Maria', 'Bella Rosa Studio', 'Maquiagem', 'Rosely Cordeiro', '22/06/2026', '14:00']
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 0,
+      parameters: ['apt_test_token']
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 1,
+      parameters: ['apt_test_token']
+    }
+  ]);
+});
+
+test('sendAppointmentEvent rejects appointment_confirmed DB template without mandatory actions', async () => {
+  communicationRepository.findExistingWhatsAppMessageLog = async () => null;
+  communicationRepository.findActiveMessageTemplate = async () => ({
+    id: '55555555-5555-4555-8555-555555555558',
+    nome: 'appointment_confirmed',
+    conteudo: 'Ol\u00e1, {{1}}! {{2}} confirmou seu atendimento.',
+    variaveis: ['nome_cliente', 'nome_estabelecimento'],
+    aprovado_provider: false,
+    metadata: {
+      provider_template_name: 'appointment_confirmed',
+      language: 'pt_BR',
+      actions: []
+    }
+  });
+  whatsappProvider.shouldDryRun = () => true;
+
+  await assert.rejects(
+    () => communicationService.sendAppointmentEvent('appointment.confirmed', {
+      tenantId: '22222222-2222-4222-8222-222222222222',
+      payload: {
+        appointment_id: '11111111-1111-4111-8111-111111111111',
+        appointment: buildAppointment()
+      }
+    }),
+    /Template appointment_confirmed operacionalmente incompleto/
+  );
+});
+
+test('sendAppointmentEvent rejects eligible DB template without establishment variable', async () => {
+  communicationRepository.findExistingWhatsAppMessageLog = async () => null;
+  communicationRepository.findActiveMessageTemplate = async () => ({
+    id: '55555555-5555-4555-8555-555555555560',
+    nome: 'appointment_created',
+    conteudo: 'Ola {{1}}, recebemos sua solicitacao de {{2}}.',
+    variaveis: ['nome_cliente', 'nome_servico'],
+    aprovado_provider: false,
+    metadata: {
+      provider_template_name: 'appointment_created',
+      language: 'pt_BR'
+    }
+  });
+  communicationRepository.createWhatsAppMessageLog = async () => {
+    throw new Error('mensagens_whatsapp should not be created without establishment identification');
+  };
+  whatsappProvider.shouldDryRun = () => true;
+
+  await assert.rejects(
+    () => communicationService.sendAppointmentEvent('appointment.created', {
+      tenantId: '22222222-2222-4222-8222-222222222222',
+      payload: {
+        appointment_id: '11111111-1111-4111-8111-111111111111',
+        appointment: buildAppointment()
+      }
+    }),
+    (error) => error.code === 'WHATSAPP_ESTABLISHMENT_NAME_REQUIRED'
+      && error.details.reason === 'eligible_template_missing_establishment_variable'
+  );
 });
 
 test('sendAppointmentEvent appends the institutional signature only once for clients', async () => {
@@ -203,8 +366,18 @@ test('sendAppointmentEvent queues unapproved real send for processor validation'
 
   communicationRepository.findExistingWhatsAppMessageLog = async () => null;
   communicationRepository.findActiveMessageTemplate = async (query) => {
-    assert.equal(query.requireProviderApproval, true);
-    return null;
+    assert.equal(query.requireProviderApproval, false);
+    return {
+      id: '55555555-5555-4555-8555-555555555559',
+      nome: 'appointment_created',
+      conteudo: 'Olá {{1}}, {{2}} recebeu sua solicitação de {{3}}.',
+      variaveis: ['nome_cliente', 'nome_estabelecimento', 'nome_servico'],
+      aprovado_provider: false,
+      metadata: {
+        provider_template_name: 'appointment_created',
+        language: 'pt_BR'
+      }
+    };
   };
   communicationRepository.createWhatsAppMessageLog = async (payload) => {
     const log = {
@@ -235,7 +408,8 @@ test('sendAppointmentEvent queues unapproved real send for processor validation'
 
   assert.equal(providerCalled, false);
   assert.equal(result.status_envio, 'pendente');
-  assert.equal(result.payload.template_source, 'code_fallback');
+  assert.equal(result.payload.template_source, 'templates_mensagem');
+  assert.equal(result.payload.provider_approved, false);
 });
 
 test('processPendingWhatsAppMessages dispatches mensagens_whatsapp pending logs', async () => {

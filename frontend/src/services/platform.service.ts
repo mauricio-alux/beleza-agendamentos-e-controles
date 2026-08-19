@@ -71,6 +71,13 @@ export type CommunicationTemplate = {
   categoria_provider?: string | null;
   provider_parameter_format?: string | null;
   provider_variable_mapping?: Record<string, number> | null;
+  actions?: Array<{
+    id: string;
+    title?: string;
+    action_type?: string;
+    route?: string | null;
+  }>;
+  required_actions?: string[];
   ultima_sincronizacao_provider?: string | null;
   observacoes?: string | null;
   aprovado_provider: boolean;
@@ -218,7 +225,7 @@ async function request<T>(path: string, session: AuthSession, init: RequestInit 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok || !payload.data) {
-    throw new Error(payload.error?.message || "Nao foi possivel carregar a plataforma.");
+    throw new Error(payload.error?.message || "Não foi possível carregar a plataforma.");
   }
 
   return payload.data;

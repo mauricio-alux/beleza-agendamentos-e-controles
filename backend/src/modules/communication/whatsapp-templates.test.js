@@ -21,9 +21,12 @@ function buildAppointment(overrides = {}) {
     },
     servicos: [
       {
-        servico_id: '33333333-3333-4333-8333-333333333333',
-        servico: {
-          nome: 'Maquiagem'
+        servico_tenant_id: '33333333-3333-4333-8333-333333333333',
+        nome_servico: 'Maquiagem',
+        servico_tenant: {
+          servico_catalogo: {
+            nome: 'Maquiagem'
+          }
         }
       }
     ],
@@ -39,14 +42,14 @@ test('appointment.created message only acknowledges the request without links or
   assert.equal(message.text, [
     'Ol\u00e1, Marcia Maria!',
     '',
-    'Recebemos sua solicita\u00e7\u00e3o de atendimento.',
+    'Recebemos sua solicita\u00e7\u00e3o de atendimento em Bella Rosa Studio.',
     '',
     'Servi\u00e7o: Maquiagem',
     'Profissional: Rosely Cordeiro',
     'Data: 22/06/2026',
     'Hor\u00e1rio: 14:00',
     '',
-    'Aguarde a confirma\u00e7\u00e3o do sal\u00e3o.'
+    'Aguarde a confirma\u00e7\u00e3o do estabelecimento.'
   ].join('\n'));
 
   assert.doesNotMatch(message.text, /cancelar/i);
@@ -77,7 +80,7 @@ test('appointment.confirmed message is clean and exposes only internal operation
   assert.equal(message.text, [
     'Ol\u00e1, Marcia Maria!',
     '',
-    'Seu atendimento foi confirmado com sucesso.',
+    'Bella Rosa Studio confirmou seu atendimento.',
     '',
     '\u{1F4C5} Data: 22/06/2026',
     '',
@@ -89,14 +92,12 @@ test('appointment.confirmed message is clean and exposes only internal operation
     '',
     'Estamos aguardando voc\u00ea.',
     '',
-    'Caso precise alterar seu atendimento, utilize uma das op\u00e7\u00f5es abaixo:',
-    '',
-    '[Reagendar]',
-    '',
-    '[Cancelar]'
+    'Caso precise alterar seu atendimento, utilize uma das op\u00e7\u00f5es abaixo.'
   ].join('\n'));
 
   assert.doesNotMatch(message.text, /confirmar/i);
+  assert.doesNotMatch(message.text, /\[Reagendar\]/i);
+  assert.doesNotMatch(message.text, /\[Cancelar\]/i);
   assert.doesNotMatch(message.text, /presenca/i);
   assert.doesNotMatch(message.text, /presen\u00e7a/i);
   assert.doesNotMatch(message.text, /https?:\/\//i);
@@ -114,17 +115,23 @@ test('appointment.confirmed message is clean and exposes only internal operation
   assert.equal(message.params.link_confirmar, '');
   assert.equal(message.params.link_cancelar, '');
   assert.equal(message.params.link_reagendar, '');
+  assert.equal(message.params.nome_estabelecimento, 'Bella Rosa Studio');
+  assert.equal(message.params.nome_salao, 'Bella Rosa Studio');
 
   assert.deepEqual(message.actions.map((action) => action.id), ['reschedule', 'cancel']);
   assert.equal(message.actions[0].appointment_token, 'apt_test_token');
   assert.equal(message.actions[1].appointment_token, 'apt_test_token');
+  assert.match(message.actions[0].url, /\/reagendar\?tk=apt_test_token$/);
+  assert.match(message.actions[1].url, /\/acao_agendamento\?cmd=cancelar&tk=apt_test_token$/);
+  assert.doesNotMatch(message.actions[0].url, /11111111-1111-4111-8111-111111111111/);
+  assert.doesNotMatch(message.actions[1].url, /11111111-1111-4111-8111-111111111111/);
   assert.equal(message.operational_context.appointment_token, 'apt_test_token');
 });
 
 test('appointment.pending_client still keeps explicit client confirmation flow', () => {
   const message = buildWhatsAppMessage('appointment.pending_client', buildAppointment(), 'client');
 
-  assert.match(message.text, /Para confirmar sua presenca/);
+  assert.match(message.text, /Para confirmar sua presença/);
   assert.ok(message.links.confirmar);
   assert.ok(message.links.cancelar);
   assert.ok(message.links.reagendar);
@@ -164,7 +171,7 @@ test('appointment.no_show renders respectful client message with schedule again 
   assert.equal(message.text, [
     'Ol\u00e1, Marcia Maria.',
     '',
-    'Identificamos que voc\u00ea n\u00e3o compareceu ao atendimento agendado.',
+    'Identificamos que voc\u00ea n\u00e3o compareceu ao atendimento agendado em Bella Rosa Studio.',
     '',
     'Servi\u00e7o: Maquiagem',
     'Data: 22/06/2026',
@@ -200,7 +207,7 @@ test('appointment.cancelled by attendant renders reason and schedule again actio
   });
 
   assert.equal(message.template_name, 'appointment_cancelled_by_attendant');
-  assert.match(message.text, /Seu atendimento foi cancelado pelo seguinte motivo:/);
+  assert.match(message.text, /Bella Rosa Studio cancelou seu atendimento pelo seguinte motivo:/);
   assert.match(message.text, /Profissional indisponivel\./);
   assert.doesNotMatch(message.text, /https?:\/\//i);
   assert.doesNotMatch(message.text, /cmd=/i);
@@ -218,7 +225,75 @@ test('appointment.cancelled by client uses separated client template', () => {
   });
 
   assert.equal(message.template_name, 'appointment_cancelled_by_client');
-  assert.match(message.text, /Seu atendimento foi cancelado conforme solicitado\./);
+  assert.match(message.text, /Seu atendimento em Bella Rosa Studio foi cancelado conforme solicitado\./);
   assert.doesNotMatch(message.text, /seguinte motivo/);
   assert.deepEqual(message.actions.map((action) => action.id), ['schedule_again']);
+});
+
+test('excluded internal salon templates remain without establishment identification', () => {
+  const reminder30 = buildWhatsAppMessage('appointment.pending_attendant_reminder_30m', buildAppointment(), 'salon');
+  const reminder60 = buildWhatsAppMessage('appointment.pending_attendant_reminder_60m', buildAppointment(), 'salon');
+  const pending = buildWhatsAppMessage('appointment.pending_attendant', buildAppointment(), 'salon');
+  const noShowSalon = buildWhatsAppMessage('appointment.no_show', buildAppointment(), 'salon');
+
+  assert.equal(reminder30.template_name, 'appointment_pending_attendant_reminder_30m');
+  assert.equal(reminder60.template_name, 'appointment_pending_attendant_reminder_60m');
+  assert.equal(pending.template_name, 'appointment_pending_attendant_operational');
+  assert.equal(noShowSalon.template_name, 'appointment_no_show_salon');
+
+  for (const message of [reminder30, reminder60, pending, noShowSalon]) {
+    assert.doesNotMatch(message.text, /Bella Rosa Studio/);
+    assert.doesNotMatch(message.text, /nome_estabelecimento/);
+    assert.doesNotMatch(message.text, /undefined|null/i);
+  }
+});
+
+test('eligible WhatsApp templates fail when establishment name cannot be resolved', () => {
+  const appointment = buildAppointment({ tenant: null });
+
+  assert.throws(
+    () => buildWhatsAppMessage('appointment.confirmed', appointment, 'client'),
+    (error) => error.code === 'WHATSAPP_ESTABLISHMENT_NAME_REQUIRED'
+      && error.details.tenant_id === '22222222-2222-4222-8222-222222222222'
+  );
+});
+
+test('eligible WhatsApp template copy does not place gendered article before establishment variable', () => {
+  const events = [
+    buildWhatsAppMessage('appointment.created', buildAppointment(), 'client'),
+    buildWhatsAppMessage('appointment.confirmed', buildAppointment(), 'client'),
+    buildWhatsAppMessage('appointment.rescheduled', buildAppointment(), 'client'),
+    buildWhatsAppMessage('appointment.cancelled', buildAppointment(), 'client'),
+    buildWhatsAppMessage('appointment.no_show', buildAppointment(), 'client')
+  ];
+
+  for (const message of events) {
+    assert.doesNotMatch(message.template, /\b(?:na|no|da|do)\s+\{\{nome_estabelecimento\}\}/i);
+    assert.doesNotMatch(message.text, /\b(?:na|no|da|do)\s+Bella Rosa Studio/i);
+  }
+});
+
+test('eligible WhatsApp template copy stays neutral for different clients and establishment names', () => {
+  const appointments = [
+    buildAppointment({
+      cliente: { nome: 'Claudia Raia' },
+      tenant: { nome_fantasia: 'Espaço Vivian Beauty', slug: 'espaco-vivian-beauty' }
+    }),
+    buildAppointment({
+      cliente: { nome: 'Joao Pereira' },
+      tenant: { nome_fantasia: 'Barbearia Central', slug: 'barbearia-central' }
+    })
+  ];
+
+  const [beautyMessage, barberMessage] = appointments.map((appointment) => (
+    buildWhatsAppMessage('appointment.confirmed', appointment, 'client')
+  ));
+
+  assert.match(beautyMessage.text, /Olá, Claudia Raia!/);
+  assert.match(beautyMessage.text, /Espaço Vivian Beauty confirmou seu atendimento\./);
+  assert.doesNotMatch(beautyMessage.text, /\b(?:na|no|da|do)\s+Espaço Vivian Beauty/i);
+
+  assert.match(barberMessage.text, /Olá, Joao Pereira!/);
+  assert.match(barberMessage.text, /Barbearia Central confirmou seu atendimento\./);
+  assert.doesNotMatch(barberMessage.text, /\b(?:na|no|da|do)\s+Barbearia Central/i);
 });

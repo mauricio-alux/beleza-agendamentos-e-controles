@@ -4,6 +4,7 @@ const { buildWhatsAppMessage } = require('./whatsapp-templates');
 const whatsappMySaaSProvider = require('./providers/whatsapp-mysaas.provider');
 const { applyInstitutionalSignature } = require('./institutional-signature');
 const env = require('../../config/env');
+const { AppError } = require('../../utils/errors');
 
 const SUPPORTED_APPOINTMENT_EVENTS = new Set([
   'appointment.created',
@@ -38,6 +39,23 @@ const SALON_EVENTS = new Set([
   'appointment.pending_attendant_reminder_30m',
   'appointment.pending_attendant_reminder_60m',
   'appointment.pending_attendant_reminder_2h'
+]);
+
+const ESTABLISHMENT_REQUIRED_TEMPLATES = new Set([
+  'appointment_created',
+  'appointment_pending_client',
+  'appointment_confirmed',
+  'appointment_rescheduled',
+  'appointment_cancelled',
+  'appointment_cancelled_by_attendant',
+  'appointment_cancelled_by_client',
+  'appointment_reminder_24h',
+  'appointment_reminder_2h',
+  'appointment_completed',
+  'appointment_no_show_client',
+  'appointment_cancelled_salon',
+  'appointment_rescheduled_salon',
+  'appointment_pending_attendant_reminder_2h'
 ]);
 
 function isClientInitiated(payload = {}) {
@@ -110,6 +128,27 @@ function resolveScheduledAt(eventPayload = {}) {
     || eventPayload.agendado_para
     || eventPayload.queue_for
     || null;
+}
+
+function assertTemplateRequestsEstablishment(template, appointment) {
+  if (!ESTABLISHMENT_REQUIRED_TEMPLATES.has(template?.nome)) return;
+
+  const variables = Array.isArray(template.variaveis) ? template.variaveis : [];
+  const requestsEstablishment = variables.includes('nome_estabelecimento') || variables.includes('nome_salao');
+  if (requestsEstablishment) return;
+
+  throw new AppError(
+    'Template WhatsApp operacional elegivel nao solicita identificacao do estabelecimento.',
+    422,
+    'WHATSAPP_ESTABLISHMENT_NAME_REQUIRED',
+    {
+      template_id: template.id || null,
+      template_name: template.nome || null,
+      tenant_id: appointment?.tenant_id || null,
+      appointment_id: appointment?.id || null,
+      reason: 'eligible_template_missing_establishment_variable'
+    }
+  );
 }
 
 function buildIdempotencyKey({ appointment, eventType, recipientType, eventPayload = {} }) {
@@ -215,6 +254,139 @@ function buildProviderTemplateParams(template, params = {}) {
     .filter((value) => value !== null && value !== undefined && String(value) !== '');
 }
 
+function normalizeTemplateActions(actions = []) {
+  if (!Array.isArray(actions)) return [];
+
+  return actions
+    .map((action) => ({
+      id: String(action?.id || action?.action_type || '').trim(),
+      title: String(action?.title || action?.label || '').trim(),
+      action_type: String(action?.action_type || action?.id || '').trim(),
+      route: action?.route ? String(action.route).trim() : null
+    }))
+    .filter((action) => action.id && action.action_type);
+}
+
+function actionMatches(required, action) {
+  return action.id === required || action.action_type === required;
+}
+
+function assertAppointmentConfirmedTemplateIsOperational(template, renderedText = '') {
+  if (template?.nome !== 'appointment_confirmed') return;
+
+  const actions = normalizeTemplateActions(template.metadata?.actions);
+  const missingActions = ['reschedule', 'cancel'].filter((required) => (
+    !actions.some((action) => actionMatches(required, action))
+  ));
+
+  if (missingActions.length) {
+    throw new AppError(
+      'Template appointment_confirmed operacionalmente incompleto.',
+      422,
+      'APPOINTMENT_CONFIRMED_TEMPLATE_ACTIONS_REQUIRED',
+      {
+        template_id: template.id || null,
+        missing_actions: missingActions
+      }
+    );
+  }
+}
+
+function maskOperationalToken(token = '') {
+  const value = String(token || '');
+  if (value.length <= 10) return value ? '***' : '';
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function getAppointmentOperationalToken(appointment = {}) {
+  return typeof appointment.token_confirmacao === 'string'
+    ? appointment.token_confirmacao.trim()
+    : '';
+}
+
+function buildAppointmentConfirmedProviderButtons(appointment, actions = []) {
+  const token = getAppointmentOperationalToken(appointment);
+
+  if (!token) {
+    throw new AppError(
+      'Agendamento confirmado sem token operacional para botoes WhatsApp.',
+      422,
+      'APPOINTMENT_OPERATIONAL_TOKEN_MISSING',
+      {
+        appointment_id: appointment.id || null,
+        template_name: 'appointment_confirmed'
+      }
+    );
+  }
+
+  const definitions = [
+    { id: 'reschedule', title: 'Reagendar', index: 0 },
+    { id: 'cancel', title: 'Cancelar', index: 1 }
+  ];
+
+  return definitions.map((definition) => {
+    const action = actions.find((item) => actionMatches(definition.id, item)) || {};
+    return {
+      id: action.id || definition.id,
+      title: action.title || definition.title,
+      action_type: action.action_type || definition.id,
+      component_type: 'button',
+      sub_type: 'url',
+      index: definition.index,
+      parameter_format: 'positional',
+      parameter_value: token,
+      parameter_masked: maskOperationalToken(token),
+      has_dynamic_parameter: true
+    };
+  });
+}
+
+function buildProviderTemplateComponents(template, appointment, providerParams = [], actions = []) {
+  if (template?.nome !== 'appointment_confirmed') {
+    return null;
+  }
+
+  const buttons = buildAppointmentConfirmedProviderButtons(appointment, actions);
+
+  return [
+    {
+      type: 'body',
+      parameters: providerParams
+    },
+    ...buttons.map((button) => ({
+      type: 'button',
+      sub_type: button.sub_type,
+      index: button.index,
+      parameters: [button.parameter_value]
+    }))
+  ];
+}
+
+function buildActionsFromTemplateDefinitions(template, fallbackActions = []) {
+  if (template?.nome !== 'appointment_confirmed') return fallbackActions;
+
+  const definitions = normalizeTemplateActions(template.metadata?.actions);
+  if (!definitions.length) return fallbackActions;
+
+  return fallbackActions.map((fallbackAction) => {
+    const definition = definitions.find((item) => (
+      actionMatches(item.id, fallbackAction)
+      || actionMatches(item.action_type, fallbackAction)
+    ));
+
+    return definition
+      ? {
+          ...fallbackAction,
+          id: definition.id || fallbackAction.id,
+          title: definition.title || fallbackAction.title,
+          action_type: definition.action_type || fallbackAction.action_type,
+          route: definition.route || fallbackAction.route || null,
+          source: 'templates_mensagem'
+        }
+      : fallbackAction;
+  });
+}
+
 function getProviderVariableMapping(template) {
   return getTemplateProviderVariableOrder(template).reduce((mapping, variable, index) => ({
     ...mapping,
@@ -294,7 +466,7 @@ async function blockUnapprovedRealTemplate(log) {
 }
 
 async function resolveConfiguredTemplateMessage({ eventType, appointment, recipientType, fallbackMessage }) {
-  const requireProviderApproval = !whatsappMySaaSProvider.shouldDryRun();
+  const requireProviderApproval = false;
   const template = await communicationRepository.findActiveMessageTemplate({
     tenantId: appointment.tenant_id,
     names: [fallbackMessage.template_name, eventType],
@@ -309,8 +481,21 @@ async function resolveConfiguredTemplateMessage({ eventType, appointment, recipi
       template_name: fallbackMessage.template_name,
       requireProviderApproval
     });
+    if (fallbackMessage.template_name === 'appointment_confirmed') {
+      throw new AppError(
+        'Template appointment_confirmed nao configurado para botoes WhatsApp.',
+        422,
+        'APPOINTMENT_CONFIRMED_TEMPLATE_ACTIONS_REQUIRED',
+        {
+          template_name: fallbackMessage.template_name,
+          missing_template: true
+        }
+      );
+    }
     return withFallbackTemplateMetadata(fallbackMessage);
   }
+
+  assertTemplateRequestsEstablishment(template, appointment);
 
   const renderedText = renderWhatsAppTemplateContent(template.conteudo, fallbackMessage.params, template.variaveis);
   if (hasForbiddenVisibleContent(renderedText)) {
@@ -321,8 +506,25 @@ async function resolveConfiguredTemplateMessage({ eventType, appointment, recipi
       template_id: template.id,
       template_name: template.nome
     });
+    if (template.nome === 'appointment_confirmed') {
+      throw new AppError(
+        'Template appointment_confirmed contem conteudo visivel incompativel com botoes dinamicos.',
+        422,
+        'APPOINTMENT_CONFIRMED_TEMPLATE_VISIBLE_CONTENT_INVALID',
+        {
+          template_id: template.id || null,
+          template_name: template.nome
+        }
+      );
+    }
     return withFallbackTemplateMetadata(fallbackMessage);
   }
+  assertAppointmentConfirmedTemplateIsOperational(template, renderedText);
+  const actions = buildActionsFromTemplateDefinitions(template, fallbackMessage.actions || []);
+  const providerParams = buildProviderTemplateParams(template, fallbackMessage.params);
+  const providerButtons = template.nome === 'appointment_confirmed'
+    ? buildAppointmentConfirmedProviderButtons(appointment, actions)
+    : [];
 
   return {
     ...fallbackMessage,
@@ -331,12 +533,15 @@ async function resolveConfiguredTemplateMessage({ eventType, appointment, recipi
     template_name: template.nome,
     template: template.conteudo,
     text: renderedText,
+    actions,
     provider_template_name: getTemplateProviderName(template),
     language: getTemplateLanguage(template),
     provider_approved: template.aprovado_provider === true,
     provider_parameter_format: 'positional',
     provider_variable_mapping: getProviderVariableMapping(template),
-    provider_params: buildProviderTemplateParams(template, fallbackMessage.params)
+    provider_params: providerParams,
+    provider_buttons: providerButtons,
+    provider_components: buildProviderTemplateComponents(template, appointment, providerParams, actions)
   };
 }
 
@@ -378,6 +583,8 @@ async function writeErroredLog({ eventType, appointment, recipientType, message,
       provider_parameter_format: message?.provider_parameter_format || null,
       provider_variable_mapping: message?.provider_variable_mapping || null,
       provider_params: message?.provider_params || null,
+      provider_buttons: message?.provider_buttons || [],
+      provider_components: message?.provider_components || null,
       error: errorMessage,
       attempt: resolveAttempt(eventType, eventPayload),
       priority: resolvePriority(eventType, eventPayload)
@@ -403,6 +610,7 @@ async function dispatchWhatsAppMessageLog(log) {
       language: log.payload?.language || 'pt_BR',
       params: log.payload?.params || {},
       providerParams: log.payload?.provider_params || null,
+      providerComponents: log.payload?.provider_components || null,
       metadata: {
         event_type: log.tipo_evento || log.payload?.event_type || null,
         appointment_id: log.agendamento_id || null,
@@ -526,6 +734,8 @@ async function sendPreparedWhatsAppMessage({ eventType, appointment, recipientTy
       provider_parameter_format: message.provider_parameter_format || null,
       provider_variable_mapping: message.provider_variable_mapping || null,
       provider_params: message.provider_params || null,
+      provider_buttons: message.provider_buttons || [],
+      provider_components: message.provider_components || null,
       operational_context: message.operational_context || null,
       attempt: resolveAttempt(eventType, eventPayload),
       priority: resolvePriority(eventType, eventPayload),

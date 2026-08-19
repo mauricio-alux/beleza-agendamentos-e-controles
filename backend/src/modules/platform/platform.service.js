@@ -3,6 +3,26 @@ const eventLogsService = require('../event-logs/eventLogs.service');
 const { AppError } = require('../../utils/errors');
 const env = require('../../config/env');
 
+const APPOINTMENT_CONFIRMED_ACTIONS = [
+  {
+    id: 'reschedule',
+    title: 'Reagendar',
+    action_type: 'reschedule',
+    route: '/reagendar',
+    token_param: 'tk',
+    source: 'bellory_operational_rule'
+  },
+  {
+    id: 'cancel',
+    title: 'Cancelar',
+    action_type: 'cancel',
+    route: '/acao_agendamento',
+    command: 'cancelar',
+    token_param: 'tk',
+    source: 'bellory_operational_rule'
+  }
+];
+
 const SUBSCRIPTION_TRANSITIONS = {
   trial: ['ativa', 'ativo', 'expirada', 'inadimplente', 'cancelada', 'suspensa'],
   ativo: ['inadimplente', 'suspensa', 'cancelada', 'pendente_pagamento', 'ativa'],
@@ -241,6 +261,31 @@ function validateTemplateVariables(content, variables, channel = null, metadata 
   return declaredVariables;
 }
 
+function assertAppointmentConfirmedOperationalTemplate({ name, content, metadata = {} }) {
+  if (name !== 'appointment_confirmed') return;
+
+  const missingLabels = [
+    /reagendar/i.test(content || '') ? '' : 'Reagendar',
+    /cancelar/i.test(content || '') ? '' : 'Cancelar'
+  ].filter(Boolean);
+  const actions = Array.isArray(metadata.actions) ? metadata.actions : [];
+  const missingActions = ['reschedule', 'cancel'].filter((required) => (
+    !actions.some((action) => action?.id === required || action?.action_type === required)
+  ));
+
+  if (missingLabels.length || missingActions.length) {
+    throw new AppError(
+      'Template appointment_confirmed deve conter as acoes Reagendar e Cancelar.',
+      400,
+      'APPOINTMENT_CONFIRMED_TEMPLATE_ACTIONS_REQUIRED',
+      {
+        missing_labels: missingLabels,
+        missing_actions: missingActions
+      }
+    );
+  }
+}
+
 function normalizeCommunicationTemplate(row) {
   const metadata = row.metadata || {};
 
@@ -251,6 +296,8 @@ function normalizeCommunicationTemplate(row) {
     categoria_provider: metadata.categoria_provider || null,
     provider_parameter_format: metadata.provider_parameter_format || null,
     provider_variable_mapping: metadata.provider_variable_mapping || null,
+    actions: metadata.actions || [],
+    required_actions: metadata.required_actions || [],
     ultima_sincronizacao_provider: metadata.ultima_sincronizacao_provider || null,
     observacoes: metadata.observacoes || null,
     variaveis_detectadas: extractTemplateVariables(row.conteudo)
@@ -271,6 +318,9 @@ function buildCommunicationTemplatePayload(input, current = null) {
     ? input.variaveis
     : current?.variaveis;
   const currentMetadata = current?.metadata || {};
+  const templateName = Object.prototype.hasOwnProperty.call(input, 'nome')
+    ? input.nome
+    : current?.nome;
 
   const metadata = {
     ...currentMetadata
@@ -304,6 +354,23 @@ function buildCommunicationTemplatePayload(input, current = null) {
     metadata.provider_variable_mapping = Object.fromEntries(
       normalizedVariables.map((variable, index) => [variable, index + 1])
     );
+  }
+
+  if (templateName === 'appointment_confirmed') {
+    metadata.actions = APPOINTMENT_CONFIRMED_ACTIONS;
+    metadata.required_actions = ['reschedule', 'cancel'];
+    metadata.operational_rule = {
+      ...(metadata.operational_rule || {}),
+      event: 'appointment.confirmed',
+      status_after_professional_confirmation: 'pendente_cliente',
+      token_source: 'agendamentos.token_confirmacao',
+      updated_by: '1.2.1.1_appointment_confirmed_actions'
+    };
+    assertAppointmentConfirmedOperationalTemplate({
+      name: templateName,
+      content: content || '',
+      metadata
+    });
   }
 
   const payload = {

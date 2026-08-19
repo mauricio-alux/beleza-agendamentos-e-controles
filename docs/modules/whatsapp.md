@@ -153,9 +153,10 @@ permite criar templates globais (`tenant_id` vazio) ou especificos por tenant,
 editar conteudo, variaveis, status ativo, aprovacao no provider e metadados da
 Meta. Administradores de tenant nao possuem acesso a essa manutencao.
 
-Os campos de provider que nao existem como colunas fisicas em
-`templates_mensagem` ficam em `metadata`: `provider_template_name`, `language`,
-`categoria_provider`, `ultima_sincronizacao_provider` e `observacoes`.
+Os campos de provider e de acoes operacionais que nao existem como colunas
+fisicas em `templates_mensagem` ficam em `metadata`: `provider_template_name`,
+`language`, `categoria_provider`, `ultima_sincronizacao_provider`,
+`observacoes`, `actions`, `required_actions` e `provider_buttons`.
 
 ## Catalogo operacional interno
 
@@ -163,6 +164,9 @@ A migration `20260709110000_operational_whatsapp_templates.sql` mantem o
 catalogo operacional essencial de WhatsApp em `templates_mensagem`. Os
 registros sao globais (`tenant_id = null`), `canal = whatsapp`,
 `tipo = operacional`, `ativo = true` e `aprovado_provider = false`.
+A migration `20260811100000_appointment_confirmed_actions.sql` formaliza
+`appointment_confirmed` como a comunicacao operacional pos-confirmacao do
+profissional e exige as acoes Bellory `reschedule` e `cancel`.
 
 Esse catalogo existe para manutencao, visualizacao, simulacao, dry-run e
 geracao interna de mensagens antes da aprovacao pela Meta. Envio real com
@@ -242,19 +246,45 @@ Catalogo operacional sugerido para aprovacao na Meta:
 | `appointment_no_show_salon` | Utility | Salao | cliente, servico, profissional, data, horario |
 | `appointment_created` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
 | `appointment_rescheduled` | Utility | Cliente | cliente, salao, servico, profissional, nova data, novo horario |
-| `appointment_confirmed` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
+| `appointment_confirmed` | Utility | Cliente | cliente, servico, profissional, data, horario |
 | `appointment_cancelled` | Utility | Cliente | cliente, salao, servico, data, horario |
 | `appointment_cancelled_by_attendant` | Utility | Cliente | cliente, motivo, servico, profissional, data, horario |
 | `appointment_completed` | Utility | Cliente | cliente, salao, servico, profissional, data |
 | `appointment_reminder_24h` | Utility | Cliente | cliente, salao, servico, profissional, data, horario |
 | `appointment_reminder_2h` | Utility | Cliente | cliente, salao, servico, profissional, horario |
 
-Textos com acoes visiveis como `[Confirmar]`, `[Cancelar]`,
-`[Reagendar]` e `[Agendar Novamente]` representam marcadores conceituais.
-URLs, tokens, `cmd`, `tk` e identificadores tecnicos nao devem aparecer no
-corpo aprovado nem no snapshot textual. As acoes reais devem seguir no
-`payload.actions`, preparando a evolucao para botoes interativos da WhatsApp
-Business Platform.
+Textos com acoes visiveis como `[Confirmar]` e `[Agendar Novamente]`
+representam marcadores conceituais no corpo da mensagem quando o provider ainda
+nao possui botoes configurados. URLs, tokens, `cmd`, `tk` e identificadores
+tecnicos nao devem aparecer no corpo aprovado nem no snapshot textual. As acoes
+internas devem seguir em `payload.actions`.
+
+Para `appointment_confirmed`, o template oficial na Meta deve usar dois botoes
+URL configurados no provider:
+
+- botao 0, `Reagendar`: URL-base na Meta como `/reagendar?tk={{1}}`;
+- botao 1, `Cancelar`: URL-base na Meta como
+  `/acao_agendamento?cmd=cancelar&tk={{1}}`.
+
+O backend nao envia a URL-base desses botoes como parametro do template. Ele
+fornece somente o valor dinamico de `{{1}}` de cada botao, usando
+`agendamentos.token_confirmacao`. O mesmo token operacional e reutilizado nos
+dois botoes; a acao e determinada pela URL configurada em cada botao no
+provider.
+
+Os parametros de BODY e BUTTON sao componentes independentes. No
+`appointment_confirmed`, o BODY usa os cinco parametros posicionais
+`nome_cliente`, `nome_servico`, `nome_profissional`, `data_agendamento` e
+`hora_agendamento`. Os botoes URL recebem seus proprios parametros:
+`BUTTON 0 {{1}} = token_confirmacao` e
+`BUTTON 1 {{1}} = token_confirmacao`.
+
+No registro de `mensagens_whatsapp`, essa preparacao fica auditavel em
+`payload.provider_params`, `payload.provider_buttons` e
+`payload.provider_components`. Se `appointment_confirmed` nao possuir
+`metadata.actions` compativeis com `reschedule` e `cancel`, ou se o agendamento
+nao possuir `token_confirmacao`, a comunicacao e bloqueada com erro operacional
+em vez de enviar botao sem parametro.
 
 ## Templates MasterAdmin / Plataforma
 
@@ -332,7 +362,7 @@ Catalogo inicial de campanhas:
 | Template | Uso |
 | --- | --- |
 | `campaign_promotion` | Promocao de servicos. |
-| `campaign_birthday` | Aniversario do cliente. |
+| `campaign_birthday` | Aniversariantes do mes; beneficio comunicado ao iniciar a campanha mensal. |
 | `campaign_inactive_client` | Reativacao de clientes inativos. |
 | `campaign_return_reminder` | Sugestao de retorno. |
 | `campaign_new_service` | Novo servico disponivel. |
@@ -485,13 +515,13 @@ Eventos com template preparado:
 - `appointment.confirmed`: aceite do atendimento pelo profissional/operacao,
   enviado ao cliente como confirmacao informativa. Ao emitir este evento, o
   agendamento permanece em `pendente_cliente` (`Aguardando Cliente`) ate ser
-  concluido, cancelado, reagendado ou marcado como no-show. A mensagem exibe
-  apenas as opcoes amigaveis
-  `[Reagendar]` e `[Cancelar]`; URLs tecnicas, `cmd`, `tk` e token operacional
-  nao devem aparecer em `mensagens_whatsapp.conteudo`. As acoes ficam
-  registradas internamente em `payload.actions` com `action_type`,
-  `appointment_token`, `payload` e `expires_at`, preparando a futura migracao
-  para botoes interativos da WhatsApp Business API.
+  concluido, cancelado, reagendado ou marcado como no-show. O corpo da mensagem
+  nao deve simular botoes com `[Reagendar]` e `[Cancelar]`; ele apenas orienta
+  que o cliente use as opcoes abaixo. URLs tecnicas, `cmd`, `tk` e token
+  operacional nao devem aparecer em `mensagens_whatsapp.conteudo`. O template
+  oficial em `templates_mensagem.metadata.actions` deve declarar `reschedule` e
+  `cancel`. As acoes ficam registradas internamente em `payload.actions`, e os
+  botoes URL enviados ao provider ficam em `payload.provider_components`.
   O conteudo renderizado deve seguir este padrao:
 
 ```text
@@ -511,9 +541,6 @@ Estamos aguardando você.
 
 Caso precise alterar seu atendimento, utilize uma das opções abaixo:
 
-[Reagendar]
-
-[Cancelar]
 ```
 
 - `appointment.pending_client`: solicitacao de confirmacao enviada ao cliente
@@ -590,6 +617,30 @@ chamar a Cloud API. Para envio real, configurar `WHATSAPP_CLOUD_API_ENABLED`,
 `WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_ACCESS_TOKEN` e
 `WHATSAPP_DRY_RUN=false`.
 
+## Automacao Feliz aniversario
+
+A automacao de relacionamento `Feliz aniversario` usa o template
+`birthday_greeting`, separado do template de campanha `campaign_birthday`.
+
+Ela nao chama a Meta diretamente. O job `birthday_greetings.process` apenas
+enfileira registros em `mensagens_whatsapp` com
+`tipo_evento = birthday.greeting`; o envio real continua pelo worker
+`whatsapp.process`.
+
+O template deve usar placeholders posicionais e preservar no payload:
+
+- `template_source = templates_mensagem`;
+- `provider_template_name`;
+- `language`;
+- `provider_parameter_format = positional`;
+- `provider_variable_mapping`;
+- `provider_params`;
+- `automation_type = birthday_greeting`.
+
+Em dry-run, templates ainda nao aprovados podem gerar fila. Em envio real,
+`WHATSAPP_DRY_RUN=false`, o enfileiramento e bloqueado se o template nao
+estiver aprovado no provider ou nao possuir nome/idioma configurados.
+
 ## Auditoria e compatibilidade de migration
 
 Todo evento operacional suportado deve gerar tentativa de auditoria em
@@ -615,6 +666,15 @@ amigavel, remove links visiveis de `payload.params`/`payload.links` e preserva
 o token operacional apenas em `payload.actions` e `payload.operational_context`.
 
 ---
+
+## Historico legado
+
+O bloco abaixo foi preservado apenas como historico de especificacao antiga.
+A regra vigente do modulo esta nas secoes anteriores deste arquivo, nos docs
+mestres e nas ADRs 014-018. Em caso de divergencia, prevalecem as secoes
+recentes: provider `whatsapp_mysaas`, dry-run em desenvolvimento,
+`templates_mensagem`, fila `mensagens_whatsapp` e `appointment_confirmed` com
+botoes Reagendar/Cancelar parametrizados por `token_confirmacao`.
 
 O whatsapp.md é um dos módulos mais críticos e diferenciadores do Bellory, porque o WhatsApp NÃO é apenas um canal de comunicação no projeto.
 Ele é:
