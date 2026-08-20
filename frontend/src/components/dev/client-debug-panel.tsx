@@ -203,7 +203,7 @@ export function ClientDebugPanel({ slug, tenant, client, token = "" }: Props) {
               <DebugValue label="ID do cliente" value={client?.id} mono />
               <DebugValue label="Token atual" value={snapshot.token} mono />
               <DebugValue
-                label="Tenant atual"
+                label="Estabelecimento atual"
                 value={tenant ? `${tenant.nome_fantasia} (${tenant.id})` : ""}
                 mono
               />

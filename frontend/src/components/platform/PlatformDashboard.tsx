@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Building2, CircleDollarSign, CreditCard, Gauge, LogOut, Megaphone, MessageSquareText, RefreshCcw, ShieldCheck, TrendingUp } from "lucide-react";
+import { Activity, Building2, CircleDollarSign, CreditCard, Gauge, LogOut, Megaphone, MessageSquareText, RefreshCcw, ShieldCheck, Tags, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,7 +40,7 @@ export function PlatformDashboard() {
     try {
       setSummary(await platformService.getSummary(session));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar a plataforma.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a plataforma.");
     } finally {
       setIsRefreshing(false);
     }
@@ -99,7 +99,7 @@ export function PlatformDashboard() {
           <MetricCard label="MRR" value={summary?.kpis.display.mrr || "R$ 0,00"} icon={CircleDollarSign} />
           <MetricCard label="Churn" value={summary?.kpis.display.churn || "0%"} icon={Activity} />
           <MetricCard label="Crescimento" value={summary?.kpis.display.growth || "0%"} icon={TrendingUp} />
-          <MetricCard label="Tenants ativos" value={summary?.kpis.display.tenantsActive || "0"} icon={Building2} />
+          <MetricCard label="Estabelecimentos ativos" value={summary?.kpis.display.tenantsActive || "0"} icon={Building2} />
           <MetricCard label="Trial" value={summary?.kpis.display.tenantsTrial || "0"} icon={Gauge} />
         </section>
 
@@ -110,19 +110,19 @@ export function PlatformDashboard() {
                 <MessageSquareText className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="text-lg font-bold text-foreground">Comunicacao</h2>
+                <h2 className="text-lg font-bold text-foreground">Comunicação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Templates globais e por tenant para WhatsApp operacional.
+                  Templates globais e por estabelecimento para WhatsApp operacional.
                 </p>
                 <p className="mt-2 text-xs font-semibold text-muted-foreground">
-                  Proximos: Mensagens WhatsApp, Templates Aprovados, Fila de Envio, Providers.
+                  Próximos: Mensagens WhatsApp, Templates Aprovados, Fila de Envio, Providers.
                 </p>
               </div>
             </div>
             <Button asChild type="button">
               <Link href="/admin/comunicacao/templates">
                 <MessageSquareText className="h-4 w-4" />
-                Templates de Comunicacao
+                Templates de Comunicação
               </Link>
             </Button>
             <div className="flex items-start gap-3">
@@ -132,7 +132,7 @@ export function PlatformDashboard() {
               <div>
                 <h2 className="text-lg font-bold text-foreground">Assinaturas</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Manutencao de planos, trials e status dos tenants.
+                  Manutenção de planos, trials e status dos estabelecimentos.
                 </p>
               </div>
             </div>
@@ -142,6 +142,23 @@ export function PlatformDashboard() {
                 Assinaturas
               </Link>
             </Button>
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-secondary text-primary">
+                <Tags className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Taxonomia SaaS</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Tipos de negocio, catalogo oficial, cargos, especialidades e compatibilidades globais.
+                </p>
+              </div>
+            </div>
+            <Button asChild type="button" variant="outline">
+              <Link href="/admin/taxonomia">
+                <Tags className="h-4 w-4" />
+                Taxonomia
+              </Link>
+            </Button>
           </div>
         </section>
 
@@ -149,7 +166,7 @@ export function PlatformDashboard() {
           <div className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft">
             <div className="mb-4 flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-bold text-foreground">Tenants recentes</h2>
+              <h2 className="text-lg font-bold text-foreground">Estabelecimentos recentes</h2>
             </div>
             <div className="grid gap-3">
               {(summary?.tenants || []).map((tenant) => (

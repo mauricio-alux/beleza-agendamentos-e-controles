@@ -1,4 +1,6 @@
-import { forwardRef } from "react";
+"use client";
+
+import { forwardRef, useEffect, useRef, useState, type ForwardedRef, type MutableRefObject, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, Info, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FeedbackTone } from "@/lib/messages";
@@ -6,8 +8,9 @@ import type { FeedbackTone } from "@/lib/messages";
 type FeedbackMessageProps = {
   tone?: FeedbackTone;
   title?: string;
-  message?: string;
+  message?: ReactNode;
   className?: string;
+  autoFocus?: boolean;
 };
 
 const toneStyles: Record<FeedbackTone, string> = {
@@ -38,17 +41,82 @@ const icons = {
   info: Info
 };
 
-export const FeedbackMessage = forwardRef<HTMLDivElement, FeedbackMessageProps>(function FeedbackMessage({ tone = "info", title, message, className }, ref) {
+function isFullyVisible(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  return rect.top >= 0
+    && rect.left >= 0
+    && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight)
+    && rect.right <= (window.innerWidth || document.documentElement.clientWidth);
+}
+
+function isEditingText() {
+  const activeElement = document.activeElement;
+  if (!activeElement) return false;
+
+  const tagName = activeElement.tagName.toLowerCase();
+  return tagName === "input"
+    || tagName === "textarea"
+    || activeElement.getAttribute("contenteditable") === "true";
+}
+
+function assignRefs<T>(value: T | null, refs: Array<ForwardedRef<T> | MutableRefObject<T | null>>) {
+  refs.forEach((item) => {
+    if (!item) return;
+    if (typeof item === "function") {
+      item(value);
+      return;
+    }
+    item.current = value;
+  });
+}
+
+export const FeedbackMessage = forwardRef<HTMLDivElement, FeedbackMessageProps>(function FeedbackMessage({
+  tone = "info",
+  title,
+  message,
+  className,
+  autoFocus = true
+}, ref) {
+  const localRef = useRef<HTMLDivElement | null>(null);
+  const previousMessageKeyRef = useRef("");
+  const [isHighlighted, setIsHighlighted] = useState(false);
+
+  useEffect(() => {
+    const element = localRef.current;
+    const messageKey = `${tone}|${title || ""}|${typeof message === "string" ? message : Boolean(message)}`;
+
+    if (!autoFocus || !element || !messageKey.trim() || previousMessageKeyRef.current === messageKey) return;
+    previousMessageKeyRef.current = messageKey;
+
+    if (isEditingText()) return;
+
+    if (!isFullyVisible(element)) {
+      element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }
+
+    window.setTimeout(() => {
+      element.focus({ preventScroll: true });
+    }, 180);
+
+    setIsHighlighted(true);
+    const timer = window.setTimeout(() => setIsHighlighted(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [autoFocus, message, title, tone]);
+
   if (!title && !message) return null;
 
   const Icon = icons[tone];
 
   return (
     <div
-      ref={ref}
+      ref={(node) => {
+        localRef.current = node;
+        assignRefs(node, [ref]);
+      }}
       className={cn(
-        "relative flex scroll-mt-28 gap-3 overflow-hidden rounded-2xl border px-4 py-3 pl-5 text-sm font-semibold leading-6 outline-none focus-visible:ring-2 focus-visible:ring-primary/45",
+        "relative flex scroll-mt-28 gap-3 overflow-hidden rounded-2xl border px-4 py-3 pl-5 text-sm font-semibold leading-6 outline-none transition-shadow duration-500 focus-visible:ring-2 focus-visible:ring-primary/45",
         toneStyles[tone],
+        isHighlighted && "ring-4 ring-primary/25",
         className
       )}
       tabIndex={-1}

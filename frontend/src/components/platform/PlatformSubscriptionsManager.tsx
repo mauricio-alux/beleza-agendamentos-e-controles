@@ -87,7 +87,7 @@ export function PlatformSubscriptionsManager() {
         if (next) setHistory(await platformService.listSubscriptionHistory(session, next.id));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar assinaturas.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar assinaturas.");
     } finally {
       setIsRefreshing(false);
     }
@@ -101,7 +101,7 @@ export function PlatformSubscriptionsManager() {
     setHistory(await platformService.listSubscriptionHistory(session, subscription.id));
   }
 
-  async function withObservation(action: (observacao: string) => Promise<void>, successMessage = "Alteracao realizada com sucesso.") {
+  async function withObservation(action: (observacao: string) => Promise<void>, successMessage = "Alteração realizada com sucesso.") {
     const observacao = window.prompt("Informe a observacao/motivo da alteracao:");
     if (!observacao || observacao.trim().length < 3) return;
     if (!window.confirm("Confirmar alteracao critica da assinatura?")) return;
@@ -114,7 +114,7 @@ export function PlatformSubscriptionsManager() {
       setSuccess(successMessage);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel realizar a alteracao.");
+      setError(err instanceof Error ? err.message : "Não foi possível realizar a alteração.");
     } finally {
       setIsSubmitting(false);
     }
@@ -179,9 +179,9 @@ export function PlatformSubscriptionsManager() {
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">
                 {APP_BRAND.appName} Plataforma
               </p>
-              <h1 className="mt-1 text-2xl font-bold text-foreground">Assinaturas dos tenants</h1>
+              <h1 className="mt-1 text-2xl font-bold text-foreground">Assinaturas dos estabelecimentos</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Manutencao MasterAdmin com historico obrigatorio para cada alteracao.
+                Manutenção MasterAdmin com histórico obrigatório para cada alteração.
               </p>
             </div>
             <div className="flex gap-2">
@@ -213,7 +213,7 @@ export function PlatformSubscriptionsManager() {
         <section className="grid gap-3 rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft md:grid-cols-3">
           <input
             className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
-            placeholder="Filtrar por tenant ou slug"
+            placeholder="Filtrar por estabelecimento ou slug"
             value={filters.tenant}
             onChange={(event) => setFilters((current) => ({ ...current, tenant: event.target.value }))}
           />
@@ -252,7 +252,7 @@ export function PlatformSubscriptionsManager() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-bold text-foreground">{subscription.tenant?.nome_fantasia || "Tenant"}</p>
+                    <p className="font-bold text-foreground">{subscription.tenant?.nome_fantasia || "Estabelecimento"}</p>
                     <p className="text-xs text-muted-foreground">{subscription.tenant?.slug}</p>
                   </div>
                   <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-primary">
@@ -327,7 +327,7 @@ export function PlatformSubscriptionsManager() {
                 </div>
 
                 <div>
-                  <h3 className="font-bold text-foreground">Historico</h3>
+                  <h3 className="font-bold text-foreground">Histórico</h3>
                   <div className="mt-3 grid max-h-80 gap-2 overflow-auto">
                     {history.map((item) => (
                       <div key={item.id} className="rounded-xl border border-border bg-background/70 p-3 text-sm">

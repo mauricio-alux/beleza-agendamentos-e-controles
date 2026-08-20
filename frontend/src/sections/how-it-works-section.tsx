@@ -30,7 +30,7 @@ export function HowItWorksSection() {
               <p className="mt-5 text-lg font-semibold text-foreground">{step}</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {index === 0 && "Você informa dados essenciais e escolhe o plano inicial."}
-                {index === 1 && `${APP_BRAND.appName} cria o tenant, usuário administrador e trial automaticamente.`}
+                {index === 1 && `${APP_BRAND.appName} cria o estabelecimento, usuário administrador e trial automaticamente.`}
                 {index === 2 && "Serviços, profissional, escala e link são preparados para começar."}
                 {index === 3 && "Use WhatsApp, Instagram, QR Code ou bio para divulgar."}
                 {index === 4 && "O cliente acessa, informa telefone e agenda sem fricção."}

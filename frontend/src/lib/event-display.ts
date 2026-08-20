@@ -16,67 +16,67 @@ const EVENT_DISPLAY_CATALOG: Record<string, EventDisplay> = {
   },
   "appointment.confirmed": {
     title: "Agendamento confirmado",
-    description: "O atendimento foi confirmado para execucao."
+    description: "O atendimento foi confirmado para execução."
   },
   "appointment.cancelled": {
     title: "Agendamento cancelado",
-    description: "O atendimento foi cancelado e registrado no historico."
+    description: "O atendimento foi cancelado e registrado no histórico."
   },
   "appointment.completed": {
-    title: "Atendimento concluido",
+    title: "Atendimento concluído",
     description: "O atendimento foi finalizado com sucesso."
   },
   "appointment.no_show": {
-    title: "Cliente nao compareceu",
-    description: "O nao comparecimento foi registrado na agenda."
+    title: "Cliente não compareceu",
+    description: "O não comparecimento foi registrado na agenda."
   },
   "appointment.pending_client": {
-    title: "Aguardando confirmacao do cliente",
-    description: "A confirmacao foi solicitada ao cliente."
+    title: "Aguardando confirmação do cliente",
+    description: "A confirmação foi solicitada ao cliente."
   },
   "appointment.pending_attendant": {
-    title: "Aguardando confirmacao do atendente",
-    description: "O atendimento precisa de confirmacao operacional."
+    title: "Aguardando confirmação do estabelecimento",
+    description: "O atendimento precisa de confirmação operacional."
   },
   "appointment.pending_attendant_operational": {
-    title: "Aguardando confirmacao do atendente",
-    description: "O atendimento precisa de confirmacao operacional."
+    title: "Aguardando confirmação do estabelecimento",
+    description: "O atendimento precisa de confirmação operacional."
   },
   "appointment.pending_attendant_reminder_30m": {
     title: "Lembrete enviado ao atendente (30 min)",
-    description: "Alerta operacional enviado apos 30 minutos."
+    description: "Alerta operacional registrado após 30 minutos."
   },
   "appointment.pending_attendant_reminder_60m": {
     title: "Lembrete enviado ao atendente (60 min)",
-    description: "Alerta operacional enviado apos 60 minutos."
+    description: "Alerta operacional registrado após 60 minutos."
   },
   "appointment.pending_attendant_reminder_2h": {
-    title: "Lembrete prioritario enviado (2 h)",
-    description: "Ultimo alerta operacional antes da acao automatica."
+    title: "Lembrete prioritário registrado (2 h)",
+    description: "Último alerta operacional antes da ação automática."
   },
   "appointment.reminder_24h": {
-    title: "Lembrete enviado ao cliente (24 h)",
-    description: "Lembrete do atendimento enviado com 24 horas de antecedencia."
+    title: "Lembrete registrado ao cliente (24 h)",
+    description: "Lembrete do atendimento registrado com 24 horas de antecedência."
   },
   "appointment.reminder_2h": {
-    title: "Lembrete enviado ao cliente (2 h)",
-    description: "Lembrete do atendimento enviado com 2 horas de antecedencia."
+    title: "Lembrete registrado ao cliente (2 h)",
+    description: "Lembrete do atendimento registrado com 2 horas de antecedência."
   },
   "appointment.rescheduled": {
     title: "Agendamento remarcado",
-    description: "O atendimento recebeu um novo horario."
+    description: "O atendimento recebeu um novo horário."
   },
   "appointment.updated": {
     title: "Agendamento atualizado",
-    description: "O atendimento recebeu uma atualizacao operacional."
+    description: "O atendimento recebeu uma atualização operacional."
   },
   tenant_ready: {
-    title: "Salao criado",
-    description: "Estrutura inicial preparada para operacao."
+    title: "Salão criado",
+    description: "Estrutura inicial preparada para operação."
   },
   subscription: {
     title: "Plano ativo",
-    description: "Conta pronta para evoluir a operacao."
+    description: "Conta pronta para evoluir a operação."
   }
 };
 
@@ -90,12 +90,12 @@ function containsTechnicalIdentifier(value?: string | null) {
 
 function getFallbackDisplay(activity: EventDisplayInput): EventDisplay {
   const title = activity.title || "Atividade registrada";
-  const description = activity.description || "Atualizacao operacional registrada no painel.";
+  const description = activity.description || "Atualização operacional registrada no painel.";
 
   return {
     title: looksLikeTechnicalIdentifier(title) ? "Atividade operacional registrada" : title,
     description: containsTechnicalIdentifier(description)
-      ? "Atualizacao operacional registrada no painel."
+      ? "Atualização operacional registrada no painel."
       : description
   };
 }
