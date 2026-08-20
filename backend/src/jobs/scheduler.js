@@ -15,6 +15,11 @@ const DEFAULT_CAMPAIGN_INTERVAL_MS = Math.max(
   Number(process.env.CAMPAIGN_SCHEDULER_INTERVAL_MS || 5 * 60_000)
 );
 const CAMPAIGN_SCHEDULER_ENABLED = process.env.CAMPAIGN_SCHEDULER_ENABLED !== 'false';
+const DEFAULT_BIRTHDAY_GREETING_INTERVAL_MS = Math.max(
+  60_000,
+  Number(process.env.BIRTHDAY_GREETING_SCHEDULER_INTERVAL_MS || 5 * 60_000)
+);
+const BIRTHDAY_GREETING_SCHEDULER_ENABLED = process.env.BIRTHDAY_GREETING_SCHEDULER_ENABLED !== 'false';
 
 let remindersTimer = null;
 let remindersRunning = false;
@@ -22,6 +27,8 @@ let whatsappTimer = null;
 let whatsappRunning = false;
 let campaignsTimer = null;
 let campaignsRunning = false;
+let birthdayGreetingsTimer = null;
+let birthdayGreetingsRunning = false;
 
 async function runReminders(reason = 'interval') {
   if (remindersRunning) {
@@ -104,6 +111,33 @@ async function runCampaigns(reason = 'interval') {
   }
 }
 
+async function runBirthdayGreetings(reason = 'interval') {
+  if (birthdayGreetingsRunning) {
+    console.log('[birthday-greetings-scheduler-debug] scheduler execution skipped because previous run is still active', {
+      reason
+    });
+    return null;
+  }
+
+  birthdayGreetingsRunning = true;
+  try {
+    console.log('[birthday-greetings-scheduler-debug] scheduler run requested', {
+      reason,
+      now: new Date().toISOString()
+    });
+    return await jobRegistry.runJob('birthday_greetings.process', { reason });
+  } catch (error) {
+    console.error('[birthday-greetings-scheduler-debug] scheduler execution failed', {
+      reason,
+      message: error.message,
+      code: error.code || null
+    });
+    return null;
+  } finally {
+    birthdayGreetingsRunning = false;
+  }
+}
+
 function startSchedulers() {
   const status = {};
 
@@ -179,6 +213,30 @@ function startSchedulers() {
     status.campaigns_interval_ms = DEFAULT_CAMPAIGN_INTERVAL_MS;
   }
 
+  if (!BIRTHDAY_GREETING_SCHEDULER_ENABLED) {
+    console.log('[birthday-greetings-scheduler-debug] scheduler disabled by BIRTHDAY_GREETING_SCHEDULER_ENABLED=false');
+    status.birthday_greetings = 'disabled';
+  } else if (birthdayGreetingsTimer) {
+    console.log('[birthday-greetings-scheduler-debug] scheduler already started');
+    status.birthday_greetings = 'already_started';
+  } else {
+    console.log('[birthday-greetings-scheduler-debug] scheduler started', {
+      interval_ms: DEFAULT_BIRTHDAY_GREETING_INTERVAL_MS,
+      jobs: jobRegistry.listJobs()
+    });
+
+    setTimeout(() => {
+      runBirthdayGreetings('startup');
+    }, 8_000).unref?.();
+
+    birthdayGreetingsTimer = setInterval(() => {
+      runBirthdayGreetings('interval');
+    }, DEFAULT_BIRTHDAY_GREETING_INTERVAL_MS);
+    birthdayGreetingsTimer.unref?.();
+    status.birthday_greetings = 'started';
+    status.birthday_greetings_interval_ms = DEFAULT_BIRTHDAY_GREETING_INTERVAL_MS;
+  }
+
   return status;
 }
 
@@ -198,10 +256,16 @@ function stopSchedulers() {
     campaignsTimer = null;
   }
 
+  if (birthdayGreetingsTimer) {
+    clearInterval(birthdayGreetingsTimer);
+    birthdayGreetingsTimer = null;
+  }
+
   return {
     reminders: 'stopped',
     whatsapp: 'stopped',
-    campaigns: 'stopped'
+    campaigns: 'stopped',
+    birthday_greetings: 'stopped'
   };
 }
 
@@ -210,5 +274,6 @@ module.exports = {
   stopSchedulers,
   runReminders,
   runWhatsAppQueue,
-  runCampaigns
+  runCampaigns,
+  runBirthdayGreetings
 };
