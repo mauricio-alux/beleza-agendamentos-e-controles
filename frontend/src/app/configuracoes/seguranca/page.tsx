@@ -3,7 +3,7 @@ import { SettingsDetailPage } from "@/components/settings/SettingsDetailPage";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Seguranca"
+  title: "Segurança"
 };
 
 export default function SegurancaSettingsPage() {

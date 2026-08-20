@@ -51,7 +51,7 @@ export function useSettings() {
       setSummary(nextSummary);
     } catch (err) {
       if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : "Nao foi possivel carregar as configuracoes.");
+        setError(err instanceof Error ? err.message : "Não foi possível carregar as configurações.");
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -97,7 +97,7 @@ export function useSettings() {
       setSuccessMessage("Perfil atualizado.");
       return profile;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar o perfil.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o perfil.");
       return null;
     } finally {
       setIsSaving(false);
@@ -128,7 +128,7 @@ export function useSettings() {
       setSuccessMessage("Dados do salao atualizados.");
       return tenant;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar o salao.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o salão.");
       return null;
     } finally {
       setIsSaving(false);
@@ -148,7 +148,7 @@ export function useSettings() {
       setSuccessMessage("Configuracoes operacionais atualizadas.");
       return operation;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar a operacao.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar a operação.");
       return null;
     } finally {
       setIsSaving(false);

@@ -34,7 +34,7 @@ export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" 
       const response = await agendaService.getProfessionalSchedule(session, professionalId);
       setData(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar a escala.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a escala.");
     } finally {
       setIsLoading(false);
     }
@@ -57,7 +57,7 @@ export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" 
       setData(response);
       setSuccess("Escala do profissional atualizada.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar a escala.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar a escala.");
     } finally {
       setIsSaving(false);
     }
@@ -71,7 +71,7 @@ export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" 
     return (
       <SettingsState
         type="error"
-        title="Nao foi possivel carregar a agenda do profissional"
+        title="Não foi possível carregar a agenda do profissional"
         description={error}
         onRetry={load}
       />
@@ -96,7 +96,7 @@ export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" 
         <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-accent">Escala profissional</p>
         <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">{professionalName}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Horarios individuais prevalecem sobre o horario padrao do salao. Se nao houver escala propria, a agenda usa o fallback do tenant.
+          Horários individuais prevalecem sobre o horário padrão do salão. Se não houver escala própria, a agenda usa o fallback do estabelecimento.
         </p>
       </div>
 
@@ -104,7 +104,7 @@ export function ProfessionalSchedulePage({ professionalId, backHref = "/equipe" 
         <FeedbackMessage tone={error ? "error" : "success"} message={error || success} />
       ) : null}
 
-      <DashboardCard title="Horarios semanais" description="Configure dias trabalhados, manha, tarde e intervalos.">
+      <DashboardCard title="Horários semanais" description="Configure dias trabalhados, manhã, tarde e intervalos.">
         <WeeklyScheduleEditor schedules={data.schedules} isSaving={isSaving} onSave={save} />
       </DashboardCard>
     </section>

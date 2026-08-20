@@ -18,7 +18,7 @@ export function SettingsHome() {
     return (
       <SettingsState
         type="error"
-        title="Nao foi possivel carregar as configuracoes"
+        title="Não foi possível carregar as configurações"
         description={error || "Tente novamente em alguns instantes."}
         onRetry={refresh}
       />

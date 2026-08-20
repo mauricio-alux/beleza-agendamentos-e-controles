@@ -51,3 +51,27 @@ pessoa interna tambem possua registro em `clientes`, a elegibilidade de
 campanhas deve priorizar a protecao e excluir esse destinatario no tenant onde
 o papel interno esta ativo. A regra e tenant-aware: a mesma pessoa pode ser
 interna em um tenant e cliente final em outro.
+
+## Tipos de negocio
+
+Manutencao global de `tipos_negocio`, `servicos_catalogo`,
+`tipo_negocio_servicos_catalogo` e `servico_catalogo_especialidades` pertence
+ao contexto de plataforma e exige MasterAdmin com permissao
+`platform.business_types.manage`.
+
+Responsavel autorizado do tenant e definido por RBAC/permissao efetiva, nao
+pelo texto exibido do perfil. Proprietario, Administrador do tenant e Autonomo
+owner podem manter os proprios vinculos em `tenant_tipos_negocio` quando o
+contexto conceder `tenant.manage`. Autonomo sem responsabilidade administrativa
+nao pode alterar tipos, servicos ou configuracoes estruturais.
+
+Essa alteracao troca recomendacoes e permissoes de catalogo e dispara a
+sincronizacao oficial de disponibilidade em `servico_tenants`. A sincronizacao
+cria servicos ausentes como `ativo = false`, mas nao ativa ofertas nem remove
+profissionais, agenda ou historico automaticamente.
+
+Na tela `/configuracoes/salao`, o tipo principal e mantido como campo separado
+e nao integra a lista de complementares. Complementares podem ficar vazios. A
+remocao de complementares e recusada quando deixaria servicos ativos sem tipo
+de negocio permitido, retornando mensagem funcional com a lista de servicos
+afetados.

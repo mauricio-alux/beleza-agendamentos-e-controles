@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
-import { ServicesManager } from "@/components/services/ServicesManager";
+import { ServicesMerManager } from "@/components/services/ServicesMerManager";
 import { OperationalSettingsForm } from "@/components/settings/OperationalSettingsForm";
 import { SettingsShell } from "@/components/settings/SettingsShell";
 import { SettingsState } from "@/components/settings/SettingsState";
@@ -21,31 +21,31 @@ const DETAILS = {
     description: "Dados pessoais e contato do usuario conectado."
   },
   tenant: {
-    title: "Salao",
-    description: "Dados comerciais e identidade operacional do tenant."
+    title: "Salão",
+    description: "Dados comerciais e identidade operacional do estabelecimento."
   },
   operation: {
-    title: "Operacao",
+    title: "Operação",
     description: "Parametros que orientam agendamento, cancelamento e inteligencia operacional."
   },
   services: {
-    title: "Servicos do salao",
+    title: "Serviços do salão",
     description: "Cadastre duracao, preco e categoria dos servicos oferecidos."
   },
   specialties: {
-    title: "Especialidades",
-    description: "Uso operacional das especialidades no salao."
+    title: "Especialidades do salao",
+    description: "Visao consolidada das especialidades, seus status e vinculos com servicos."
   },
   role_specialties: {
-    title: "Cargos x Especialidades",
-    description: "Especialidades disponiveis por cargo."
+    title: "Cargos e especialidades",
+    description: "Estrutura profissional de cargos e competencias."
   },
   service_specialties: {
-    title: "Servicos x Especialidades",
-    description: "Vinculos entre servicos e especialidades."
+    title: "Serviços",
+    description: "Configuracoes operacionais de servico e especialidade."
   },
   team: {
-    title: "Horarios da equipe",
+    title: "Horários da equipe",
     description: "Defina os dias e horarios de atendimento de cada profissional."
   },
   subscription: {
@@ -79,7 +79,7 @@ export function SettingsDetailPage({ section }: SettingsDetailPageProps) {
     return (
       <SettingsState
         type="error"
-        title="Nao foi possivel carregar esta area"
+        title="Não foi possível carregar esta área"
         description={error}
         onRetry={refresh}
       />
@@ -91,7 +91,7 @@ export function SettingsDetailPage({ section }: SettingsDetailPageProps) {
       <SettingsState
         type="empty"
         title="Area indisponivel para este perfil"
-        description="A navegacao respeita o papel do usuario no tenant."
+        description="A navegacao respeita o papel do usuario no estabelecimento."
       />
     );
   }
@@ -111,7 +111,7 @@ export function SettingsDetailPage({ section }: SettingsDetailPageProps) {
         ) : null}
 
         {section === "services" ? (
-          <ServicesManager embedded />
+          <ServicesMerManager embedded />
         ) : (
         <DashboardCard title={detail.title} description={detail.description}>
           {section === "profile" ? (

@@ -1,8 +1,8 @@
 const SECTION_ACCESS = {
   MasterAdmin: ['overview', 'profile', 'security', 'platform'],
-  Administrador: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'team', 'subscription', 'security'],
-  Gerente: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'team', 'security'],
-  Autonomo: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'service_specialties', 'subscription', 'security'],
+  Administrador: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'team', 'subscription', 'security'],
+  Gerente: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'team', 'security'],
+  Autonomo: ['overview', 'profile', 'tenant', 'operation', 'services', 'specialties', 'role_specialties', 'subscription', 'security'],
   Profissional: ['overview', 'profile', 'operation', 'security'],
   Recepcionista: ['overview', 'profile', 'operation', 'security'],
   Financeiro: ['overview', 'profile', 'subscription', 'security'],

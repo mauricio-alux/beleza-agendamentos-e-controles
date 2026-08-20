@@ -117,7 +117,7 @@ async function request<T>(path: string, session: AuthSession, init: RequestInit 
 
   if (!response.ok) {
     throw new SettingsApiError(
-      payload.error?.message || "Nao foi possivel carregar as configuracoes.",
+      payload.error?.message || "Não foi possível carregar as configurações.",
       response.status,
       payload.error?.code
     );

@@ -3,7 +3,7 @@ import { SettingsHome } from "@/components/settings/SettingsHome";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Configuracoes"
+  title: "Configurações"
 };
 
 export default function ConfiguracoesPage() {
