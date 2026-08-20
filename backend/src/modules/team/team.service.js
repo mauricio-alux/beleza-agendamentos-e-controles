@@ -22,6 +22,10 @@ const {
   isValidServiceCategory,
   normalizeServiceCategory
 } = require('../../constants/service-categories');
+const {
+  describeAllowedCategoriesForRole,
+  isRoleCategoryCompatible
+} = require('../../constants/team-service-compatibility');
 
 const PROVIDER_ROLES = new Set(TEAM_SERVICE_PROVIDER_ROLES);
 const OWNER_ROLES = new Set(TEAM_OWNER_ROLES);
@@ -75,9 +79,34 @@ function sanitize(professional, ownerMembership = null) {
   const specialties = (professional.profissional_especialidades || [])
     .filter((item) => item && !item.deleted_at && item.especialidade)
     .map((item) => sanitizeSpecialty(item.especialidade));
-  const services = (professional.profissional_servicos || [])
-    .filter((item) => item && !item.deleted_at && item.ativo !== false && item.servico && item.servico.ativo !== false)
-    .map((item) => item.servico);
+  const servicesById = new Map();
+  (professional.profissional_servico_especialidades || [])
+    .filter((item) => item && !item.deleted_at && item.ativo !== false)
+    .forEach((item) => {
+      const config = item.servico_tenant_especialidade || {};
+      const offer = config.servico_tenant || {};
+      const catalog = offer.servico_catalogo || {};
+      if (!offer.id || offer.ativo === false || catalog.ativo === false) return;
+
+      if (!servicesById.has(offer.id)) {
+        servicesById.set(offer.id, {
+          id: offer.id,
+          servico_tenant_id: offer.id,
+          servico_catalogo_id: offer.servico_catalogo_id,
+          nome: catalog.nome,
+          categoria: normalizeServiceCategory(catalog.categoria_key),
+          categoria_key: normalizeServiceCategory(catalog.categoria_key),
+          natureza: catalog.natureza,
+          ativo: offer.ativo !== false,
+          especialidade_ids: []
+        });
+      }
+
+      if (config.especialidade_id) {
+        servicesById.get(offer.id).especialidade_ids.push(config.especialidade_id);
+      }
+    });
+  const services = Array.from(servicesById.values());
   const metadata = professional.metadata || {};
   const displayedTeamRole = resolveDisplayedTeamRole(professional, ownerMembership);
   const isOwnerProfessional = Boolean(
@@ -332,7 +361,19 @@ async function updateRole(id, input) {
 
 async function removeRole(id) {
   await ensureRole(id);
-  return sanitizeRole(await teamRepository.removeRole(id));
+  try {
+    return sanitizeRole(await teamRepository.removeRole(id));
+  } catch (error) {
+    if (error.code === 'ROLE_HAS_SPECIALTIES') {
+      throw new AppError(
+        `Este cargo possui ${error.details?.especialidades || 'uma ou mais'} especialidade(s) associada(s). Remova ou realoque as especialidades antes de excluir o cargo.`,
+        409,
+        'ROLE_HAS_SPECIALTIES',
+        error.details
+      );
+    }
+    throw error;
+  }
 }
 
 async function listSpecialties(cargoId, tenantId = null) {
@@ -352,6 +393,69 @@ async function listSpecialties(cargoId, tenantId = null) {
     ...specialty,
     tenant_ativo: statusBySpecialty.has(specialty.id) ? statusBySpecialty.get(specialty.id) : true
   }));
+}
+
+function normalizeSpecialtyNameForUniqueness(name) {
+  return String(name || '')
+    .trim()
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+async function ensureUniqueSpecialtyNameForRole(tenantId, cargoId, name, currentId = null) {
+  const normalizedName = normalizeSpecialtyNameForUniqueness(name);
+  if (!normalizedName) return;
+
+  const specialties = await teamRepository.listSpecialties({ cargoId, tenantId });
+  const duplicate = specialties.find((specialty) => (
+    specialty.id !== currentId
+    && normalizeSpecialtyNameForUniqueness(specialty.nome) === normalizedName
+  ));
+
+  if (duplicate) {
+    throw new AppError('Ja existe uma especialidade com esse nome para o cargo.', 409, 'SPECIALTY_ALREADY_EXISTS');
+  }
+}
+
+async function ensureUniqueSemanticSpecialty(tenantId, categoryKey, name, currentId = null) {
+  const normalizedName = normalizeSpecialtyNameForUniqueness(name);
+  if (!normalizedName || !categoryKey) return;
+
+  const specialties = await teamRepository.listSpecialties({ tenantId, categoryKey });
+  const duplicate = specialties.find((specialty) => (
+    specialty.id !== currentId
+    && normalizeSpecialtyNameForUniqueness(specialty.nome) === normalizedName
+    && (specialty.taxonomy_category_key || null) === categoryKey
+  ));
+
+  if (duplicate) {
+    throw new AppError(
+      'Ja existe uma especialidade equivalente nesta categoria. Reutilize a especialidade existente.',
+      409,
+      'SEMANTIC_SPECIALTY_ALREADY_EXISTS',
+      {
+        especialidade_id: duplicate.id,
+        nome: duplicate.nome,
+        cargo_id: duplicate.cargo_id,
+        taxonomy_category_key: duplicate.taxonomy_category_key
+      }
+    );
+  }
+}
+
+function ensureRoleCategoryCompatibility(role, categoryKey) {
+  if (!isRoleCategoryCompatible(role, categoryKey)) {
+    const allowedCategories = describeAllowedCategoriesForRole(role);
+    throw new AppError(
+      allowedCategories
+        ? `A categoria "${categoryKey}" nao e compativel com o cargo "${role.nome}". Categorias permitidas: ${allowedCategories}.`
+        : `Nenhuma categoria disponivel para o cargo "${role.nome}".`,
+      422,
+      'INCOMPATIBLE_ROLE_CATEGORY'
+    );
+  }
 }
 
 async function updateSpecialtyStatus(tenantId, specialtyId, input) {
@@ -375,6 +479,10 @@ async function createSpecialty(tenantId, input) {
   if ((role.categoria_profissional || getCategoryForCargoName(role.nome)) !== 'operacional') {
     throw new AppError('Especialidades customizadas devem ser vinculadas a cargos operacionais.', 422, 'INCOMPATIBLE_SPECIALTY');
   }
+
+  ensureRoleCategoryCompatibility(role, categoryKey);
+  await ensureUniqueSpecialtyNameForRole(tenantId, input.cargo_id, input.nome);
+  await ensureUniqueSemanticSpecialty(tenantId, categoryKey, input.nome);
 
   try {
     const specialty = await teamRepository.createSpecialty({
@@ -412,11 +520,9 @@ async function updateSpecialty(tenantId, id, input) {
     throw new AppError('Especialidades oficiais nao podem ser alteradas pelo salao.', 403, 'FORBIDDEN');
   }
 
-  if (input.cargo_id) {
-    const role = await ensureRole(input.cargo_id);
-    if ((role.categoria_profissional || getCategoryForCargoName(role.nome)) !== 'operacional') {
-      throw new AppError('Especialidades customizadas devem ser vinculadas a cargos operacionais.', 422, 'INCOMPATIBLE_SPECIALTY');
-    }
+  const targetRole = input.cargo_id ? await ensureRole(input.cargo_id) : await ensureRole(current[0].cargo_id);
+  if ((targetRole.categoria_profissional || getCategoryForCargoName(targetRole.nome)) !== 'operacional') {
+    throw new AppError('Especialidades customizadas devem ser vinculadas a cargos operacionais.', 422, 'INCOMPATIBLE_SPECIALTY');
   }
 
   const payload = {};
@@ -433,9 +539,24 @@ async function updateSpecialty(tenantId, id, input) {
     }
   }
 
+  ensureRoleCategoryCompatibility(targetRole, payload.taxonomy_category_key || current[0].taxonomy_category_key);
+
   if (Object.prototype.hasOwnProperty.call(payload, 'descricao')) {
     payload.descricao = payload.descricao || null;
   }
+
+  await ensureUniqueSpecialtyNameForRole(
+    tenantId,
+    payload.cargo_id || current[0].cargo_id,
+    payload.nome || current[0].nome,
+    id
+  );
+  await ensureUniqueSemanticSpecialty(
+    tenantId,
+    payload.taxonomy_category_key || current[0].taxonomy_category_key,
+    payload.nome || current[0].nome,
+    id
+  );
 
   try {
     return sanitizeSpecialty(await teamRepository.updateSpecialty(id, payload, tenantId));
@@ -456,6 +577,16 @@ async function removeSpecialty(tenantId, id) {
 
   if (!current[0].tenant_id || current[0].is_official !== false) {
     throw new AppError('Especialidades oficiais nao podem ser removidas pelo salao.', 403, 'FORBIDDEN');
+  }
+
+  const dependencies = await teamRepository.countSpecialtyDependencies(id, tenantId);
+  if (Object.keys(dependencies).length) {
+    throw new AppError(
+      'Esta especialidade possui dependencias operacionais. Remova os vinculos profissionais e configuracoes de servico antes de excluir.',
+      409,
+      'SPECIALTY_HAS_DEPENDENCIES',
+      dependencies
+    );
   }
 
   return sanitizeSpecialty(await teamRepository.removeSpecialty(id, tenantId));
@@ -577,6 +708,7 @@ async function create(tenantId, usuarioId, input) {
 
   await teamRepository.replaceSpecialties(tenantId, professional.id, specialtyIds);
   await teamRepository.replaceServices(tenantId, professional.id, serviceIds, {
+    specialtyIds,
     percentual_comissao: input.percentual_comissao || null
   });
 
@@ -660,9 +792,10 @@ async function update(tenantId, id, input) {
   const currentSpecialtyIds = (current.profissional_especialidades || [])
     .filter((item) => item && !item.deleted_at && item.ativo !== false && item.especialidade_id)
     .map((item) => item.especialidade_id);
-  const currentServiceIds = (current.profissional_servicos || [])
-    .filter((item) => item && !item.deleted_at && item.ativo !== false && item.servico_id)
-    .map((item) => item.servico_id);
+  const currentServiceIds = [...new Set((current.profissional_servico_especialidades || [])
+    .filter((item) => item && !item.deleted_at && item.ativo !== false)
+    .map((item) => item.servico_tenant_especialidade?.servico_tenant_id)
+    .filter(Boolean))];
   const replacesSpecialties = input.especialidade_ids !== undefined
     || input.cargo_id !== undefined
     || !canExecuteServices(membershipRole);

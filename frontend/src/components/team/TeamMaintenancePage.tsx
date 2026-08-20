@@ -24,7 +24,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "financeiro.read": "Visualizar financeiro",
   "campanhas.read": "Visualizar campanhas",
   "equipe.read": "Visualizar equipe",
-  "tenant.read": "Ver configuracoes"
+  "tenant.read": "Ver configurações"
 };
 
 type TeamMaintenancePageProps = {
@@ -93,7 +93,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
         especialidade_ids: response.especialidade_ids || []
       });
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel carregar o profissional."));
+      setError(getErrorMessage(err, "Não foi possível carregar o profissional."));
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +130,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
         setRoles(renderedRoles);
       })
       .catch((err) => {
-        if (isActive) setError(getErrorMessage(err, "Nao foi possivel carregar cargos."));
+        if (isActive) setError(getErrorMessage(err, "Não foi possível carregar cargos."));
       });
 
     return () => {
@@ -152,7 +152,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
         if (isActive) setSpecialties(data);
       })
       .catch((err) => {
-        if (isActive) setError(getErrorMessage(err, "Nao foi possivel carregar especialidades."));
+        if (isActive) setError(getErrorMessage(err, "Não foi possível carregar especialidades."));
       });
 
     return () => {
@@ -182,7 +182,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
         });
       })
       .catch((err) => {
-        if (isActive) setError(getErrorMessage(err, "Nao foi possivel carregar os servicos do salao."));
+        if (isActive) setError(getErrorMessage(err, "Não foi possível carregar os serviços do salão."));
       });
 
     return () => {
@@ -202,7 +202,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
       setProfessional(updated);
       setSuccess(updated.ativo ? "Profissional ativado." : "Profissional inativado.");
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel alterar o status."));
+      setError(getErrorMessage(err, "Não foi possível alterar o status."));
     } finally {
       setIsSaving(false);
     }
@@ -233,7 +233,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
     if (!session || !professional) return;
 
     if (!editForm.nome_publico.trim()) {
-      setError("Informe o nome publico do profissional.");
+      setError("Informe o nome público do profissional.");
       return;
     }
 
@@ -244,12 +244,12 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
 
     const editRoleExecutesServices = canTeamRoleExecuteServices(editForm.tipo_usuario);
     if (editForm.tipo_usuario === "Autonomo" && !editForm.servico_ids.length) {
-      setError("Autonomo deve estar vinculado a ao menos um servico.");
+      setError("Autônomo deve estar vinculado a ao menos um serviço.");
       return;
     }
 
     if (editForm.possui_acesso && !professional.possui_acesso && (!editForm.email.trim() || editForm.senha_temporaria.length < 8)) {
-      setError("Informe email e senha temporaria com ao menos 8 caracteres para criar acesso.");
+      setError("Informe email e senha temporária com ao menos 8 caracteres para criar acesso.");
       return;
     }
 
@@ -275,7 +275,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
       setIsEditing(false);
       setSuccess("Profissional atualizado.");
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel editar o profissional."));
+      setError(getErrorMessage(err, "Não foi possível editar o profissional."));
     } finally {
       setIsSaving(false);
     }
@@ -325,7 +325,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
       await teamService.remove(session, professional.id);
       window.location.href = "/equipe";
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel remover o profissional."));
+      setError(getErrorMessage(err, "Não foi possível remover o profissional."));
       setIsSaving(false);
     }
   }
@@ -343,7 +343,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
   if (!professional) {
     return (
       <section className="space-y-5">
-        <DashboardCard title="Profissional nao encontrado" description={error || "O registro nao esta disponivel."}>
+        <DashboardCard title="Profissional não encontrado" description={error || "O registro não está disponível."}>
           <Button asChild variant="outline">
             <Link href="/equipe">Voltar para equipe</Link>
           </Button>
@@ -371,10 +371,10 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
             Voltar
           </Link>
         </Button>
-        <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-accent">Manutencao da equipe</p>
+        <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-accent">Manutenção da equipe</p>
         <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">{professional.nome_publico}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Dados operacionais, acesso, permissoes e escala ficam centralizados neste cadastro.
+          Dados operacionais, acesso, permissões e escala ficam centralizados neste cadastro.
         </p>
       </div>
 
@@ -383,7 +383,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <DashboardCard title="Dados do profissional" description="Visao consolidada do cadastro operacional.">
+        <DashboardCard title="Dados do profissional" description="Visão consolidada do cadastro operacional.">
           {isEditing ? (
             <div className="grid gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -391,7 +391,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
                   <Input
                     value={editForm.nome_publico}
                     onChange={(event) => setEditForm({ ...editForm, nome_publico: event.target.value })}
-                    placeholder="Nome publico"
+                    placeholder="Nome público"
                   />
                 </Field>
                 <Field label="Comissao (%)">
@@ -401,7 +401,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
                     max={100}
                     value={editForm.percentual_comissao}
                     onChange={(event) => setEditForm({ ...editForm, percentual_comissao: event.target.value })}
-                    placeholder="Comissao %"
+                    placeholder="Comissão %"
                   />
                 </Field>
                 <Field label="Tipo profissional">
@@ -432,7 +432,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
                   </select>
                   {editRoleExecutesServices && !roles.length ? (
                     <span className="text-xs font-semibold leading-5 text-muted-foreground">
-                      Nenhum cargo ativo esta disponivel para este tipo profissional.
+                      Nenhum cargo ativo está disponível para este tipo profissional.
                     </span>
                   ) : null}
                 </Field>
@@ -468,7 +468,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
                     type="password"
                     value={editForm.senha_temporaria}
                     onChange={(event) => setEditForm({ ...editForm, senha_temporaria: event.target.value })}
-                    placeholder="Senha temporaria"
+                    placeholder="Senha temporária"
                   />
                 </div>
               ) : null}
@@ -500,9 +500,9 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
                     ))}
                   </SelectableGroup>
                   <SelectableGroup
-                    title="Servicos executados"
-                    description="Marque explicitamente todos os servicos executados pelo profissional. O cargo principal e as especialidades nao restringem esta lista."
-                    empty="Nenhum servico ativo cadastrado neste salao."
+                    title="Serviços executados"
+                    description="Marque explicitamente todos os serviços executados pelo profissional. O cargo principal e as especialidades não restringem esta lista."
+                    empty="Nenhum serviço ativo cadastrado neste salão."
                   >
                     {services.map((service) => (
                       <TogglePill
@@ -518,7 +518,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="accent" onClick={saveEdit} disabled={isSaving}>
-                  {isSaving ? "Salvando..." : "Salvar alteracoes"}
+                  {isSaving ? "Salvando..." : "Salvar alterações"}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>
                   Cancelar
@@ -531,15 +531,15 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
               <Info label="Cargo" value={professional.cargo || professional.cargo_ref?.nome || "-"} />
               <Info label="Status" value={professional.ativo ? "Ativo" : "Inativo"} />
               <Info label="Acesso ao sistema" value={professional.possui_acesso ? "Com acesso" : "Sem acesso"} />
-              <Info label="Agenda online" value={professional.aceita_agendamento_online ? "Sim" : "Nao"} />
-              <Info label="Comissao" value={`${professional.percentual_comissao || 0}%`} />
-              <Info label="Servicos vinculados" value={`${linkedServices.length}`} />
+              <Info label="Agenda online" value={professional.aceita_agendamento_online ? "Sim" : "Não"} />
+              <Info label="Comissão" value={`${professional.percentual_comissao || 0}%`} />
+              <Info label="Serviços vinculados" value={`${linkedServices.length}`} />
               <Info label="Especialidades" value={professional.especialidade || "Sem especialidades"} />
             </div>
           )}
         </DashboardCard>
 
-        <DashboardCard title="Acoes de manutencao" description="Acesse as rotinas ligadas a este profissional.">
+        <DashboardCard title="Ações de manutenção" description="Acesse as rotinas ligadas a este profissional.">
           <div className="grid gap-3">
             <Button type="button" variant="outline" onClick={startEditing} disabled={isSaving || isEditing}>
               Editar profissional
@@ -548,7 +548,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
               <Button asChild variant="outline">
                 <Link href={`/equipe/manutencao/${professional.id}/horarios`}>
                   <CalendarClock className="h-4 w-4" />
-                  Configurar horarios
+                  Configurar horários
                 </Link>
               </Button>
             ) : null}
@@ -556,7 +556,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
               <Button asChild variant="outline">
                 <Link href={`/equipe/manutencao/${professional.id}/permissoes`}>
                   <ShieldCheck className="h-4 w-4" />
-                  Configurar permissoes
+                  Configurar permissões
                 </Link>
               </Button>
             ) : null}
@@ -573,7 +573,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
       </div>
 
       {isAdministrativeProfessional ? (
-        <DashboardCard title="Permissoes sugeridas" description="Base inicial por cargo administrativo, preparada para expansao RBAC.">
+        <DashboardCard title="Permissões sugeridas" description="Base inicial por cargo administrativo, preparada para expansão RBAC.">
           {permissions.length ? (
             <div className="flex flex-wrap gap-2">
               {permissions.map((permission) => (
@@ -584,7 +584,7 @@ export function TeamMaintenancePage({ professionalId }: TeamMaintenancePageProps
             </div>
           ) : (
             <p className="text-sm leading-6 text-muted-foreground">
-              Nenhuma permissao sugerida para este cargo administrativo.
+              Nenhuma permissão sugerida para este cargo administrativo.
             </p>
           )}
         </DashboardCard>

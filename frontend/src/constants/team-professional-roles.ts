@@ -28,12 +28,12 @@ export const TEAM_OWNER_ROLES: Array<{ value: TeamUserRole; label: string; descr
   {
     value: "Administrador",
     label: "Administrador",
-    description: "Usuario principal do salao que tambem pode atuar no atendimento."
+    description: "Usuário principal do salão que também pode atuar no atendimento."
   },
   {
     value: "Autonomo",
     label: "Autonomo",
-    description: "Usuario principal que obrigatoriamente executa servicos na propria agenda."
+    description: "Usuário principal que obrigatoriamente executa serviços na própria agenda."
   }
 ];
 

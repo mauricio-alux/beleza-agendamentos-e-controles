@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Permissoes do profissional"
+  title: "Permissões do Profissional"
 };
 
 type PageProps = {
@@ -28,8 +28,8 @@ export default async function TeamMaintenancePermissionsRoute({ params }: PagePr
               Voltar
             </Link>
           </Button>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-accent">Permissoes</p>
-          <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Permissoes do profissional</h1>
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-accent">Permissões</p>
+          <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Permissões do profissional</h1>
         </div>
         <DashboardCard title="RBAC em preparacao" description="As permissoes sugeridas por cargo ja estao centralizadas na manutencao do profissional.">
           <p className="text-sm leading-6 text-muted-foreground">

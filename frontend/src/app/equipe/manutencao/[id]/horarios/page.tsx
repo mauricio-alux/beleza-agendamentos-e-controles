@@ -3,7 +3,7 @@ import { ProfessionalSchedulePage } from "@/components/settings/ProfessionalSche
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Horarios do profissional"
+  title: "Horários do Profissional"
 };
 
 type PageProps = {

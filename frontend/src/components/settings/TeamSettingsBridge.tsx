@@ -18,7 +18,7 @@ export function TeamSettingsBridge() {
     teamService
       .list(session)
       .then((team) => setProfessionals(team || []))
-      .catch((err) => setError(err instanceof Error ? err.message : "Nao foi possivel carregar profissionais."));
+      .catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar profissionais."));
   }, [session]);
 
   if (error) {

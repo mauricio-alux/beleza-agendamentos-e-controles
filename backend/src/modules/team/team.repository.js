@@ -13,12 +13,27 @@ async function listByTenant(tenantId) {
         deleted_at,
         especialidade:especialidades(*)
       ),
-      profissional_servicos(
+      profissional_servico_especialidades(
         id,
-        servico_id,
+        servico_tenant_especialidade_id,
         ativo,
         deleted_at,
-        servico:servicos(id,nome,duracao_minutos,preco,categoria,ativo)
+        servico_tenant_especialidade:servico_tenant_especialidades(
+          id,
+          servico_tenant_id,
+          especialidade_id,
+          preco,
+          duracao_minutos,
+          aceita_agendamento_online,
+          ativo,
+          especialidade:especialidades(id,nome,ativo,deleted_at,tenant_id,taxonomy_category_key),
+          servico_tenant:servico_tenants(
+            id,
+            tenant_id,
+            ativo,
+            servico_catalogo:servicos_catalogo(id,nome,categoria_key,natureza,ativo)
+          )
+        )
       )
     `)
     .eq('tenant_id', tenantId)
@@ -44,12 +59,27 @@ async function findById(tenantId, id) {
         deleted_at,
         especialidade:especialidades(*)
       ),
-      profissional_servicos(
+      profissional_servico_especialidades(
         id,
-        servico_id,
+        servico_tenant_especialidade_id,
         ativo,
         deleted_at,
-        servico:servicos(id,nome,duracao_minutos,preco,categoria,ativo)
+        servico_tenant_especialidade:servico_tenant_especialidades(
+          id,
+          servico_tenant_id,
+          especialidade_id,
+          preco,
+          duracao_minutos,
+          aceita_agendamento_online,
+          ativo,
+          especialidade:especialidades(id,nome,ativo,deleted_at,tenant_id,taxonomy_category_key),
+          servico_tenant:servico_tenants(
+            id,
+            tenant_id,
+            ativo,
+            servico_catalogo:servicos_catalogo(id,nome,categoria_key,natureza,ativo)
+          )
+        )
       )
     `)
     .eq('tenant_id', tenantId)
@@ -65,12 +95,27 @@ async function listServicesByIds(tenantId, ids) {
   if (!ids.length) return [];
 
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('*')
+    .from('servico_tenants')
+    .select(`
+      id,
+      tenant_id,
+      servico_catalogo_id,
+      ativo,
+      servico_catalogo:servicos_catalogo(id,nome,categoria_key,natureza,ativo),
+      configuracoes:servico_tenant_especialidades(
+        id,
+        servico_tenant_id,
+        especialidade_id,
+        preco,
+        duracao_minutos,
+        aceita_agendamento_online,
+        ativo,
+        especialidade:especialidades(id,nome,ativo,deleted_at,tenant_id,taxonomy_category_key)
+      )
+    `)
     .eq('tenant_id', tenantId)
     .in('id', ids)
-    .eq('ativo', true)
-    .is('deleted_at', null);
+    .eq('ativo', true);
 
   if (error) throw error;
   return data || [];
@@ -78,11 +123,10 @@ async function listServicesByIds(tenantId, ids) {
 
 async function listActiveServicesByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
-    .from('servicos')
-    .select('*')
+    .from('servico_tenants')
+    .select('id, tenant_id, ativo, servico_catalogo:servicos_catalogo(id,nome,categoria_key,natureza,ativo)')
     .eq('tenant_id', tenantId)
-    .eq('ativo', true)
-    .is('deleted_at', null);
+    .eq('ativo', true);
 
   if (error) throw error;
   return data || [];
@@ -92,19 +136,17 @@ async function listServicesBySpecialtyIds(tenantId, specialtyIds = []) {
   if (!specialtyIds.length) return [];
 
   const { data, error } = await supabaseAdmin
-    .from('servico_especialidades')
-    .select('servico:servicos(*)')
-    .eq('tenant_id', tenantId)
+    .from('servico_tenant_especialidades')
+    .select('servico_tenant:servico_tenants(id,tenant_id,ativo,servico_catalogo:servicos_catalogo(id,nome,categoria_key,natureza,ativo))')
     .in('especialidade_id', specialtyIds)
-    .eq('ativo', true)
-    .is('deleted_at', null);
+    .eq('ativo', true);
 
   if (error) throw error;
 
   const servicesById = new Map();
   (data || []).forEach((row) => {
-    const service = row.servico;
-    if (service && service.ativo !== false && !service.deleted_at) {
+    const service = row.servico_tenant;
+    if (service && service.tenant_id === tenantId && service.ativo !== false && service.servico_catalogo?.ativo !== false) {
       servicesById.set(service.id, service);
     }
   });
@@ -116,9 +158,9 @@ async function listServiceSpecialtyLinks(tenantId, serviceIds = []) {
   if (!serviceIds.length) return [];
 
   const { data, error } = await supabaseAdmin
-    .from('servico_especialidades')
+    .from('servico_tenant_especialidades')
     .select(`
-      servico_id,
+      servico_tenant_id,
       especialidade_id,
       especialidade:especialidades(
         id,
@@ -128,10 +170,8 @@ async function listServiceSpecialtyLinks(tenantId, serviceIds = []) {
         taxonomy_category_key
       )
     `)
-    .eq('tenant_id', tenantId)
-    .in('servico_id', serviceIds)
-    .eq('ativo', true)
-    .is('deleted_at', null);
+    .in('servico_tenant_id', serviceIds)
+    .eq('ativo', true);
 
   if (error) throw error;
   return (data || []).filter((item) => (
@@ -143,12 +183,14 @@ async function listServiceSpecialtyLinks(tenantId, serviceIds = []) {
 }
 
 async function hasServiceSpecialtyLinks(tenantId) {
+  const services = await listActiveServicesByTenant(tenantId);
+  if (!services.length) return false;
+
   const { count, error } = await supabaseAdmin
-    .from('servico_especialidades')
+    .from('servico_tenant_especialidades')
     .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
     .eq('ativo', true)
-    .is('deleted_at', null);
+    .in('servico_tenant_id', services.map((item) => item.id));
 
   if (error) throw error;
   return Boolean(count);
@@ -158,7 +200,7 @@ async function replaceServices(tenantId, professionalId, serviceIds, options = {
   const now = new Date().toISOString();
 
   const { error: deleteError } = await supabaseAdmin
-    .from('profissional_servicos')
+    .from('profissional_servico_especialidades')
     .update({
       ativo: false,
       deleted_at: now
@@ -178,22 +220,35 @@ async function replaceServices(tenantId, professionalId, serviceIds, options = {
     throw error;
   }
 
+  const specialtyIds = new Set((options.specialtyIds || []).filter(Boolean));
+  const configurations = services.flatMap((service) => (
+    (service.configuracoes || [])
+      .filter((config) => config.ativo !== false)
+      .filter((config) => !specialtyIds.size || specialtyIds.has(config.especialidade_id))
+      .map((config) => ({ service, config }))
+  ));
+
+  if (!configurations.length) return [];
+
   const { data, error } = await supabaseAdmin
-    .from('profissional_servicos')
+    .from('profissional_servico_especialidades')
     .upsert(
-      services.map((service) => ({
+      configurations.map(({ service, config }) => ({
         tenant_id: tenantId,
         profissional_id: professionalId,
-        servico_id: service.id,
-        duracao_minutos: service.duracao_minutos,
-        preco: service.preco,
-        percentual_comissao: options.percentual_comissao ?? null,
+        servico_tenant_especialidade_id: config.id,
+        metadata: {
+          origem: 'team_replace_services_phase_8_1',
+          servico_tenant_id: service.id,
+          especialidade_id: config.especialidade_id,
+          percentual_comissao: options.percentual_comissao ?? null
+        },
         ativo: true,
         deleted_at: null
       })),
-      { onConflict: 'profissional_id,servico_id' }
+      { onConflict: 'profissional_id,servico_tenant_especialidade_id' }
     )
-    .select('*, servico:servicos(*)');
+    .select('*, servico_tenant_especialidade:servico_tenant_especialidades(*, servico_tenant:servico_tenants(*, servico_catalogo:servicos_catalogo(*)), especialidade:especialidades(*))');
 
   if (error) throw error;
   return data || [];
@@ -369,16 +424,19 @@ async function updateRole(id, payload) {
 async function removeRole(id) {
   const now = new Date().toISOString();
 
-  const { error: specialtiesError } = await supabaseAdmin
+  const { count: specialtiesCount, error: specialtiesError } = await supabaseAdmin
     .from('especialidades')
-    .update({
-      ativo: false,
-      deleted_at: now
-    })
+    .select('id', { count: 'exact', head: true })
     .eq('cargo_id', id)
     .is('deleted_at', null);
 
   if (specialtiesError) throw specialtiesError;
+  if (specialtiesCount) {
+    const error = new Error('Cargo possui especialidades associadas.');
+    error.code = 'ROLE_HAS_SPECIALTIES';
+    error.details = { especialidades: specialtiesCount };
+    throw error;
+  }
 
   const { data, error } = await supabaseAdmin
     .from('cargos')
@@ -548,6 +606,41 @@ async function removeSpecialty(id, tenantId = null) {
   return data;
 }
 
+async function countSpecialtyDependencies(id, tenantId = null) {
+  const dependencies = {};
+
+  let professionalQuery = supabaseAdmin
+    .from('profissional_especialidades')
+    .select('id', { count: 'exact', head: true })
+    .eq('especialidade_id', id)
+    .is('deleted_at', null);
+  if (tenantId) professionalQuery = professionalQuery.eq('tenant_id', tenantId);
+  const { count: professionalCount, error: professionalError } = await professionalQuery;
+  if (professionalError) throw professionalError;
+  if (professionalCount) dependencies.profissionais = professionalCount;
+
+  const { count: catalogCount, error: catalogError } = await supabaseAdmin
+    .from('servico_catalogo_especialidades')
+    .select('id', { count: 'exact', head: true })
+    .eq('especialidade_id', id)
+    .eq('ativo', true);
+  if (catalogError) throw catalogError;
+  if (catalogCount) dependencies.compatibilidade_global_servicos = catalogCount;
+
+  let tenantServiceQuery = supabaseAdmin
+    .from('servico_tenant_especialidades')
+    .select('id, servico_tenant:servico_tenants!inner(tenant_id)', { count: 'exact', head: true })
+    .eq('especialidade_id', id);
+  if (tenantId) {
+    tenantServiceQuery = tenantServiceQuery.eq('servico_tenant.tenant_id', tenantId);
+  }
+  const { count: tenantServiceCount, error: tenantServiceError } = await tenantServiceQuery;
+  if (tenantServiceError) throw tenantServiceError;
+  if (tenantServiceCount) dependencies.configuracoes_servico_tenant = tenantServiceCount;
+
+  return dependencies;
+}
+
 module.exports = {
   listByTenant,
   findById,
@@ -573,6 +666,7 @@ module.exports = {
   upsertTenantSpecialtyStatus,
   listSpecialtiesByIds,
   listSpecialtyReferencesByIds,
+  countSpecialtyDependencies,
   createSpecialty,
   updateSpecialty,
   removeSpecialty

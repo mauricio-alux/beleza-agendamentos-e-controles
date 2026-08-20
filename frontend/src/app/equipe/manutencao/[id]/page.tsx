@@ -3,7 +3,7 @@ import { TeamMaintenancePage } from "@/components/team/TeamMaintenancePage";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export const metadata: Metadata = {
-  title: "Manutencao da equipe"
+  title: "Manutenção da Equipe"
 };
 
 type PageProps = {

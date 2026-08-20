@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "reconcile:professional-services": "node scripts/reconcile-professional-service-links.js",
+    "reconcile:professional-services": "node scripts/reconcile-professional-service-specialty-links.js",
+    "audit:tenant-service-catalog": "node scripts/audit-tenant-service-catalog-compliance.js",
+    "reconcile:tenant-service-catalog": "node scripts/tenant-service-catalog-reconciliation.js",
     "campaign-test:audit": "node scripts/campaign-test-data-v3.js audit",
     "campaign-test:reconcile": "node scripts/campaign-test-data-v3.js reconcile",
     "campaign-test:seed": "node scripts/campaign-test-data-v3.js seed",

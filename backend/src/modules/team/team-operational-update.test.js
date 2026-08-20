@@ -10,10 +10,26 @@ const hairSpecialtyId = '44444444-4444-4444-8444-444444444444';
 const braidsSpecialtyId = '55555555-5555-4555-8555-555555555555';
 const braidsServiceId = '66666666-6666-4666-8666-666666666666';
 const hydrationServiceId = '77777777-7777-4777-8777-777777777777';
+const barberRoleId = '88888888-8888-4888-8888-888888888888';
+const alternateHairRoleId = '99999999-9999-4999-8999-999999999999';
 
 const role = {
   id: roleId,
   nome: 'Cabeleireira',
+  categoria_profissional: 'operacional',
+  ativo: true
+};
+
+const barberRole = {
+  id: barberRoleId,
+  nome: 'Barbeiro',
+  categoria_profissional: 'operacional',
+  ativo: true
+};
+
+const alternateHairRole = {
+  id: alternateHairRoleId,
+  nome: 'Cabeleireiro',
   categoria_profissional: 'operacional',
   ativo: true
 };
@@ -82,7 +98,7 @@ function buildProfessional() {
         especialidade: hairSpecialty
       }
     ],
-    profissional_servicos: []
+    profissional_servico_especialidades: []
   };
 }
 
@@ -137,7 +153,7 @@ test('persists compatible specialties and services through one atomic repository
   const mocks = installRepositoryMocks({
     services: [braidsService],
     links: [{
-      servico_id: braidsServiceId,
+      servico_tenant_id: braidsServiceId,
       especialidade_id: braidsSpecialtyId,
       especialidade: braidsSpecialty
     }]
@@ -168,7 +184,7 @@ test('persists a service independently from the main cargo and specialties', asy
   const mocks = installRepositoryMocks({
     services: [hydrationService],
     links: [{
-      servico_id: hydrationServiceId,
+      servico_tenant_id: hydrationServiceId,
       especialidade_id: hairSpecialtyId,
       especialidade: hairSpecialty
     }]
@@ -191,5 +207,180 @@ test('persists a service independently from the main cargo and specialties', asy
     assert.equal(mocks.calls.replaceServices, 0);
   } finally {
     mocks.restore();
+  }
+});
+
+test('blocks duplicate specialty names within the same role and tenant context', async () => {
+  const originals = {};
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+
+  replace('findRoleById', async () => barberRole);
+  replace('listSpecialties', async () => [{
+    id: '99999999-9999-4999-8999-999999999999',
+    cargo_id: barberRoleId,
+    nome: 'Barba',
+    tenant_id: null,
+    ativo: true,
+    cargo: barberRole
+  }]);
+  replace('createSpecialty', async () => {
+    throw new Error('createSpecialty should not be called for duplicate specialties');
+  });
+
+  try {
+    await assert.rejects(
+      () => teamService.createSpecialty(tenantId, {
+        cargo_id: barberRoleId,
+        nome: 'barba',
+        taxonomy_category_key: 'barba',
+        descricao: null
+      }),
+      (error) => error.code === 'SPECIALTY_ALREADY_EXISTS'
+    );
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
+  }
+});
+
+test('rejects specialty creation when role and category are incompatible', async () => {
+  const originals = {};
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+
+  replace('findRoleById', async () => barberRole);
+  replace('listSpecialties', async () => []);
+  replace('createSpecialty', async () => {
+    throw new Error('createSpecialty should not be called for incompatible role category');
+  });
+
+  try {
+    await assert.rejects(
+      () => teamService.createSpecialty(tenantId, {
+        cargo_id: barberRoleId,
+        nome: 'Decoracao de unha',
+        taxonomy_category_key: 'unhas',
+        descricao: null
+      }),
+      (error) => error.code === 'INCOMPATIBLE_ROLE_CATEGORY'
+    );
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
+  }
+});
+
+test('accepts specialty creation when role and category are compatible', async () => {
+  const originals = {};
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+  let createdPayload = null;
+
+  replace('findRoleById', async () => barberRole);
+  replace('listSpecialties', async () => []);
+  replace('createSpecialty', async (payload) => {
+    createdPayload = payload;
+    return {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      ...payload,
+      cargo: barberRole
+    };
+  });
+
+  try {
+    const created = await teamService.createSpecialty(tenantId, {
+      cargo_id: barberRoleId,
+      nome: 'Pigmentacao de barba',
+      taxonomy_category_key: 'barba',
+      descricao: null
+    });
+
+    assert.equal(created.nome, 'Pigmentacao de barba');
+    assert.equal(createdPayload.taxonomy_category_key, 'barba');
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
+  }
+});
+
+test('allows the same specialty name in different roles', async () => {
+  const originals = {};
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+  let createdPayload = null;
+
+  replace('findRoleById', async () => barberRole);
+  replace('listSpecialties', async ({ cargoId }) => (
+    cargoId === barberRoleId ? [] : [hairSpecialty]
+  ));
+  replace('createSpecialty', async (payload) => {
+    createdPayload = payload;
+    return {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      ...payload,
+      cargo: barberRole
+    };
+  });
+
+  try {
+    const created = await teamService.createSpecialty(tenantId, {
+      cargo_id: barberRoleId,
+      nome: 'Corte Feminino',
+      taxonomy_category_key: 'barba',
+      descricao: null
+    });
+
+    assert.equal(created.nome, 'Corte Feminino');
+    assert.equal(createdPayload.cargo_id, barberRoleId);
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
+  }
+});
+
+test('blocks equivalent specialty names in the same tenant category across roles', async () => {
+  const originals = {};
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+
+  replace('findRoleById', async () => alternateHairRole);
+  replace('listSpecialties', async ({ cargoId, categoryKey }) => {
+    if (cargoId === alternateHairRoleId) return [];
+    if (categoryKey === 'cabelo') return [hairSpecialty];
+    return [];
+  });
+  replace('createSpecialty', async () => {
+    throw new Error('createSpecialty should not be called for semantic duplicate specialties');
+  });
+
+  try {
+    await assert.rejects(
+      () => teamService.createSpecialty(tenantId, {
+        cargo_id: alternateHairRoleId,
+        nome: 'corte feminino',
+        taxonomy_category_key: 'cabelo',
+        descricao: null
+      }),
+      (error) => error.code === 'SEMANTIC_SPECIALTY_ALREADY_EXISTS'
+    );
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
   }
 });

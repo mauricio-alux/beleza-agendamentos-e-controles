@@ -77,7 +77,7 @@ export function TeamManager() {
       setProfessionals(nextProfessionals);
       setServices(nextServices);
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel carregar a equipe."));
+      setError(getErrorMessage(err, "Não foi possível carregar a equipe."));
     } finally {
       setIsLoading(false);
     }
@@ -102,7 +102,7 @@ export function TeamManager() {
         setRoles(data.filter((role) => canTeamRoleUseCargoCategory(form.tipo_usuario, role.categoria_profissional)));
       })
       .catch((err) => {
-        if (isActive) setError(getErrorMessage(err, "Nao foi possivel carregar cargos."));
+        if (isActive) setError(getErrorMessage(err, "Não foi possível carregar cargos."));
       })
       .finally(() => {
         if (isActive) setIsLoadingRoles(false);
@@ -129,7 +129,7 @@ export function TeamManager() {
         if (isActive) setSpecialties(data);
       })
       .catch((err) => {
-        if (isActive) setError(getErrorMessage(err, "Nao foi possivel carregar especialidades."));
+        if (isActive) setError(getErrorMessage(err, "Não foi possível carregar especialidades."));
       })
       .finally(() => {
         if (isActive) setIsLoadingSpecialties(false);
@@ -174,15 +174,15 @@ export function TeamManager() {
 
   function validateForm() {
     if (!form.nome_publico.trim() || !form.cargo_id) {
-      return "Informe nome publico e cargo.";
+      return "Informe nome público e cargo.";
     }
 
     if (requiresServiceLinks(form) && !form.servico_ids.length) {
-      return "Vincule ao menos um servico para permitir agendamento online.";
+      return "Vincule ao menos um serviço para permitir agendamento online.";
     }
 
     if ((accessRequired || form.criar_acesso) && (!form.email.trim() || form.senha_temporaria.length < 8)) {
-      return "Informe email e senha temporaria com ao menos 8 caracteres para o acesso ao sistema.";
+      return "Informe email e senha temporária com ao menos 8 caracteres para o acesso ao sistema.";
     }
 
     return "";
@@ -221,7 +221,7 @@ export function TeamManager() {
       setForm(EMPTY_FORM);
       setPhoneCountry("BR");
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel cadastrar o profissional."));
+      setError(getErrorMessage(err, "Não foi possível cadastrar o profissional."));
     } finally {
       setIsSaving(false);
     }
@@ -231,9 +231,9 @@ export function TeamManager() {
     <section className="space-y-5">
       <div className="rounded-[1.75rem] border border-white/80 bg-white/82 p-5 shadow-soft backdrop-blur-xl sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Equipe operacional</p>
-        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Profissionais do salao</h1>
+        <h1 className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">Profissionais do salão</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Cadastre profissionais, defina o vinculo operacional e conecte servicos para alimentar a agenda inteligente.
+          Cadastre profissionais, defina o vínculo operacional e conecte serviços para alimentar a agenda inteligente.
         </p>
       </div>
 
@@ -241,13 +241,13 @@ export function TeamManager() {
         <FeedbackMessage tone="error" message={error} />
       ) : null}
 
-      <DashboardCard title="Novo profissional" description="Crie primeiro o profissional operacional. Funcionarios e terceiros recebem acesso automaticamente.">
+      <DashboardCard title="Novo profissional" description="Crie primeiro o profissional operacional. Funcionários e terceiros recebem acesso automaticamente.">
         <form onSubmit={handleCreate} className="grid gap-4" autoComplete="off">
           <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_0.9fr_0.55fr]">
             <Input
               value={form.nome_publico}
               onChange={(event) => setForm({ ...form, nome_publico: event.target.value })}
-              placeholder="Nome publico"
+              placeholder="Nome público"
             />
             <select
               value={form.tipo_usuario}
@@ -286,7 +286,7 @@ export function TeamManager() {
               max={100}
               value={form.percentual_comissao}
               onChange={(event) => setForm({ ...form, percentual_comissao: event.target.value })}
-              placeholder="Comissao %"
+              placeholder="Comissão %"
             />
           </div>
 
@@ -300,7 +300,7 @@ export function TeamManager() {
             <>
               <SelectableGroup
                 title="Especialidades"
-                empty={!form.cargo_id ? "Selecione um cargo para ver as especialidades disponiveis." : "Nenhuma especialidade ativa para este cargo."}
+                empty={!form.cargo_id ? "Selecione um cargo para ver as especialidades disponíveis." : "Nenhuma especialidade ativa para este cargo."}
                 isLoading={isLoadingSpecialties}
               >
                 {specialties.map((specialty) => (
@@ -315,9 +315,9 @@ export function TeamManager() {
               </SelectableGroup>
 
               <SelectableGroup
-                title="Servicos executados"
-                empty="Nenhum servico ativo cadastrado neste salao."
-                description="Selecione todos os servicos que este profissional executa. O cargo principal tem funcao apenas organizacional."
+                title="Serviços executados"
+                empty="Nenhum serviço ativo cadastrado neste salão."
+                description="Selecione todos os serviços que este profissional executa. O cargo principal tem função apenas organizacional."
               >
                 {services.map((service) => (
                   <TogglePill
@@ -331,7 +331,7 @@ export function TeamManager() {
               </SelectableGroup>
             </>
           ) : (
-            <FeedbackMessage tone="info" message="Profissional Adm nao aparece na agenda e nao pode ser vinculado a servicos de atendimento." />
+            <FeedbackMessage tone="info" message="Profissional Adm não aparece na agenda e não pode ser vinculado a serviços de atendimento." />
           )}
 
           <div className="grid gap-3 rounded-2xl border border-primary/15 bg-white/85 p-3 shadow-sm">
@@ -356,7 +356,7 @@ export function TeamManager() {
                 Criar acesso ao sistema
               </label>
             ) : (
-              <FeedbackMessage tone="info" message="Acesso ao sistema sera criado automaticamente." />
+              <FeedbackMessage tone="info" message="Acesso ao sistema será criado automaticamente." />
             )}
 
             {shouldShowAccessFields ? (
@@ -384,7 +384,7 @@ export function TeamManager() {
                   autoComplete="new-password"
                   value={form.senha_temporaria}
                   onChange={(event) => setForm({ ...form, senha_temporaria: event.target.value })}
-                  placeholder="Senha temporaria"
+                  placeholder="Senha temporária"
                 />
               </div>
             ) : null}
@@ -397,7 +397,7 @@ export function TeamManager() {
         </form>
       </DashboardCard>
 
-      <DashboardCard title="Equipe cadastrada" description="Profissionais disponiveis para agenda, servicos e escala individual.">
+      <DashboardCard title="Equipe cadastrada" description="Profissionais disponíveis para agenda, serviços e escala individual.">
         {isLoading ? (
           <p className="text-sm font-semibold text-muted-foreground">Carregando equipe...</p>
         ) : professionals.length ? (
@@ -419,13 +419,13 @@ export function TeamManager() {
                           {professional.aceita_agendamento_online ? "Agenda online" : "Agenda interna"}
                         </span>
                         <span className="rounded-full bg-secondary px-3 py-1">
-                          {professional.percentual_comissao}% comissao
+                          {professional.percentual_comissao}% comissão
                         </span>
                         <span className="rounded-full bg-secondary px-3 py-1">
                           {professional.possui_acesso ? "Com acesso" : "Sem acesso"}
                         </span>
                         <span className="rounded-full bg-secondary px-3 py-1">
-                          {professional.servico_ids?.length || 0} servicos
+                          {professional.servico_ids?.length || 0} serviços
                         </span>
                       </div>
                     </div>
@@ -434,7 +434,7 @@ export function TeamManager() {
                     <Button asChild variant="outline">
                       <Link href={`/equipe/manutencao/${professional.id}`}>
                         <Settings2 className="h-4 w-4" />
-                        Manutencao
+                        Manutenção
                       </Link>
                     </Button>
                   </div>
@@ -444,7 +444,7 @@ export function TeamManager() {
           </div>
         ) : (
           <p className="text-sm leading-6 text-muted-foreground">
-            Nenhum profissional cadastrado ainda. Adicione o primeiro profissional para organizar a agenda do salao.
+            Nenhum profissional cadastrado ainda. Adicione o primeiro profissional para organizar a agenda do salão.
           </p>
         )}
       </DashboardCard>
