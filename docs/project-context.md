@@ -23,10 +23,33 @@ Landing Page -> Cadastro -> Login -> Onboarding -> Dashboard -> Agenda
 
 O projeto esta na fase de consolidacao e testes das entregas ja documentadas.
 As bases de produto, multi-tenancy, RBAC, taxonomia, onboarding, agenda,
-dashboard operacional e WhatsApp operacional estao especificadas nos modulos e
-ADRs. A conexao remota com Supabase esta vinculada ao projeto `Bellory`
-(`djbuzarzbpcpixudpnmg`) e as migrations locais/remotas foram conferidas como
-alinhadas ate `20260714100000`.
+dashboard operacional, WhatsApp operacional, campanhas e novo MER de Servicos
+estao especificadas nos modulos e ADRs. A conexao remota com Supabase esta
+vinculada ao projeto `Bellory` (`djbuzarzbpcpixudpnmg`).
+
+Em 2026-07-29, a Fase 8 do ajuste do MER de Servicos foi concluida com backup
+remoto validado em `backup_phase8_3_20260729_pre_drop`, migration
+`20260729190000_remove_legacy_service_mer_phase8_3.sql` aplicada e remocao
+fisica de `servicos`, `servico_especialidades` e `profissional_servicos` do
+schema `public`. O novo MER de Servicos e a unica arquitetura operacional ativa.
+
+Em 2026-07-30, a evolucao `3.1.3` adicionou tipos de negocio globais,
+associacao N:N com `servicos_catalogo` e vinculo N:N com tenants por
+`tenant_tipos_negocio`, mantendo um unico tipo principal ativo por tenant. A
+segmentacao orienta recomendacoes de catalogo, mas nao cria ofertas
+automaticamente nem altera agenda, profissionais ou historico.
+
+Em 2026-08-02, a governanca `3.1.3.1` restringiu tenant a ativar somente
+servicos permitidos pelos tipos ativos e consolidou MasterAdmin como unico
+mantenedor de `tipos_negocio`, `servicos_catalogo`,
+`tipo_negocio_servicos_catalogo` e `servico_catalogo_especialidades`.
+
+Em 2026-08-05, a evolucao `3.1.3.1.4` oficializou que
+`servico_tenants` representa todos os servicos disponibilizados ao tenant pelos
+seus tipos ativos. O campo `ativo` passa a significar oferta efetiva do tenant,
+nao disponibilidade. A sincronizacao `tenant_tipos_negocio ->
+servico_tenants` fica centralizada em
+`backend/src/modules/services/tenant-service-catalog-sync.service.js`.
 
 ## Etapas concluidas
 
@@ -51,12 +74,17 @@ alinhadas ate `20260714100000`.
 - ADR-015: Campanhas deixam de depender apenas da criacao manual e passam a
   seguir ciclo de sugestao por IA/regras, aprovacao do tenant,
   parametrizacao, execucao e analise de resultados
+- Fase 8 do MER de Servicos: transicao concluida, legado fisico removido,
+  validacao integrada aprovada e novo MER oficializado como arquitetura unica
+- ADR-018: Tipos de negocio globais orientam recomendacoes do catalogo oficial
+  por segmento, sem duplicar servicos canonicos nem criar catalogo por tenant
 
 ## Proxima etapa recomendada
 
-Executar testes das etapas ja concluidas, priorizando fluxos integrados:
-cadastro, login, onboarding, agenda publica, dashboard operacional, RBAC,
-tenant isolation, WhatsApp operacional, campanhas MVP e manutencao MasterAdmin.
+Executar estabilizacao pre-producao sobre os fluxos ja migrados, priorizando:
+cadastro, login, onboarding, configuracoes de servicos/especialidades, equipe,
+agenda publica, dashboard operacional, RBAC, tenant isolation, WhatsApp
+operacional, campanhas MVP e manutencao MasterAdmin.
 
 ## Direcao visual
 
@@ -81,6 +109,15 @@ Premium Vibrante Controlado:
 - Manutencoes globais da plataforma ficam no Admin SaaS e exigem MasterAdmin.
 - Taxonomia oficial Bellory e fonte principal para categorias, servicos,
   cargos e especialidades.
+- O novo MER de Servicos e fonte unica operacional; nao recriar dependencia nas
+  tabelas legadas removidas.
+- Tipos de negocio sao segmentacao/recomendacao global; nao sao categoria de
+  servico, cargo, profissao, especialidade ou oferta comercial.
+- Tenant nao cria nem altera catalogo canonico global; ofertas e configuracoes
+  operacionais devem respeitar tipos ativos e compatibilidades globais.
+- Nao usar ausencia de `servico_tenants` para indicar servico indisponivel:
+  servicos permitidos pelos tipos ativos devem ser materializados como
+  `ativo = false` quando ainda nao forem oferecidos.
 - WhatsApp e canal operacional, nao funil principal neste momento.
 - Campanha e entidade unica; o modo de entrega muda conforme a capacidade
   WhatsApp do tenant.

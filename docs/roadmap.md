@@ -21,12 +21,17 @@
   onboarding inicial
 - ADR-015 - Campanhas sugeridas por IA/regras, aprovadas e parametrizadas pelo
   tenant antes da execucao
+- Fase 8 - Novo MER de Servicos concluido: backup pre-DROP validado, legado
+  fisico removido e validacao integrada aprovada
+- 3.1.3.1.4 - Regra geral de disponibilizacao de servicos aos tenants:
+  `servico_tenants` materializa catalogo permitido por tipos ativos, com
+  sincronizacao centralizada, auditoria e reconciliacao
 
 ## Proximo
 
-- Testes das etapas ja concluidas
-- Validacao integrada com Supabase remoto, RBAC, tenant isolation e fluxos
-  publicos de agendamento
+- Estabilizacao pre-producao das etapas ja concluidas
+- Validacao recorrente com Supabase remoto, RBAC, tenant isolation e fluxos
+  publicos de agendamento sobre o novo MER
 - Revisao dos cenarios criticos de WhatsApp operacional, campanhas MVP e
   dashboard operacional antes de novas frentes funcionais
 - Validar em navegadores/dispositivos reais a experiencia do primeiro convite:
@@ -67,3 +72,6 @@
   operacionais de tenant.
 - Nao depender apenas de RLS quando o backend usa service role; o codigo tambem
   precisa filtrar por tenant.
+- Centralizar a regra `tenant_tipos_negocio -> servico_tenants` no
+  sincronizador oficial; Agenda, Booking, Campanhas, CRM e Cupons devem usar
+  somente servicos ativos, nao apenas disponibilizados.

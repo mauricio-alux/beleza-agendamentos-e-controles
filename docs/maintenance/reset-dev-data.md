@@ -99,7 +99,8 @@ Depois do reset, valide:
 - acesso ao tenant;
 - cargos e especialidades ainda existem;
 - servicos padrao/onboarding ainda existem;
-- `servico_especialidades` dos servicos preservados ainda existe;
+- compatibilidades do novo MER existem em `servico_catalogo_especialidades` e
+  `servico_tenant_especialidades`;
 - agenda esta limpa;
 - clientes estao limpos;
 - campanhas estao limpas;
