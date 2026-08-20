@@ -5,7 +5,7 @@ import { RegisterLayout } from "@/components/cadastro/RegisterLayout";
 
 export const metadata: Metadata = {
   title: "Cadastro",
-  description: "Crie sua conta e ative seu salao com trial, tenant e onboarding automaticos."
+  description: "Crie sua conta e ative seu salao com trial e onboarding automaticos."
 };
 
 export default function CadastroPage() {

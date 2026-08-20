@@ -31,6 +31,8 @@ const createTenantSchema = z.object({
     email: z.string().email().optional(),
     telefone: z.string().max(20).optional(),
     tipo_negocio: z.string().max(80).optional(),
+    tipo_negocio_id: z.string().uuid(),
+    descricao_tipo_negocio: z.string().max(500).optional(),
     timezone: z.string().max(50).optional(),
     endereco: z.record(z.any()).optional()
   }),

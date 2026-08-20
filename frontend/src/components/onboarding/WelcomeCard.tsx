@@ -13,7 +13,7 @@ export function WelcomeCard() {
 
   const items = [
     { icon: CalendarCheck, label: "Agenda inicial preparada" },
-    { icon: Link2, label: `Link publico ${bookingPathLabel(settings?.slug || session?.tenant?.slug)}` },
+    { icon: Link2, label: `Link público ${bookingPathLabel(settings?.slug || session?.tenant?.slug)}` },
     { icon: MessageCircle, label: "WhatsApp pronto para ativacao futura" }
   ];
 

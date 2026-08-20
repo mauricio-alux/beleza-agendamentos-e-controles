@@ -16,7 +16,7 @@ export function RegisterCard({ children }: RegisterCardProps) {
             Crie sua conta {APP_BRAND.appName}
           </h1>
           <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-            Seu salao comeca com tenant, admin, trial e onboarding criados automaticamente.
+            Seu salao comeca com estabelecimento, admin, trial e onboarding criados automaticamente.
           </p>
         </div>
       </div>

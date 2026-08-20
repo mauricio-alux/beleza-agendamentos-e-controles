@@ -15,8 +15,8 @@ Ele cria e conecta:
 - configuracoes iniciais;
 - profissional padrao;
 - servicos iniciais;
-- vinculos `servico_especialidades`;
-- vinculos `profissional_servicos`;
+- vinculos `servico_tenant_especialidades`;
+- vinculos `profissional_servico_especialidades`;
 - escala semanal;
 - link publico;
 - progresso em `onboarding_steps`.
@@ -35,9 +35,9 @@ Responsabilidades principais:
 - `createTenantStructure`: cria a estrutura operacional inicial do tenant.
 - `createInitialSettings`: cria configuracoes iniciais do tenant.
 - `createDefaultProfessional`: cria o profissional padrao vinculado ao admin.
-- `createDefaultServices`: cria os servicos iniciais do tenant.
-- `createDefaultServiceSpecialtyLinks`: cria vinculos iniciais em `servico_especialidades`.
-- `createProfessionalServiceLinks`: cria vinculos entre profissional padrao e servicos.
+- `createDefaultServices`: cria/reutiliza catalogo e ofertas iniciais do tenant.
+- `createDefaultServiceSpecialtyLinks`: cria configuracoes em `servico_tenant_especialidades`.
+- `createProfessionalServiceLinks`: cria vinculos entre profissional padrao e combinacoes.
 - `createDefaultSchedule`: cria escala semanal inicial.
 - `createBookingLink`: cria link publico de agendamento.
 - `updateOnboardingStatus`: registra status das etapas.
@@ -89,14 +89,16 @@ Principais funcoes:
 - `updateConfiguracaoTenant`
 - `createProfissional`
 - `findProfessionalByUser`
-- `createServicos`
-- `updateServico`
 - `findServicesByTenant`
+- `findCatalogByNameAndCategory`
+- `createCatalog`
+- `upsertCatalogCompatibilities`
+- `upsertServiceOffer`
 - `listSpecialties`
-- `replaceServicoEspecialidades`
-- `createProfissionalServicos`
-- `updateProfissionalServico`
+- `replaceServiceOfferConfigurations`
+- `createProfissionalServiceSpecialtyLinks`
 - `findProfessionalServices`
+- `deactivateProfessionalServiceSpecialtyLinks`
 - `createScales`
 - `findScalesByProfessional`
 - `createLinkAgendamento`
@@ -136,6 +138,8 @@ Endpoints relacionados usados durante o fluxo:
 | `PATCH` | `/tenant/settings` | Atualiza configuracoes durante o fluxo. |
 | `GET` | `/services` | Lista servicos do tenant. |
 | `PATCH` | `/services/:id` | Atualiza servico e vinculos com especialidades. |
+| `GET` | `/tipos-negocio/ativos` | Lista tipos de negocio globais ativos para cadastro/onboarding. |
+| `GET` | `/tipos-negocio/tenant/servicos-catalogo-disponiveis` | Retorna catalogo segmentado por tipos do tenant. |
 
 ## Payloads Principais
 
@@ -151,7 +155,8 @@ Entrada conceitual:
     "cpf_cnpj": "00000000000000",
     "email": "contato@bellory.com",
     "telefone": "+5511999999999",
-    "tipo_negocio": "salao",
+    "tipo_negocio_id": "uuid-do-tipo-principal",
+    "descricao_tipo_negocio": null,
     "timezone": "America/Sao_Paulo"
   },
   "admin": {
@@ -170,6 +175,19 @@ Entrada conceitual:
   ]
 }
 ```
+
+Desde 2026-07-30, `tipo_negocio_id` e a referencia oficial do cadastro inicial.
+O texto legado `tipo_negocio` pode existir por compatibilidade historica, mas
+nao deve orientar catalogo, seed ou recomendacao. Ao criar tenant, o backend
+grava o tipo principal em `tenant_tipos_negocio`. A selecao de tipo recomenda
+servicos do catalogo oficial, mas nao cria ofertas automaticamente sem
+confirmacao do tenant.
+
+Desde a governanca 3.1.3.1, o cadastro inicial nao envia mais servicos padrao
+para criacao automatica. Quando o onboarding sincronizar servicos escolhidos
+explicitamente, o backend deve aceitar apenas catalogo canonico existente e
+permitido pelos tipos ativos do tenant. O onboarding nao pode criar
+`servicos_catalogo` nem `servico_catalogo_especialidades`.
 
 ### Atualizacao de Etapa
 
@@ -220,9 +238,10 @@ Entrada conceitual:
 ### Operacao Inicial
 
 - `profissionais`
-- `servicos`
-- `profissional_servicos`
-- `servico_especialidades`
+- `servicos_catalogo`
+- `servico_tenants`
+- `servico_tenant_especialidades`
+- `profissional_servico_especialidades`
 - `especialidades`
 - `cargos`
 - `escalas_semanais`
@@ -256,20 +275,19 @@ Entrada conceitual:
 
 ### Servicos
 
-- Criar servicos informados no onboarding ou usar lista padrao.
+- Criar/reutilizar ofertas informadas no onboarding ou usar lista padrao.
 - A lista padrao vem da taxonomia oficial Bellory em `backend/src/constants/bellory-taxonomy.js`.
-- Nao duplicar servicos quando ja existem para o tenant.
-- Atualizar servicos por nome durante sincronizacao.
-- Inativar servicos removidos da selecao.
-- Gravar metadata de taxonomia nos servicos padrao, incluindo categoria oficial,
+- Nao duplicar ofertas quando ja existem para o tenant.
+- Atualizar metadata da oferta durante sincronizacao.
+- Gravar metadata de taxonomia nas ofertas padrao, incluindo categoria oficial,
   acao operacional e especialidades oficiais sugeridas.
 
-### Vinculos `servico_especialidades`
+### Vinculos `servico_tenant_especialidades`
 
-- Criar vinculos iniciais priorizando as especialidades oficiais informadas na metadata do servico.
-- Usar compatibilidade textual como fallback temporario para servicos customizados ou sem metadata oficial.
-- Respeitar `tenant_id`.
-- Nao duplicar combinacao `tenant_id + servico_id + especialidade_id`.
+- Criar configuracoes iniciais priorizando as especialidades oficiais informadas na metadata do servico.
+- Usar `servico_catalogo_especialidades` como compatibilidade tecnica.
+- Respeitar a oferta do tenant em `servico_tenants`.
+- Nao duplicar combinacao `servico_tenant_id + especialidade_id`.
 - Permitir manutencao posterior pela area operacional de configuracoes.
 
 ### Profissional Padrao
@@ -280,9 +298,10 @@ Entrada conceitual:
 
 ### Profissional x Servicos
 
-- Criar vinculos iniciais entre profissional padrao e servicos.
+- Criar vinculos iniciais entre profissional padrao e combinacoes
+  `servico_tenant_especialidades`.
 - Nao duplicar vinculos existentes.
-- Atualizar duracao e preco na sincronizacao.
+- Desativar vinculos finais que deixaram de fazer parte da selecao refeita.
 
 ### Escala
 
@@ -363,7 +382,8 @@ Essa assinatura define o contexto comercial inicial do tenant e sera usada por m
 
 ### Servicos
 
-Servicos sao dados operacionais por tenant.
+Servicos sao ofertas por tenant em `servico_tenants`, derivadas de
+`servicos_catalogo`.
 
 O onboarding cria um catalogo minimo para permitir que agenda, equipe e dashboard tenham dados iniciais.
 
@@ -386,7 +406,7 @@ Isso reduz risco de tenants incompletos durante falhas de provisionamento.
 - Tornar a criacao inicial totalmente transacional no banco, se a infraestrutura permitir.
 - Extrair seed operacional para templates por tipo de negocio.
 - Permitir templates diferentes para salao, barbearia, estetica e manicure.
-- Reduzir fallback por inferencia textual depois que `servico_especialidades` estiver consolidada.
+- Reduzir dependencias documentais antigas depois da remocao fisica do legado.
 - Normalizar dados legados criados antes da taxonomia oficial.
 - Criar testes automatizados de provisionamento completo.
 - Criar auditoria detalhada para cada entidade criada no onboarding.
@@ -396,3 +416,13 @@ Isso reduz risco de tenants incompletos durante falhas de provisionamento.
 - Exibir no dashboard um resumo do que foi criado durante o onboarding.
 - Evoluir o primeiro convite assistido para permitir registro explicito de
   campanha preparada/enviada manualmente, sem tratar isso como entrega tecnica.
+
+## Atualizacao 2026-07-29 - Fase 8.3
+
+O onboarding nao deve criar ou consultar `servicos`, `servico_especialidades`
+ou `profissional_servicos`. Essas tabelas foram removidas fisicamente na Fase
+8.3.
+
+Provisionamento inicial deve criar/reutilizar somente o novo MER:
+`servicos_catalogo`, `servico_tenants`, `servico_catalogo_especialidades`,
+`servico_tenant_especialidades` e `profissional_servico_especialidades`.

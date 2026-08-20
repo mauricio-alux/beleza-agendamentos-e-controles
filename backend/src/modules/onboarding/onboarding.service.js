@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const { buildBookingUrl } = require('../../config/app-brand');
 const { AppError } = require('../../utils/errors');
 const { onlyDigits, normalizeEmail, normalizePhoneToE164 } = require('../../utils/normalize');
@@ -5,6 +6,7 @@ const { generateUniqueSlug } = require('../../services/slug.service');
 const planosService = require('../planos/planos.service');
 const subscriptionService = require('../subscription/subscription.service');
 const tenantsRepository = require('../tenants/tenants.repository');
+const businessTypesService = require('../business-types/business-types.service');
 const usuariosRepository = require('../usuarios/usuarios.repository');
 const membershipsRepository = require('../memberships/memberships.repository');
 const onboardingRepository = require('./onboarding.repository');
@@ -85,6 +87,30 @@ function normalizeTaxonomyName(value) {
     .trim();
 }
 
+function normalizeCodePart(value) {
+  return normalizeTaxonomyName(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase();
+}
+
+function buildCustomCatalogCode(tenantId, nome, categoria) {
+  const hash = crypto.createHash('sha1').update(`${tenantId}:${categoria}:${nome}`).digest('hex').slice(0, 10).toUpperCase();
+  return `ONBOARDING_${normalizeCodePart(categoria)}_${normalizeCodePart(nome).slice(0, 40)}_${hash}`;
+}
+
+function getOfferName(offer) {
+  return offer?.servico_catalogo?.nome || offer?.nome || null;
+}
+
+function getOfferDuration(offer) {
+  return offer?.configuracoes?.find((item) => item?.ativo !== false)?.duracao_minutos
+    || offer?.duracao_minutos
+    || 60;
+}
+
+function getOfferPrice(offer) {
+  const value = offer?.configuracoes?.find((item) => item?.ativo !== false)?.preco;
+  return value ?? offer?.preco ?? null;
+}
+
 function getOfficialSpecialtyNamesForService(service) {
   const metadata = service?.metadata || {};
   if (Array.isArray(metadata.especialidades_oficiais)) {
@@ -92,7 +118,7 @@ function getOfficialSpecialtyNamesForService(service) {
   }
 
   const officialService = BELLORY_OFFICIAL_SERVICES.find((item) =>
-    normalizeTaxonomyName(item.name) === normalizeTaxonomyName(service?.nome)
+    normalizeTaxonomyName(item.name) === normalizeTaxonomyName(getOfferName(service) || service?.nome)
   );
 
   return Array.isArray(officialService?.specialties)
@@ -117,7 +143,7 @@ function getOfficialMetadataForServiceName(serviceName) {
 
 function getServiceMetadata(service = {}, existing = null) {
   return {
-    ...getOfficialMetadataForServiceName(service.nome || existing?.nome),
+    ...getOfficialMetadataForServiceName(service.nome || getOfferName(existing) || existing?.nome),
     ...(existing?.metadata || {}),
     ...(service.metadata || {})
   };
@@ -211,25 +237,30 @@ async function createDefaultServices(tenantId, inputServices = []) {
     return existing;
   }
 
-  const services = inputServices.length ? inputServices : DEFAULT_SERVICES;
+  const services = inputServices;
+  const saved = [];
 
-  return onboardingRepository.createServicos(
-    services.map((servico, index) => ({
-      tenant_id: tenantId,
-      nome: servico.nome,
-      descricao: servico.descricao || null,
-      duracao_minutos: servico.duracao_minutos,
-      preco: servico.preco || 0,
-      categoria: normalizeOfficialCategoryKey(servico.categoria) || null,
-      ordem_exibicao: index,
+  for (const [index, servico] of services.entries()) {
+    const categoria = normalizeOfficialCategoryKey(servico.categoria) || null;
+    const catalog = await onboardingRepository.findCatalogByNameAndCategory(servico.nome, categoria);
+    if (!catalog) {
+      continue;
+    }
+    await businessTypesService.ensureCatalogAllowedForTenant(tenantId, catalog.id);
+
+    saved.push(await onboardingRepository.upsertServiceOffer(tenantId, catalog.id, {
+      ativo: true,
       metadata: {
         ...getServiceMetadata(servico),
         padrao: true,
-        origem: inputServices.length ? 'onboarding_input' : 'onboarding_default',
+        ordem_exibicao: index,
+        origem: 'onboarding_input',
         taxonomy_version: getServiceTaxonomyVersion(servico)
       }
-    }))
-  );
+    }));
+  }
+
+  return saved;
 }
 
 async function createDefaultServiceSpecialtyLinks(tenantId, services = []) {
@@ -242,12 +273,17 @@ async function createDefaultServiceSpecialtyLinks(tenantId, services = []) {
 
   for (const service of services) {
     const officialSpecialtyIds = getOfficialSpecialtyIds(service, specialties);
-    const compatibleSpecialtyIds = officialSpecialtyIds;
+    const catalogCompatibleIds = new Set(await onboardingRepository.listCatalogCompatibilityIds(service.servico_catalogo_id));
+    const compatibleSpecialtyIds = officialSpecialtyIds.filter((id) => catalogCompatibleIds.has(id));
 
-    const savedLinks = await onboardingRepository.replaceServicoEspecialidades(
-      tenantId,
+    const savedLinks = await onboardingRepository.replaceServiceOfferConfigurations(
       service.id,
-      compatibleSpecialtyIds
+      compatibleSpecialtyIds,
+      {
+        preco: getOfferPrice(service),
+        duracao_minutos: getOfferDuration(service),
+        metadata: { origem: 'onboarding_phase_8_1' }
+      }
     );
     links.push(...savedLinks);
   }
@@ -265,98 +301,102 @@ async function createProfessionalServiceLinks(tenantId, profissional, servicos, 
     return existing;
   }
 
-  return onboardingRepository.createProfissionalServicos(
-    servicos.map((servico) => {
-      const original = inputServices.find((item) => item.nome === servico.nome) || {};
-      return {
+  const payloads = servicos.flatMap((servico) => (
+    (servico.configuracoes || [])
+      .filter((config) => config.ativo !== false)
+      .map((config) => {
+        const original = inputServices.find((item) => item.nome === getOfferName(servico)) || {};
+        return {
+          tenant_id: tenantId,
+          profissional_id: profissional.id,
+          servico_tenant_especialidade_id: config.id,
+          metadata: {
+            origem: 'onboarding_phase_8_1',
+            servico_tenant_id: servico.id,
+            especialidade_id: config.especialidade_id,
+            percentual_comissao: original.percentual_comissao || null
+          },
+          ativo: true,
+          deleted_at: null
+        };
+      })
+  ));
+
+  return onboardingRepository.createProfissionalServiceSpecialtyLinks(payloads);
+}
+
+async function resolveOnboardingServiceOffer(tenantId, service, existingServices, index) {
+  const categoria = normalizeOfficialCategoryKey(service.categoria) || null;
+  const catalog = await onboardingRepository.findCatalogByNameAndCategory(service.nome, categoria);
+
+  if (!catalog) {
+    throw new AppError('Tenant nao pode criar servico canonico global durante onboarding.', 403, 'ONBOARDING_SERVICE_CATALOG_CREATE_FORBIDDEN');
+  }
+  await businessTypesService.ensureCatalogAllowedForTenant(tenantId, catalog.id);
+
+  const existing = existingServices.find((item) => item.servico_catalogo_id === catalog.id);
+
+  return onboardingRepository.upsertServiceOffer(tenantId, catalog.id, {
+    ativo: true,
+    metadata: {
+      ...(existing?.metadata || {}),
+      ordem_exibicao: index,
+      origem: 'onboarding_services_step',
+      custom: Boolean(service.custom),
+      taxonomy_version: getServiceTaxonomyVersion(service, existing)
+    }
+  });
+}
+
+async function syncProfessionalCombinationLinks(tenantId, profissional, offers) {
+  if (!profissional) return [];
+
+  const payloads = offers.flatMap((offer) => (
+    (offer.configuracoes || [])
+      .filter((config) => config.ativo !== false)
+      .map((config) => ({
         tenant_id: tenantId,
         profissional_id: profissional.id,
-        servico_id: servico.id,
-        duracao_minutos: servico.duracao_minutos,
-        preco: servico.preco,
-        percentual_comissao: original.percentual_comissao || null,
-        ativo: true
-      };
-    })
+        servico_tenant_especialidade_id: config.id,
+        ativo: true,
+        deleted_at: null,
+        metadata: {
+          origem: 'onboarding_services_step_phase_8_1',
+          servico_tenant_id: offer.id,
+          especialidade_id: config.especialidade_id
+        }
+      }))
+  ));
+
+  const saved = await onboardingRepository.createProfissionalServiceSpecialtyLinks(payloads);
+  await onboardingRepository.deactivateProfessionalServiceSpecialtyLinks(
+    tenantId,
+    profissional.id,
+    saved.map((item) => item.servico_tenant_especialidade_id)
   );
+  return saved;
 }
 
 async function syncOnboardingServices(tenantId, usuarioId, services = []) {
   const selectedServices = services.filter((service) => service?.nome);
   const existingServices = await onboardingRepository.findServicesByTenant(tenantId);
   const profissional = await onboardingRepository.findProfessionalByUser(tenantId, usuarioId);
-  const professionalLinks = profissional
-    ? await onboardingRepository.findProfessionalServices(tenantId, profissional.id)
-    : [];
 
   const savedServices = [];
 
   for (const [index, service] of selectedServices.entries()) {
-    const existing = existingServices.find(
-      (item) => item.nome.toLowerCase() === service.nome.toLowerCase()
-    );
-    const payload = {
-      nome: service.nome,
-      duracao_minutos: service.duracao_minutos,
-      preco: service.preco || 0,
-      categoria: normalizeOfficialCategoryKey(service.categoria) || null,
-      ordem_exibicao: index,
-      ativo: true,
-      metadata: {
-        ...getServiceMetadata(service, existing),
-        origem: 'onboarding_services_step',
-        custom: Boolean(service.custom),
-        taxonomy_version: getServiceTaxonomyVersion(service, existing)
-      }
-    };
-
-    const saved = existing
-      ? await onboardingRepository.updateServico(tenantId, existing.id, payload)
-      : (await onboardingRepository.createServicos([{ tenant_id: tenantId, ...payload }]))[0];
-
+    const saved = await resolveOnboardingServiceOffer(tenantId, service, existingServices, index);
     savedServices.push(saved);
     await createDefaultServiceSpecialtyLinks(tenantId, [saved]);
-
-    if (profissional) {
-      const existingLink = professionalLinks.find((item) => item.servico_id === saved.id);
-      const linkPayload = {
-        duracao_minutos: saved.duracao_minutos,
-        preco: saved.preco,
-        ativo: true
-      };
-
-      if (existingLink) {
-        await onboardingRepository.updateProfissionalServico(tenantId, existingLink.id, linkPayload);
-      } else {
-        await onboardingRepository.createProfissionalServicos([{
-          tenant_id: tenantId,
-          profissional_id: profissional.id,
-          servico_id: saved.id,
-          ...linkPayload
-        }]);
-      }
-    }
   }
 
-  const selectedNames = new Set(selectedServices.map((service) => service.nome.toLowerCase()));
-  const removedServices = existingServices.filter((service) => !selectedNames.has(service.nome.toLowerCase()));
-  const removedAt = new Date().toISOString();
-
-  await Promise.all(removedServices.map(async (service) => {
-    await onboardingRepository.updateServico(tenantId, service.id, { ativo: false });
-
-    if (profissional) {
-      await onboardingRepository.updateProfissionalServicoByService(
-        tenantId,
-        profissional.id,
-        service.id,
-        {
-          ativo: false,
-          deleted_at: removedAt
-        }
-      );
-    }
-  }));
+  const refreshedServices = await onboardingRepository.findServicesByTenant(tenantId);
+  const savedIds = new Set(savedServices.map((service) => service.id));
+  await syncProfessionalCombinationLinks(
+    tenantId,
+    profissional,
+    refreshedServices.filter((service) => savedIds.has(service.id))
+  );
 
   return savedServices;
 }
@@ -429,10 +469,11 @@ async function createTenantStructure({ tenant, usuario, servicosIniciais = [] })
   const profissional = await createDefaultProfessional(tenant, usuario);
   const servicos = await createDefaultServices(tenant.id, servicosIniciais);
   const servicoEspecialidades = await createDefaultServiceSpecialtyLinks(tenant.id, servicos);
+  const servicosComConfiguracoes = await onboardingRepository.findServicesByTenant(tenant.id);
   const profissionalServicos = await createProfessionalServiceLinks(
     tenant.id,
     profissional,
-    servicos,
+    servicosComConfiguracoes,
     servicosIniciais
   );
   const escalas = await createDefaultSchedule(tenant.id, profissional.id);
@@ -451,8 +492,8 @@ async function createTenantStructure({ tenant, usuario, servicosIniciais = [] })
     configuracao,
     profissional,
     servicos,
-    servico_especialidades: servicoEspecialidades,
-    profissional_servicos: profissionalServicos,
+    servico_tenant_especialidades: servicoEspecialidades,
+    profissional_servico_especialidades: profissionalServicos,
     escalas,
     link_agendamento: linkAgendamento
   };
@@ -498,6 +539,18 @@ async function createTenant(input, authUser, requestContext = {}) {
         onboarding_version: 'foundation_core_v1'
       }
     });
+
+    let tenantBusinessTypes = [];
+    if (input.tenant.tipo_negocio_id) {
+      tenantBusinessTypes = await businessTypesService.replaceTenantTypes({
+        tenantId: tenant.id,
+        usuario: { id: null }
+      }, {
+        principal_tipo_negocio_id: input.tenant.tipo_negocio_id,
+        tipo_negocio_ids: [input.tenant.tipo_negocio_id],
+        descricao_tipo_negocio: input.tenant.descricao_tipo_negocio || null
+      });
+    }
 
     const operationalRole = input.admin.tipo_usuario_operacional || 'Administrador';
 
@@ -553,6 +606,7 @@ async function createTenant(input, authUser, requestContext = {}) {
 
     return {
       tenant,
+      tenant_tipos_negocio: tenantBusinessTypes,
       usuario: {
         ...usuario,
         tenant_id: tenant.id,

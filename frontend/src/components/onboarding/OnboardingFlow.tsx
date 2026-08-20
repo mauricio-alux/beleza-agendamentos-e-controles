@@ -43,7 +43,7 @@ function SalonStep() {
   const [whatsappCountry, setWhatsappCountry] = useState<PhoneCountry>("BR");
 
   return (
-    <SetupCard title="Informacoes do salao" description="Use os dados que seus clientes reconhecem no dia a dia.">
+    <SetupCard title="Informações do salão" description="Use os dados que seus clientes reconhecem no dia a dia.">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome fantasia" className="sm:col-span-2">
           <Input
@@ -111,7 +111,7 @@ function OperationStep() {
   const { data, updateData } = useOnboarding();
 
   return (
-    <SetupCard title="Configuracao operacional" description="Defina a cadencia inicial da agenda. Voce pode ajustar depois.">
+    <SetupCard title="Configuração operacional" description="Defina a cadência inicial da agenda. Você pode ajustar depois.">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Intervalo padrao da agenda"
@@ -165,7 +165,7 @@ function OperationStep() {
             <option value="America/Recife">America/Recife</option>
           </select>
         </Field>
-        <Field label="Como voce usa WhatsApp no negocio?" description="Essa resposta ajuda o Bellory a preparar campanhas do jeito certo.">
+        <Field label="Como você usa WhatsApp no negócio?" description={`Essa resposta ajuda o ${APP_BRAND.appName} a preparar campanhas do jeito certo.`}>
           <select
             value={data.whatsapp_usage_type}
             onChange={(event) => updateData({ whatsapp_usage_type: event.target.value as typeof data.whatsapp_usage_type })}
@@ -239,7 +239,7 @@ function ServicesStep() {
   }
 
   return (
-    <SetupCard title="Servicos iniciais" description="Selecione o que ja faz sentido para seu salao comecar hoje.">
+    <SetupCard title="Serviços iniciais" description="Selecione o que já faz sentido para seu salão começar hoje.">
       <div className="grid gap-3">
         {data.services.map((service) => (
           <div

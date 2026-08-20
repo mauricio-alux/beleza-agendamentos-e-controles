@@ -81,14 +81,14 @@ function friendlyError(status: number) {
   }
 
   if (status === 403) {
-    return "Nao foi possivel acessar este salao.";
+    return "Não foi possível acessar este salão.";
   }
 
   if (status >= 500) {
-    return "Nao foi possivel salvar. Tente novamente.";
+    return "Não foi possível salvar. Tente novamente.";
   }
 
-  return "Nao foi possivel salvar. Tente novamente.";
+  return "Não foi possível salvar. Tente novamente.";
 }
 
 async function request<T>(path: string, token: string, init: RequestInit = {}) {
@@ -112,7 +112,7 @@ async function request<T>(path: string, token: string, init: RequestInit = {}) {
       throw new Error("A conexao com o servidor demorou demais. Tente novamente.");
     }
 
-    throw new Error(`Nao foi possivel conectar ao servidor local em ${API_URL}. Verifique se o backend esta ativo.`);
+    throw new Error(`Não foi possível conectar ao servidor local em ${API_URL}. Verifique se o backend está ativo.`);
   }
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
@@ -127,7 +127,7 @@ async function request<T>(path: string, token: string, init: RequestInit = {}) {
   }
 
   if (!payload.data) {
-    throw new Error("Nao foi possivel carregar os dados.");
+    throw new Error("Não foi possível carregar os dados.");
   }
 
   return payload.data;

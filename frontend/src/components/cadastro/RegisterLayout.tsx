@@ -9,7 +9,7 @@ type RegisterLayoutProps = {
 
 const benefits = [
   "Trial criado automaticamente",
-  "Salao pronto para configurar",
+  "Salão pronto para configurar",
   "Agenda e WhatsApp preparados"
 ];
 
@@ -37,7 +37,7 @@ export function RegisterLayout({ children }: RegisterLayoutProps) {
                 Seu salao nasce pronto para crescer.
               </h2>
               <p className="text-lg leading-8 text-muted-foreground">
-                Crie sua conta e deixe o {APP_BRAND.appName} montar a primeira estrutura: tenant, admin, trial,
+                Crie sua conta e deixe o {APP_BRAND.appName} montar a primeira estrutura: estabelecimento, admin, trial,
                 servicos iniciais e onboarding interno.
               </p>
             </div>

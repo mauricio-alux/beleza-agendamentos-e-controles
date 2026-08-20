@@ -18,6 +18,8 @@ export type RegisterPayload = {
   nome_salao: string;
   plano_id: string;
   tipo_usuario_operacional: "Administrador" | "Autonomo";
+  tipo_negocio_id: string;
+  descricao_tipo_negocio?: string | null;
 };
 
 type RegisterResponse = {
@@ -65,6 +67,8 @@ export type RegisterFieldErrors = {
   senha?: string;
   confirmar_senha?: string;
   termos?: string;
+  tipo_negocio_id?: string;
+  descricao_tipo_negocio?: string;
 };
 
 type ValidationIssue = {
@@ -81,13 +85,6 @@ export class RegisterError extends Error {
     this.fieldErrors = fieldErrors;
   }
 }
-
-const DEFAULT_SERVICES = [
-  { nome: "Corte de Cabelo", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
-  { nome: "Escova", duracao_minutos: 45, preco: 0, categoria: "cabelo" },
-  { nome: "Manicure", duracao_minutos: 60, preco: 0, categoria: "unhas" },
-  { nome: "Hidratacao", duracao_minutos: 60, preco: 0, categoria: "terapia_capilar" }
-];
 
 function friendlyError(status: number, code?: string, message = "") {
   const normalizedMessage = message.toLowerCase();
@@ -117,10 +114,10 @@ function friendlyError(status: number, code?: string, message = "") {
   }
 
   if (status >= 500) {
-    return "Nao foi possivel criar sua conta. Tente novamente.";
+    return "Não foi possível criar sua conta. Tente novamente.";
   }
 
-  return "Nao foi possivel criar sua conta. Tente novamente.";
+  return "Não foi possível criar sua conta. Tente novamente.";
 }
 
 function friendlyFieldMessage(field: keyof RegisterFieldErrors) {
@@ -132,7 +129,9 @@ function friendlyFieldMessage(field: keyof RegisterFieldErrors) {
     telefone: "Revise o WhatsApp informado.",
     senha: "Revise a senha informada.",
     confirmar_senha: "As senhas precisam ser iguais.",
-    termos: "Aceite os termos para continuar."
+    termos: "Aceite os termos para continuar.",
+    tipo_negocio_id: "Escolha o tipo de negocio.",
+    descricao_tipo_negocio: "Descreva o tipo de negocio."
   };
 
   return messages[field];
@@ -146,6 +145,8 @@ function fieldFromPath(path: Array<string | number> = []): keyof RegisterFieldEr
   if (joined === "senha") return "senha";
   if (joined === "telefone" || joined === "tenant.telefone") return "telefone";
   if (joined === "tenant.nome_fantasia") return "nome_salao";
+  if (joined === "tenant.tipo_negocio_id") return "tipo_negocio_id";
+  if (joined === "tenant.descricao_tipo_negocio") return "descricao_tipo_negocio";
   if (joined === "tipo_usuario_operacional") return "tipo_usuario_operacional";
 
   return null;
@@ -214,7 +215,7 @@ async function request<T>(path: string, init: RequestInit = {}) {
       }
     });
   } catch {
-    throw new Error("Nao foi possivel conectar. Tente novamente.");
+    throw new Error("Não foi possível conectar. Tente novamente.");
   }
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
@@ -238,7 +239,7 @@ async function request<T>(path: string, init: RequestInit = {}) {
   }
 
   if (!payload.data) {
-    throw new Error("Nao foi possivel criar sua conta. Tente novamente.");
+    throw new Error("Não foi possível criar sua conta. Tente novamente.");
   }
 
   return payload.data;
@@ -258,7 +259,7 @@ async function getInitialPlanId() {
   const selectedPlan = plans.find((plan) => plan.ativo !== false) || plans[0];
 
   if (!selectedPlan?.id) {
-    throw new Error("Nao foi possivel encontrar um plano inicial.");
+    throw new Error("Não foi possível encontrar um plano inicial.");
   }
 
   return selectedPlan.id;
@@ -301,10 +302,12 @@ async function register(payload: RegisterPayload) {
         nome_fantasia: payload.nome_salao,
         email: payload.email,
         telefone: payload.telefone,
+        tipo_negocio_id: payload.tipo_negocio_id,
+        descricao_tipo_negocio: payload.descricao_tipo_negocio || null,
         timezone: "America/Sao_Paulo"
       },
       atua_como_profissional: true,
-      servicos_iniciais: DEFAULT_SERVICES
+      servicos_iniciais: []
     })
   });
 

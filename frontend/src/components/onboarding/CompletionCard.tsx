@@ -35,7 +35,7 @@ export function CompletionCard() {
 
       setFeedback(message);
     } catch {
-      setFeedback("Nao foi possivel copiar automaticamente.");
+      setFeedback("Não foi possível copiar automaticamente.");
     }
   }
 
@@ -70,7 +70,7 @@ export function CompletionCard() {
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-border bg-background p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Salao</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Salão</p>
           <p className="mt-2 text-lg font-bold text-foreground">{data.nome_fantasia || settings?.nome_fantasia}</p>
           <p className="text-sm text-muted-foreground">{data.cidade || "Cidade"} {data.estado ? `- ${data.estado}` : ""}</p>
         </div>
@@ -97,7 +97,7 @@ export function CompletionCard() {
 
       <div className="mt-4 flex items-center gap-2 rounded-2xl border border-border bg-white p-4 text-sm text-muted-foreground">
         <ExternalLink className="h-4 w-4 text-accent" />
-        Link publico preparado: <span className="font-semibold text-foreground">{bookingLabel}</span>
+        Link público preparado: <span className="font-semibold text-foreground">{bookingLabel}</span>
       </div>
 
       <div className="mt-4 rounded-2xl border border-primary/25 bg-white p-4">

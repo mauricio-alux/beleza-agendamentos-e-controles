@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, BriefcaseBusiness, Eye, EyeOff, LockKeyhole, Mail, Store, UserRound } from "lucide-react";
 import { LoadingButton } from "@/components/cadastro/LoadingButton";
@@ -16,6 +16,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { APP_BRAND } from "@/config/app-brand";
 import { useRegister } from "@/hooks/useRegister";
 import { cn } from "@/lib/utils";
+import { businessTypesService, type BusinessType } from "@/services/business-types.service";
 import { RegisterError } from "@/services/register.service";
 import { isValidPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
@@ -28,6 +29,8 @@ type FormErrors = {
   senha?: string;
   confirmar_senha?: string;
   termos?: string;
+  tipo_negocio_id?: string;
+  descricao_tipo_negocio?: string;
 };
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,6 +40,10 @@ export function RegisterForm() {
   const { isLoadingPlans, isRegistering, error, setError, register } = useRegister();
   const [nome, setNome] = useState("");
   const [nomeSalao, setNomeSalao] = useState("");
+  const [tiposNegocio, setTiposNegocio] = useState<BusinessType[]>([]);
+  const [tipoNegocioId, setTipoNegocioId] = useState("");
+  const [descricaoTipoNegocio, setDescricaoTipoNegocio] = useState("");
+  const [isLoadingTypes, setIsLoadingTypes] = useState(true);
   const [tipoUsuarioOperacional, setTipoUsuarioOperacional] = useState<"Administrador" | "Autonomo">("Autonomo");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -50,6 +57,28 @@ export function RegisterForm() {
 
   const redirectPath = useMemo(() => process.env.NEXT_PUBLIC_AUTH_REDIRECT_PATH || "/onboarding", []);
   const passwordStrength = getPasswordStrength(senha);
+  const selectedTipoNegocio = tiposNegocio.find((item) => item.id === tipoNegocioId) || null;
+  const isOutro = selectedTipoNegocio?.slug === "outro";
+
+  useEffect(() => {
+    let active = true;
+    setIsLoadingTypes(true);
+    businessTypesService
+      .listActive()
+      .then((data) => {
+        if (active) setTiposNegocio(data || []);
+      })
+      .catch(() => {
+        if (active) setTiposNegocio([]);
+      })
+      .finally(() => {
+        if (active) setIsLoadingTypes(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function validate() {
     const nextErrors: FormErrors = {};
@@ -60,6 +89,14 @@ export function RegisterForm() {
 
     if (!nomeSalao.trim()) {
       nextErrors.nome_salao = "Informe o nome do salao.";
+    }
+
+    if (!tipoNegocioId) {
+      nextErrors.tipo_negocio_id = "Escolha o tipo de negocio.";
+    }
+
+    if (isOutro && !descricaoTipoNegocio.trim()) {
+      nextErrors.descricao_tipo_negocio = "Descreva seu tipo de negocio.";
     }
 
     if (!["Administrador", "Autonomo"].includes(tipoUsuarioOperacional)) {
@@ -109,6 +146,8 @@ export function RegisterForm() {
         senha,
         telefone: normalizePhoneToE164(telefone, phoneCountry),
         nome_salao: nomeSalao.trim(),
+        tipo_negocio_id: tipoNegocioId,
+        descricao_tipo_negocio: isOutro ? descricaoTipoNegocio.trim() : null,
         tipo_usuario_operacional: tipoUsuarioOperacional
       });
       router.replace(redirectPath);
@@ -154,6 +193,43 @@ export function RegisterForm() {
             invalid={Boolean(errors.nome_salao)}
           />
         </Field>
+
+        <Field label="Tipo de negocio" error={errors.tipo_negocio_id}>
+          <div className="relative">
+            <BriefcaseBusiness className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={tipoNegocioId}
+              onChange={(event) => {
+                setTipoNegocioId(event.target.value);
+                setDescricaoTipoNegocio("");
+              }}
+              disabled={isLoadingTypes}
+              className={cn(
+                "h-12 w-full rounded-2xl border border-input bg-white/90 pl-12 pr-4 text-sm font-semibold text-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:bg-muted/60",
+                errors.tipo_negocio_id && "border-primary"
+              )}
+            >
+              <option value="">{isLoadingTypes ? "Carregando tipos..." : "Selecione o segmento"}</option>
+              {tiposNegocio.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Field>
+
+        {isOutro ? (
+          <Field label="Descrição do tipo de negócio" error={errors.descricao_tipo_negocio}>
+            <Input
+              value={descricaoTipoNegocio}
+              onChange={(event) => setDescricaoTipoNegocio(event.target.value)}
+              placeholder="Descreva seu segmento"
+              aria-invalid={Boolean(errors.descricao_tipo_negocio) || undefined}
+              className={errors.descricao_tipo_negocio ? "border-primary" : undefined}
+            />
+          </Field>
+        ) : null}
 
         <Field label={`Como voce vai usar o ${APP_BRAND.appName}?`} error={errors.tipo_usuario_operacional}>
           <div className="grid gap-3 sm:grid-cols-2">

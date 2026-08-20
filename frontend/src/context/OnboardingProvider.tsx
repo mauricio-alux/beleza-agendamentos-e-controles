@@ -121,19 +121,19 @@ export const onboardingSteps: OnboardingStepDefinition[] = [
   },
   {
     id: "salon",
-    title: "Informacoes do salao",
+    title: "Informações do salão",
     description: "Dados essenciais para o atendimento.",
     backendStep: "tenant_created"
   },
   {
     id: "operation",
-    title: "Operacao",
+    title: "Operação",
     description: "Agenda, horarios e preferencias.",
     backendStep: "scale_created"
   },
   {
     id: "services",
-    title: "Servicos",
+    title: "Serviços",
     description: "Comece com os servicos mais usados.",
     backendStep: "services_created"
   },
@@ -290,7 +290,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       });
       setCurrentStepIndex(firstPendingIndex >= 0 ? firstPendingIndex : 0);
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel carregar o onboarding."));
+      setError(getErrorMessage(err, "Não foi possível carregar o onboarding."));
     } finally {
       setIsLoading(false);
     }
@@ -458,7 +458,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
         return true;
       } catch (err) {
-        setError(getErrorMessage(err, "Nao foi possivel salvar. Tente novamente."));
+        setError(getErrorMessage(err, "Não foi possível salvar. Tente novamente."));
         return false;
       } finally {
         setIsSaving(false);
@@ -499,7 +499,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       await onboardingService.complete(session);
       router.replace(process.env.NEXT_PUBLIC_DASHBOARD_PATH || "/dashboard");
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel concluir. Tente novamente."));
+      setError(getErrorMessage(err, "Não foi possível concluir. Tente novamente."));
     } finally {
       setIsSaving(false);
     }

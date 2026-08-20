@@ -27,7 +27,7 @@ export function useRegister() {
       })
       .catch((err) => {
         if (mounted) {
-          setError(err instanceof Error ? err.message : "Nao foi possivel carregar o plano inicial.");
+          setError(err instanceof Error ? err.message : "Não foi possível carregar o plano inicial.");
         }
       })
       .finally(() => {
@@ -57,7 +57,7 @@ export function useRegister() {
           throw err;
         }
 
-        const message = err instanceof Error ? err.message : "Nao foi possivel criar sua conta. Tente novamente.";
+        const message = err instanceof Error ? err.message : "Não foi possível criar sua conta. Tente novamente.";
         setError(message);
         throw new Error(message);
       } finally {

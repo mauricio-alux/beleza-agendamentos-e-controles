@@ -13,7 +13,7 @@ export function RegisterProgress({ isLoadingPlans = false, isRegistering = false
       done: false
     },
     {
-      label: "Salao",
+      label: "Salão",
       active: isRegistering,
       done: false
     },

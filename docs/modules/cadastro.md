@@ -426,3 +426,21 @@ O módulo Cadastro deve representar:
 •	profissionalização digital
 O usuário deve sentir:
 "O Bellory criou meu salão automaticamente."
+
+________________________________________
+41. Tipos de Negocio no Cadastro
+
+Desde 2026-07-30, o cadastro deve carregar tipos de negocio ativos em
+`GET /tipos-negocio/ativos` e enviar `tenant.tipo_negocio_id` para
+`POST /auth/register`.
+
+Regras:
+•	o tipo de negocio e obrigatorio para novos tenants;
+•	o tipo precisa existir e estar ativo em `tipos_negocio`;
+•	o backend grava o vinculo principal em `tenant_tipos_negocio`;
+•	a validacao tambem ocorre no backend; bypass do dropdown deve falhar;
+•	o cadastro nao cria ofertas nem servicos canonicos automaticamente;
+•	quando o tipo for `outro`, `descricao_tipo_negocio` registra o texto livre
+  do tenant sem criar novo tipo global;
+•	o campo textual legado `tipo_negocio` nao deve orientar catalogo ou
+  recomendacao.

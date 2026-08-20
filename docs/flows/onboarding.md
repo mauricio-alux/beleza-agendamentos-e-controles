@@ -107,13 +107,18 @@ Cada servico nasce com:
 
 Os servicos sao dados operacionais do tenant. Portanto, cada salao pode manter seu proprio catalogo depois do onboarding.
 
-## Criacao dos Vinculos `servico_especialidades`
+## Criacao das Compatibilidades do Novo MER
 
-Apos criar os servicos iniciais, o onboarding cria vinculos iniciais entre servicos e especialidades na tabela:
+Apos criar/reutilizar os servicos iniciais, o onboarding cria as
+compatibilidades e configuracoes iniciais nas tabelas do novo MER:
 
-`servico_especialidades`
+- `servicos_catalogo`;
+- `servico_tenants`;
+- `servico_catalogo_especialidades`;
+- `servico_tenant_especialidades`.
 
-Esses vinculos indicam quais especialidades podem executar cada servico.
+Essas configuracoes indicam quais especialidades podem executar cada servico e
+quais preco, duracao, retorno e aceite online valem para o tenant.
 
 Exemplos conceituais:
 
@@ -124,9 +129,10 @@ Exemplos conceituais:
 
 Importante:
 
-- `servicos` sao por tenant;
+- `servicos_catalogo` representa o conceito global/canonico;
+- `servico_tenants` representa a oferta por tenant;
 - `especialidades` continuam sendo catalogo estrutural;
-- `servico_especialidades` e operacional por tenant;
+- `servico_tenant_especialidades` e a configuracao operacional por tenant;
 - depois do onboarding, o admin pode ajustar os vinculos em Configuracoes > Servicos e especialidades.
 
 ## Criacao do Profissional Padrao
@@ -145,21 +151,20 @@ Dados esperados:
 - ordem de exibicao;
 - metadata indicando origem `onboarding`.
 
-## Criacao dos Vinculos Profissional x Servicos
+## Criacao dos Vinculos Profissional x Combinacoes
 
 Depois de criar os servicos e o profissional padrao, o onboarding cria os vinculos em:
 
-`profissional_servicos`
+`profissional_servico_especialidades`
 
-Isso autoriza o profissional inicial a executar os servicos criados no onboarding.
+Isso autoriza o profissional inicial a executar as combinacoes de servico e
+especialidade criadas no onboarding.
 
 Cada vinculo pode conter:
 
 - tenant;
 - profissional;
-- servico;
-- duracao;
-- preco;
+- combinacao `servico_tenant_especialidade_id`;
 - percentual de comissao, quando informado;
 - status ativo.
 
@@ -218,8 +223,9 @@ Comportamento esperado:
 - cria servicos novos quando ainda nao existem;
 - atualiza servicos existentes pelo nome;
 - inativa servicos removidos da selecao;
-- atualiza vinculos com o profissional padrao;
-- atualiza vinculos iniciais em `servico_especialidades`.
+- atualiza ofertas e combinacoes do novo MER;
+- atualiza vinculos finais com o profissional padrao em
+  `profissional_servico_especialidades`.
 
 ## Regras de Retrocompatibilidade
 
@@ -230,7 +236,9 @@ Regras importantes:
 - nao duplicar tenant ativo para o mesmo usuario;
 - nao duplicar servicos ja existentes;
 - nao duplicar vinculos profissional x servico;
-- criar vinculos `servico_especialidades` a partir das especialidades oficiais quando possivel;
+- criar compatibilidades em `servico_catalogo_especialidades` e configuracoes
+  em `servico_tenant_especialidades` a partir das especialidades oficiais
+  quando possivel;
 - usar fallback por compatibilidade textual apenas quando o servico nao tiver metadata oficial suficiente;
 - permitir ajuste manual posterior nas telas operacionais.
 
@@ -243,7 +251,7 @@ Regras importantes:
 3. Verificar que foram criados os servicos padrao da taxonomia oficial Bellory.
 4. Verificar que o profissional padrao foi criado.
 5. Verificar que o profissional possui vinculos com os servicos iniciais.
-6. Verificar que existem vinculos em `servico_especialidades` priorizando as especialidades oficiais do catalogo.
+6. Verificar que existem compatibilidades/configuracoes no novo MER priorizando as especialidades oficiais do catalogo.
 7. Verificar que a escala padrao foi criada.
 8. Verificar que o link publico foi criado.
 
@@ -254,7 +262,7 @@ Resultado esperado: tenant pronto para acessar dashboard, equipe, servicos e age
 1. Criar um novo salao informando servicos personalizados.
 2. Concluir o onboarding.
 3. Verificar que os servicos informados foram criados com duracao, preco e categoria.
-4. Verificar que os vinculos `servico_especialidades` foram criados quando houver compatibilidade inicial.
+4. Verificar que as configuracoes `servico_tenant_especialidades` foram criadas quando houver compatibilidade inicial.
 5. Verificar que o profissional padrao recebeu os servicos criados.
 
 Resultado esperado: catalogo inicial reflete a escolha feita no onboarding.
@@ -268,7 +276,7 @@ Resultado esperado: catalogo inicial reflete a escolha feita no onboarding.
 5. Verificar que o servico removido foi inativado.
 6. Verificar que o novo servico foi criado.
 7. Verificar que os vinculos profissional x servico foram atualizados.
-8. Verificar que os vinculos `servico_especialidades` foram atualizados para o novo servico.
+8. Verificar que as configuracoes do novo MER foram atualizadas para o novo servico.
 
 Resultado esperado: catalogo do tenant sincronizado sem quebrar dados antigos.
 
