@@ -23,7 +23,7 @@ export function PlaceholderPage({ title, description, icon, actionLabel }: Place
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
       </section>
 
-      <DashboardCard title="Acoes rapidas" description="Atalhos preparados para os proximos fluxos operacionais.">
+      <DashboardCard title="Ações rápidas" description="Atalhos preparados para os próximos fluxos operacionais.">
         <QuickActions />
       </DashboardCard>
 

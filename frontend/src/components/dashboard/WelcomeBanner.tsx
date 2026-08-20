@@ -20,11 +20,11 @@ export function WelcomeBanner({ snapshot }: WelcomeBannerProps) {
           </span>
           <div>
             <h1 className="max-w-full break-words font-display text-2xl leading-tight text-foreground sm:text-4xl">
-              {snapshot.salonName} esta pronto para operar.
+              {snapshot.salonName} está pronto para operar.
             </h1>
             <p className="mt-2 max-w-full break-words text-sm leading-6 text-muted-foreground sm:text-base">
-              Bem-vindo, {snapshot.userName}. O {APP_BRAND.appName} centraliza sua rotina para deixar o salao mais organizado,
-              profissional e facil de crescer.
+              Bem-vindo, {snapshot.userName}. O {APP_BRAND.appName} centraliza sua rotina para deixar o salão mais organizado,
+              profissional e fácil de crescer.
             </p>
           </div>
         </div>

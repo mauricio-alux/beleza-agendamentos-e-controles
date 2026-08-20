@@ -81,9 +81,28 @@ async function sumAppointmentsRevenueByProfessional(tenantId, profissionalId, st
 }
 
 async function countAuthorizedServices(tenantId, profissionalId) {
-  return countByTenant('profissional_servicos', tenantId, (query) => query
+  const { data: specialties, error: specialtiesError } = await supabaseAdmin
+    .from('profissional_especialidades')
+    .select('especialidade_id')
+    .eq('tenant_id', tenantId)
     .eq('profissional_id', profissionalId)
-    .eq('ativo', true));
+    .eq('ativo', true)
+    .is('deleted_at', null);
+
+  if (specialtiesError) throw specialtiesError;
+  const specialtyIds = [...new Set((specialties || []).map((item) => item.especialidade_id).filter(Boolean))];
+  if (!specialtyIds.length) return 0;
+
+  const { data, error } = await supabaseAdmin
+    .from('servico_tenant_especialidades')
+    .select('servico_tenant_id, servico_tenant:servico_tenants!inner(tenant_id, ativo)')
+    .in('especialidade_id', specialtyIds)
+    .eq('ativo', true)
+    .eq('servico_tenant.tenant_id', tenantId)
+    .eq('servico_tenant.ativo', true);
+
+  if (error) throw error;
+  return new Set((data || []).map((item) => item.servico_tenant_id).filter(Boolean)).size;
 }
 
 async function countProfessionalSchedules(tenantId, profissionalId) {
@@ -248,7 +267,7 @@ async function listOperationalAppointments(tenantId, startIso, endIso, filters =
       concluido_em,
       cliente:clientes(id, nome),
       profissional:profissionais(id, nome_publico, cargo),
-      servicos:agendamento_servicos(servico_id, nome_servico, valor_servico, duracao_minutos, servico:servicos(id, nome, categoria))
+      servicos:agendamento_servicos(servico_tenant_id, nome_servico, valor_servico, duracao_minutos, servico_tenant:servico_tenants(id, servico_catalogo_id, servico_catalogo:servicos_catalogo(id, nome, categoria_key)))
     `)
     .eq('tenant_id', tenantId)
     .gte('data_inicio', startIso)

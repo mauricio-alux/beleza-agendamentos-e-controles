@@ -3,7 +3,6 @@
 import { RefreshCcw } from "lucide-react";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { AgendaPreview } from "@/components/dashboard/AgendaPreview";
-import { CampaignPreview } from "@/components/dashboard/CampaignPreview";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { DashboardLoadingState } from "@/components/dashboard/DashboardLoadingState";
 import { DashboardWidgetsRegistry } from "@/components/dashboard/DashboardWidgetsRegistry";
@@ -29,7 +28,7 @@ export function DashboardHome() {
         <div className="grid gap-4">
           <FeedbackMessage
             tone="error"
-          title="Nao foi possivel carregar o painel"
+            title="Não foi possível carregar o painel"
             message={error || "Tente novamente em alguns instantes."}
           />
           <div>
@@ -51,9 +50,9 @@ export function DashboardHome() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Atualizacao operacional</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Atualização operacional</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {lastUpdatedAt ? `Ultima leitura as ${lastUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Polling leve ativo"}
+            {lastUpdatedAt ? `Última leitura às ${lastUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Atualização automática ativa"}
           </p>
         </div>
         <Button type="button" variant="outline" onClick={refresh} disabled={isRefreshing}>
@@ -62,58 +61,35 @@ export function DashboardHome() {
         </Button>
       </div>
 
+      <DashboardCard title="Pendências importantes" description="O que precisa de atenção para a operação seguir sem travar.">
+        <NotificationsCenter snapshot={snapshot} />
+      </DashboardCard>
+
       {!scopedProfessional ? (
-        <DashboardCard title="Acoes rapidas" description="Comece pelas operacoes mais frequentes do salao.">
+        <DashboardCard title="Ações rápidas" description="Comece pelas operações mais frequentes do salão.">
           <QuickActions roleConfig={snapshot.roleConfig} />
         </DashboardCard>
       ) : null}
+
+      <section className={scopedProfessional ? "grid gap-5" : "grid gap-5 xl:grid-cols-[0.9fr_1.1fr]"}>
+        <DashboardCard title="Próximos atendimentos" description="Horários mais próximos para acompanhamento imediato.">
+          <NextAppointments appointments={snapshot.agenda.next} />
+        </DashboardCard>
+
+        <DashboardCard title="Agenda do dia" description="Atendimentos de hoje, priorizando os próximos horários.">
+          <AgendaPreview appointments={snapshot.agenda.today} />
+        </DashboardCard>
+      </section>
 
       <DashboardWidgetsRegistry snapshot={snapshot} />
 
       <OperationalDashboardPanels operational={snapshot.operational} />
 
-      <section className={snapshot.roleConfig.permissions.canViewCampaigns ? "grid gap-5 xl:grid-cols-[1.15fr_0.85fr]" : "grid gap-5"}>
-        <DashboardCard title="Agenda do dia" description="Visao executiva dos horarios mais importantes.">
-          <AgendaPreview appointments={snapshot.agenda.today} />
+      {!scopedProfessional ? (
+        <DashboardCard title="Atividades recentes" description="Eventos já ocorridos no salão e na conta.">
+          <ActivityFeed activities={snapshot.activity.activities} />
         </DashboardCard>
-
-        {snapshot.roleConfig.permissions.canViewCampaigns ? (
-          <DashboardCard title="Campanhas futuras" description="Espaco reservado para relacionamento e retorno de clientes.">
-            <CampaignPreview campaigns={snapshot.activity.campaigns} />
-          </DashboardCard>
-        ) : null}
-      </section>
-
-      <section className={scopedProfessional ? "grid gap-5" : "grid gap-5 xl:grid-cols-[0.9fr_1.1fr]"}>
-        <DashboardCard title="Proximos atendimentos" description="Resumo visual dos proximos horarios confirmados.">
-          <NextAppointments appointments={snapshot.agenda.next} />
-        </DashboardCard>
-
-        {!scopedProfessional ? (
-          <DashboardCard title="Atividades recentes" description="Eventos importantes do salao e da conta.">
-            <ActivityFeed activities={snapshot.activity.activities} />
-          </DashboardCard>
-        ) : null}
-      </section>
-
-      <section className={scopedProfessional ? "grid gap-5" : "grid gap-5 xl:grid-cols-[0.95fr_1.05fr]"}>
-        <DashboardCard title="Notificacoes" description="Alertas operacionais preparados para automacoes futuras.">
-          <NotificationsCenter notifications={snapshot.activity.notifications} />
-        </DashboardCard>
-
-        {!scopedProfessional ? (
-          <DashboardCard title="Arquitetura realtime-ready" description="Polling inicial agora, realtime preparado para evolucao.">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {snapshot.realtime.future.map((item) => (
-                <div key={item} className="rounded-2xl border border-border bg-background/80 p-3">
-                  <p className="text-sm font-bold capitalize text-foreground">{item}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Preparado para etapa futura.</p>
-                </div>
-              ))}
-            </div>
-          </DashboardCard>
-        ) : null}
-      </section>
+      ) : null}
     </div>
   );
 }

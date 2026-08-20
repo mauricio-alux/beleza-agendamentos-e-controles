@@ -29,17 +29,20 @@ export function TopHeader() {
         <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-accent sm:text-xs sm:tracking-[0.18em]">
           {session?.tenant?.nome_fantasia || APP_BRAND.appName}
         </p>
-        <h1 className="mt-1 truncate text-lg font-bold text-foreground sm:text-2xl">Painel do salao</h1>
+        <h1 className="mt-1 truncate text-lg font-bold text-foreground sm:text-2xl">Painel do salão</h1>
       </div>
       <div className="flex flex-none items-center gap-2">
         <button
           type="button"
-          className="hidden h-11 min-w-48 items-center gap-2 rounded-full border border-border bg-white/85 px-4 text-sm text-muted-foreground shadow-sm sm:flex"
+          disabled
+          title="Busca em desenvolvimento."
+          aria-label="Busca em desenvolvimento"
+          className="hidden h-11 min-w-48 cursor-not-allowed items-center gap-2 rounded-full border border-border bg-muted/70 px-4 text-sm text-muted-foreground opacity-75 shadow-sm sm:flex"
         >
           <Search className="h-4 w-4" />
-          Buscar em breve
+          Busca em desenvolvimento
         </button>
-        <Button variant="outline" size="icon" aria-label="Notificacoes">
+        <Button variant="outline" size="icon" aria-label="Notificações">
           <Bell className="h-4 w-4" />
         </Button>
         <Button asChild variant="outline" className="hidden sm:inline-flex">

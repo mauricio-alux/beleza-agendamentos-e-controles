@@ -238,7 +238,7 @@ async function request<T>(path: string, token: string, signal?: AbortSignal) {
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Nao foi possivel carregar o dashboard.");
+    throw new Error(payload.error?.message || "Não foi possível carregar o dashboard.");
   }
 
   if (!payload.data) {
@@ -264,7 +264,7 @@ function normalizeSnapshot(snapshot: DashboardSnapshot): DashboardSnapshot {
     realtime: {
       strategy: "polling",
       intervalMs: snapshot.realtime?.intervalMs || 60000,
-      future: snapshot.realtime?.future || ["websocket", "pubsub", "event-driven"]
+      future: snapshot.realtime?.future || []
     }
   };
 }

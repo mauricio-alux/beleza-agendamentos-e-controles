@@ -1,7 +1,6 @@
 import {
   CalendarDays,
   Clock3,
-  HeartPulse,
   Landmark,
   Scissors,
   TrendingUp,
@@ -25,8 +24,8 @@ export function DashboardWidgetsRegistry({ snapshot }: DashboardWidgetsRegistryP
         <KPIWidget
           label="Faturamento previsto hoje"
           value={snapshot.kpis.display.faturamentoHoje}
-          hint="Soma dos valores de agendamentos confirmados ou concluidos hoje."
-          help="Formula: soma de valor_total em agendamentos do dia com status confirmado ou concluido, por tenant."
+          hint="Agendamentos confirmados ou concluídos hoje."
+          help="Período: hoje. Soma dos valores de agendamentos confirmados ou concluídos."
           icon={WalletCards}
           tone="primary"
         />
@@ -35,8 +34,8 @@ export function DashboardWidgetsRegistry({ snapshot }: DashboardWidgetsRegistryP
         <KPIWidget
           label="Clientes ativos"
           value={snapshot.kpis.display.clientesAtivos}
-          hint="Base vinculada ao tenant atual."
-          help="Formula: total de cliente_tenants ativos do tenant atual."
+          hint="Base vinculada ao estabelecimento atual."
+          help="Origem: clientes ativos do estabelecimento atual."
           icon={UsersRound}
           tone="accent"
         />
@@ -45,8 +44,8 @@ export function DashboardWidgetsRegistry({ snapshot }: DashboardWidgetsRegistryP
         <KPIWidget
           label="Capacidade ocupada hoje"
           value={snapshot.kpis.display.ocupacao}
-          hint="Agendamentos nao cancelados sobre a capacidade diaria estimada."
-          help="Formula: agendamentos de hoje com status diferente de cancelado / profissionais ativos x 8 horarios."
+          hint="Agendamentos não cancelados sobre a capacidade diária estimada."
+          help="Período: hoje. Agendamentos não cancelados sobre a capacidade estimada."
           icon={TrendingUp}
           tone="primary"
         />
@@ -55,28 +54,28 @@ export function DashboardWidgetsRegistry({ snapshot }: DashboardWidgetsRegistryP
         <KPIWidget
           label="Agenda ativa hoje"
           value={snapshot.kpis.display.atendimentosHoje}
-          hint="Agendamentos de hoje que nao estao cancelados."
-          help="Formula: total de agendamentos do dia por tenant, excluindo status cancelado."
+          hint="Agendamentos de hoje que não estão cancelados."
+          help="Período: hoje. Agendamentos do estabelecimento, excluindo cancelados."
           icon={CalendarDays}
           tone="neutral"
         />
       ) : null}
       {widgets.includes("ownAppointments") || widgets.includes("linkedAgenda") || widgets.includes("ownAgenda") ? (
         <KPIWidget
-          label={widgets.includes("linkedAgenda") ? "Agenda vinculada" : "Agenda propria"}
+          label={widgets.includes("linkedAgenda") ? "Agenda vinculada" : "Agenda própria"}
           value={snapshot.kpis.display.atendimentosHoje}
-          hint="Filtrado pelo vinculo profissional do usuario."
-          help="Formula: total de agendamentos do dia do profissional vinculado, excluindo status cancelado."
+          hint="Filtrado pelo vínculo profissional do usuário."
+          help="Período: hoje. Agendamentos do profissional vinculado, excluindo cancelados."
           icon={CalendarDays}
           tone="neutral"
         />
       ) : null}
       {widgets.includes("ownClients") ? (
         <KPIWidget
-          label="Clientes proprios"
+          label="Clientes próprios"
           value={snapshot.kpis.display.clientesAtivos}
           hint="Clientes relacionados aos atendimentos do profissional."
-          help="Formula: clientes distintos com agendamentos do profissional, excluindo status cancelado."
+          help="Origem: clientes distintos com agendamentos do profissional, excluindo cancelados."
           icon={UsersRound}
           tone="accent"
         />
@@ -86,88 +85,78 @@ export function DashboardWidgetsRegistry({ snapshot }: DashboardWidgetsRegistryP
           label="Ganhos"
           value={snapshot.kpis.display.ganhosProprios || "R$ 0,00"}
           hint="Resultado pessoal do contexto ativo."
-          help="Formula: soma de valor_total dos agendamentos do profissional hoje com status confirmado ou concluido."
+          help="Período: hoje. Valores dos agendamentos confirmados ou concluídos do profissional."
           icon={WalletCards}
           tone="primary"
         />
       ) : null}
       {widgets.includes("personalMetrics") ? (
         <KPIWidget
-          label="Metricas pessoais"
+          label="Métricas pessoais"
           value={snapshot.kpis.display.metricasPessoais || "0"}
-          hint="Indicadores individuais preparados para marketplace."
-          help="Formula atual: quantidade de agendamentos do dia no escopo profissional."
+          hint="Atendimentos do dia no seu contexto."
+          help="Período: hoje. Quantidade de agendamentos no escopo profissional."
           icon={TrendingUp}
           tone="neutral"
         />
       ) : null}
-      {widgets.includes("ownCampaigns") ? (
-        <KPIWidget
-          label="Campanhas proprias"
-          value={String(snapshot.activity.campaigns.length)}
-          hint="Campanhas do contexto de atendimento atual."
-          help="Formula: quantidade de campanhas retornadas no resumo do Dashboard para o contexto atual."
-          icon={HeartPulse}
-          tone="accent"
-        />
-      ) : null}
       {widgets.includes("ownCommission") ? (
         <KPIWidget
-          label="Comissao"
+          label="Comissão"
           value={snapshot.kpis.display.comissaoHoje || "R$ 0,00"}
           hint="Valor limitado ao contexto do profissional."
-          help="Formula atual: soma de valor_total dos agendamentos do profissional hoje com status confirmado ou concluido."
+          help="Período: hoje. Valores dos agendamentos confirmados ou concluídos do profissional."
           icon={WalletCards}
           tone="primary"
         />
       ) : null}
       {widgets.includes("ownSchedule") ? (
         <KPIWidget
-          label="Horarios"
+          label="Horários"
           value={snapshot.kpis.display.horariosConfigurados || "0"}
           hint="Janelas configuradas para este profissional."
-          help="Formula: quantidade de dias/entradas de agenda configuradas como dia trabalhado para o profissional."
+          help="Origem: dias ou entradas de agenda configuradas para o profissional."
           icon={Clock3}
           tone="neutral"
         />
       ) : null}
       {widgets.includes("authorizedServices") ? (
         <KPIWidget
-          label="Servicos executados"
+          label="Serviços executados"
           value={snapshot.kpis.display.servicosAutorizados || "0"}
-          hint="Catalogo liberado para este prestador."
-          help="Formula: quantidade de vinculos ativos em profissional_servicos para o profissional."
+          hint="Catálogo liberado para este prestador."
+          help="Origem: serviços ofertados com especialidades ativas do profissional."
           icon={Scissors}
           tone="accent"
         />
       ) : null}
       {widgets.includes("ownLimitedEarnings") ? (
         <KPIWidget
-          label="Ganhos proprios"
+          label="Ganhos próprios"
           value={snapshot.kpis.display.ganhosLimitados || "R$ 0,00"}
-          hint="Visao limitada ao proprio atendimento."
-          help="Formula: soma de valor_total dos agendamentos do profissional hoje com status confirmado ou concluido."
+          hint="Visão limitada ao próprio atendimento."
+          help="Período: hoje. Valores dos agendamentos confirmados ou concluídos do profissional."
           icon={WalletCards}
           tone="primary"
         />
       ) : null}
       {canShowSaas ? (
         <KPIWidget
-          label="Tenants ativos"
+          label="Estabelecimentos ativos"
           value={snapshot.kpis.display.tenantsAtivos || "0"}
-          hint="Visao SaaS restrita ao MasterAdmin."
-          help="Formula: quantidade de tenants com status ativo."
+          hint="Visão restrita ao administrador da plataforma."
+          help="Origem: estabelecimentos com status ativo."
           icon={Landmark}
           tone="accent"
         />
       ) : null}
       {canShowSaas ? (
         <KPIWidget
-          label="Tenants em trial"
+          label="Estabelecimentos em trial"
           value={snapshot.kpis.display.tenantsTrial || "0"}
-          hint="Tenants em trial acompanhados no hub."
-          help="Formula: quantidade de tenants com status trial."
-          icon={HeartPulse}
+          hint="Estabelecimentos em trial acompanhados no hub."
+          help="Origem: estabelecimentos com status trial."
+          icon={TrendingUp}
           tone="primary"
         />
       ) : null}

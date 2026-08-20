@@ -16,18 +16,18 @@ export const dashboardNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: BarChart3, permission: "dashboard.read" },
   { label: "Agenda", href: "/agenda", icon: CalendarDays, permission: "agenda.read" },
   { label: "Clientes", href: "/clientes", icon: UsersRound, permission: "clientes.read" },
-  { label: "Servicos", href: "/servicos", icon: Scissors, permission: "servicos.read" },
+  { label: "Serviços", href: "/servicos", icon: Scissors, permission: "servicos.read" },
   { label: "Equipe", href: "/equipe", icon: UserRoundCog, permission: "equipe.read" },
   { label: "Campanhas", href: "/campanhas", icon: Megaphone, permission: "campanhas.read" },
   { label: "Financeiro", href: "/financeiro", icon: WalletCards, permission: "financeiro.read" },
-  { label: "Relatorios", href: "/relatorios", icon: BarChart3, permission: "relatorios.read" },
-  { label: "Configuracoes", href: "/configuracoes", icon: Settings, permission: "tenant.read" }
+  { label: "Relatórios", href: "/relatorios", icon: BarChart3, permission: "relatorios.read" },
+  { label: "Configurações", href: "/configuracoes", icon: Settings, permission: "tenant.read" }
 ];
 
 export const quickActions = [
-  { label: "Novo agendamento", href: "/agenda", icon: CalendarDays, permission: "agenda.write" },
+  { label: "Novo agendamento", href: "/agenda/novo", icon: CalendarDays, permission: "agenda.write" },
   { label: "Novo cliente", href: "/clientes?novo=1", icon: UsersRound, permission: "clientes.write" },
-  { label: "Novo servico", href: "/servicos", icon: Scissors, permission: "servicos.write" },
+  { label: "Novo serviço", href: "/servicos", icon: Scissors, permission: "servicos.write" },
   { label: "Nova campanha", href: "/campanhas", icon: Sparkles, permission: "campanhas.manage" }
 ];
 

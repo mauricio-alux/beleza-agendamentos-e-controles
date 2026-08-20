@@ -12,8 +12,9 @@ export function NextAppointments({ appointments }: NextAppointmentsProps) {
       <EmptyState
         icon={CalendarDays}
         title="Nenhum atendimento confirmado"
-        description="Assim que a agenda for ativada, os proximos horarios aparecem aqui."
+        description="Assim que a agenda for ativada, os próximos horários aparecem aqui."
         actionLabel="Novo agendamento"
+        actionHref="/agenda/novo"
       />
     );
   }

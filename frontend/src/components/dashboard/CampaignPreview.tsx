@@ -13,8 +13,9 @@ export function CampaignPreview({ campaigns }: CampaignPreviewProps) {
       <EmptyState
         icon={Megaphone}
         title="Campanhas inteligentes"
-        description={`O ${APP_BRAND.appName} ja esta preparado para campanhas, retorno de clientes e WhatsApp operacional.`}
+        description={`O ${APP_BRAND.appName} já está preparado para campanhas, retorno de clientes e WhatsApp operacional.`}
         actionLabel="Nova campanha"
+        actionHref="/campanhas"
       />
     );
   }

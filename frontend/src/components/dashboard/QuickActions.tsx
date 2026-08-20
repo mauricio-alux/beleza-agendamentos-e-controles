@@ -23,11 +23,13 @@ export function QuickActions({ roleConfig }: QuickActionsProps) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {actions.map(({ label, href, icon: Icon }) => (
+      {actions.map(({ label, href, icon: Icon }, index) => (
         <Link
           key={label}
           href={href}
-          className="group flex min-h-20 min-w-0 items-center gap-3 rounded-[1.25rem] border border-white/80 bg-white/90 p-4 text-sm font-bold text-foreground shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary hover:shadow-blush sm:min-h-24 sm:rounded-[1.35rem]"
+          className={`group flex min-h-20 min-w-0 items-center gap-3 rounded-[1.25rem] border p-4 text-sm font-bold text-foreground shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary hover:shadow-blush sm:min-h-24 sm:rounded-[1.35rem] ${
+            index < 2 ? "border-primary/20 bg-secondary/60" : "border-white/80 bg-white/90"
+          }`}
         >
           <span className="grid h-11 w-11 flex-none place-items-center rounded-full bg-secondary text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
             <Icon className="h-5 w-5" />

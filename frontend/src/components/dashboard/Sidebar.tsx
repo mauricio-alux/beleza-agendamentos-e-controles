@@ -40,7 +40,7 @@ export function Sidebar() {
         <div className="rounded-[1.35rem] border border-white/80 bg-gradient-to-br from-secondary to-white p-4">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Beauty Tech</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-foreground">
-            Operacao leve, moderna e pronta para automacoes.
+            Operação leve, moderna e pronta para automações.
           </p>
         </div>
       </div>

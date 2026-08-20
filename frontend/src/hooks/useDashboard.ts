@@ -41,7 +41,7 @@ export function useDashboard() {
         return;
       }
 
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar o dashboard.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o dashboard.");
     } finally {
       if (!controller.signal.aborted) {
         setIsLoading(false);
