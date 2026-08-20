@@ -35,29 +35,101 @@ criacao do agendamento.
 
 ## Visao diaria e filtros operacionais
 
-A tela administrativa `/agenda` separa a timeline diaria dos calculos de
-disponibilidade. Para usuarios com visao de tenant, como Administrador,
-Autonomo owner, Gerente ou perfis administrativos com permissao de agenda, a
-timeline carrega todos os agendamentos do tenant no dia selecionado quando o
-filtro de profissional esta em `Todos os profissionais`.
+A tela administrativa `/agenda` opera em Modo Consulta. Ela separa a agenda do
+dia dos calculos de disponibilidade, que pertencem ao Modo Novo Agendamento em
+`/agenda/novo`.
 
-Selecionar um profissional passa a ser um filtro explicito da timeline e tambem
-habilita o calculo de horarios sugeridos/disponibilidade para aquele
-profissional e servico. Perfis de agenda pessoal, como Funcionario, Terceiro e
-Profissional, continuam trabalhando no proprio contexto operacional e nao
-devem ampliar a visualizacao para outros profissionais.
+No Modo Consulta, a prioridade visual e:
+
+1. Cabecalho com estabelecimento, data e acao `Novo agendamento`.
+2. Navegacao de data.
+3. Filtros de consulta.
+4. Alertas da Agenda.
+5. Agenda do dia.
+6. Ocupacao da Agenda.
+7. Sugestoes para a Agenda, somente quando houver recomendacao relevante.
+
+Para usuarios com visao de estabelecimento, como Administrador, Autonomo owner,
+Gerente ou perfis administrativos com permissao de agenda, a timeline carrega
+todos os agendamentos do estabelecimento no dia selecionado quando o filtro de
+profissional esta em `Todos os profissionais`.
+
+Selecionar um profissional passa a ser um filtro explicito da timeline. Perfis
+de agenda pessoal, como Funcionario, Terceiro e Profissional, continuam
+trabalhando no proprio contexto operacional e nao devem ampliar a visualizacao
+para outros profissionais.
 
 Para evitar deslocamento de dia por conversao UTC no navegador, a timeline
 administrativa envia `data=YYYY-MM-DD` para `GET /agenda`. O backend e
 responsavel por calcular o intervalo operacional local do dia, de `00:00` ate
 `00:00` do dia seguinte, e aplica esse intervalo em `data_inicio`. Filtros de
-profissional, servico e status sao opcionais e cumulativos; sem filtro de
-profissional, a API deve retornar todos os agendamentos do tenant para a data
-selecionada. O filtro de servico tambem deve ser explicitamente escolhido pelo
-usuario; a agenda nao deve selecionar automaticamente o primeiro servico como
-filtro oculto. Durante investigacoes de DEV, os logs temporarios
-`[agenda-list-debug]` registram tenant, data selecionada, intervalo calculado,
-quantidade/status retornados e quantidade renderizada.
+profissional, servico, especialidade e status sao opcionais e cumulativos; sem
+filtro de profissional, a API deve retornar todos os agendamentos do
+estabelecimento para a data selecionada. O filtro de servico tambem deve ser
+explicitamente escolhido pelo usuario; a agenda nao deve selecionar
+automaticamente o primeiro servico como filtro oculto.
+
+Horarios sugeridos nao aparecem em `/agenda`. Eles pertencem ao fluxo de
+criacao de agendamento e devem ficar em `/agenda/novo`, onde existem data,
+profissional, servico e especialidade suficientes para consultar
+disponibilidade.
+
+No Modo Novo Agendamento, a prioridade visual e:
+
+1. Data.
+2. Configuracao: profissional, servico e especialidade.
+3. Horarios disponiveis.
+4. Horarios recomendados.
+5. Dados do cliente.
+6. Criar agendamento.
+
+Cards condicionais:
+
+- `Alertas da Agenda` mostra pendencias ou a mensagem: `Tudo em ordem. Nenhuma pendencia importante para esta data.`
+- `Ocupacao da Agenda` mostra somente metricas confiaveis recebidas do backend.
+- `Sugestoes para a Agenda` fica ocultado quando nao houver recomendacao.
+- `Horarios sugeridos` e `Horarios disponiveis` ficam restritos ao Modo Novo Agendamento.
+
+Em mobile, filtros devem ficar em coluna ou em grid respiravel, os slots devem
+ter area adequada para toque e os cards de atendimento priorizam hora, cliente,
+servico, profissional e status. A acao principal fica visivel; acoes
+secundarias podem ficar agrupadas em `Mais acoes`.
+
+## Dropdowns dependentes da Agenda
+
+Os seletores administrativos seguem a cadeia:
+
+```text
+Profissional -> Servico -> Especialidade
+```
+
+A fonte operacional das opcoes e a combinacao ativa:
+
+```text
+profissional_servico_especialidades
+-> servico_tenant_especialidades
+-> servico_tenants
+-> servicos_catalogo
+-> especialidades
+```
+
+Nao utilizar comparacao por nome, cargo, categoria ou apenas
+`profissional_especialidades` para decidir disponibilidade operacional.
+
+Em `/agenda/novo`:
+
+- sem profissional selecionado, o servico fica como estado incompleto;
+- apos selecionar profissional, aparecem apenas os servicos que ele pode executar;
+- apos selecionar servico, aparecem apenas especialidades validas para aquela combinacao profissional e servico;
+- `Todos os servicos` e `Todas as especialidades` nao disparam disponibilidade nem permitem criacao.
+
+Em `/agenda`:
+
+- `Todos os profissionais`, `Todos os servicos` e `Todas as especialidades` continuam sendo filtros amplos validos;
+- ao selecionar um profissional especifico, servicos e especialidades sao restringidos pelas combinacoes dele;
+- ao selecionar um servico especifico, especialidades sao restringidas pela regra mais restritiva disponivel;
+- mudar profissional ou servico limpa somente valores dependentes incompatíveis;
+- a timeline continua usando filtros aplicados somente depois de `Pesquisar`.
 
 ## Tolerancias de intervalo e fim do expediente
 
@@ -236,7 +308,29 @@ nao deve expor URLs tecnicas no campo `mensagens_whatsapp.conteudo`. A acao
 `schedule_again`, apontando para `/agendar/{tenant_slug}` quando o slug do
 tenant estiver disponivel.
 
+Para `appointment.confirmed`, a confirmacao do profissional/operacao mantem o
+destino operacional `pendente_cliente` e comunica o cliente pelo template
+oficial `appointment_confirmed`. Esse template deve possuir as acoes Bellory
+`Reagendar` e `Cancelar` em `templates_mensagem.metadata.actions`. No envio
+pelo provider WhatsApp, essas acoes sao representadas como botoes URL do
+template `appointment_confirmed`: o backend nao envia a URL-base no corpo nem
+como texto, apenas fornece `agendamentos.token_confirmacao` como parametro
+dinamico de cada botao. Conceitualmente, `BUTTON 0 {{1}}` recebe o token para
+Reagendar e `BUTTON 1 {{1}}` recebe o mesmo token para Cancelar; a acao e
+definida pela URL configurada no template da Meta. As rotas publicas continuam
+sem exigir login do cliente e protegidas por token, tenant do proprio
+agendamento, status nao terminal e horario futuro.
+
 ---
+
+## Historico legado
+
+O bloco abaixo foi preservado apenas como historico de especificacao antiga.
+A regra vigente do modulo esta nas secoes anteriores deste arquivo, nos docs
+mestres e nas ADRs 014-018. Em caso de divergencia, prevalecem as secoes
+recentes: Agenda backend-first, novo MER de Servicos, `pendente_cliente` apos
+confirmacao operacional e `appointment_confirmed` com acoes Reagendar/Cancelar
+via `token_confirmacao`.
 
 O `agenda.md` é provavelmente o documento mais importante do núcleo operacional do Bellory, porque ele define:
 
@@ -1072,3 +1166,83 @@ O módulo Agenda deve representar:
 O usuário deve sentir:
 
 "O Bellory organiza automaticamente minha operação."
+
+---
+
+# 45. Novo MER de Servicos na Agenda
+
+A partir da Fase 5, Agenda interna e Booking publico usam o novo MER de
+Servicos para resolver oferta, especialidade, preco e duracao.
+
+Fluxo operacional:
+
+* Servico ofertado pelo tenant: `servico_tenants`
+* Conceito do servico: `servicos_catalogo`
+* Configuracao por especialidade: `servico_tenant_especialidades`
+* Capacidade profissional: `profissional_especialidades`
+* Snapshot do agendamento: `agendamento_servicos`
+* Historico do atendimento: `cliente_historico_atendimentos`
+
+Regras:
+
+* `servico_tenants` pode conter servicos apenas disponibilizados ao tenant. A
+  Agenda nao lista servico apenas pela existencia do registro; exige
+  `servico_tenants.ativo = true`.
+* Booking publico lista somente combinacoes ativas, online, com duracao positiva
+  e profissional compativel.
+* Agenda interna exige especialidade quando um servico tiver mais de uma
+  combinacao compativel para o profissional.
+* Backend e a autoridade de preco e duracao; frontend nunca envia esses valores
+  como fonte confiavel.
+* Novos snapshots preservam `servico_catalogo_id`, `servico_tenant_id`,
+  `servico_tenant_especialidade_id`, `especialidade_id`, preco, duracao,
+  profissional e nomes exibidos.
+* Historico deve ser alimentado pelo snapshot do atendimento, nao por leitura
+  tardia da configuracao atual do servico.
+
+`profissional_servicos` nao e autoridade para Agenda ou Booking publico nesta
+fase. O modulo de Equipe ainda pode manter esse cadastro como transicao ate a
+fase propria de saneamento.
+
+## Validacao da Fase 5.1
+
+Em 2026-07-29, a migration `20260729120000` foi aplicada de forma controlada no
+Supabase remoto `djbuzarzbpcpixudpnmg` e a Fase 5 foi validada com dados reais
+do tenant de desenvolvimento `Espaco Vivian Beauty`.
+
+Resultados validados:
+
+* Manicure/Fibra usou preco 50 e duracao 30 minutos da combinacao
+  `servico_tenant_especialidades`.
+* Corte de cabelo/Corte Degrade usou preco 80 e duracao 45 minutos da
+  combinacao.
+* Slots mudaram conforme a duracao: 16 slots para 30 minutos e 14 slots para
+  45 minutos na data 2026-08-03.
+* Novo agendamento gravou snapshot com `servico_tenant_id`,
+  `servico_tenant_especialidade_id`, `especialidade_id`, preco, duracao,
+  profissional e nomes exibidos.
+* Conclusao do atendimento gerou historico com as mesmas referencias.
+* Remarcacao apenas de data/hora preservou o snapshot comercial.
+
+## Atualizacao 2026-07-29 - Fase 8.2
+
+As FKs remanescentes de `agendamento_servicos` e
+`cliente_historico_atendimentos` para `servicos` e `servico_especialidades`
+foram removidas pela migration `20260729180000`. As colunas legadas seguem
+fisicamente presentes apenas para compatibilidade transicional e leitura de
+snapshot historico.
+
+Novos agendamentos e historicos devem continuar usando
+`servico_catalogo_id`, `servico_tenant_id` e
+`servico_tenant_especialidade_id` como referencias oficiais do MER de Servicos.
+
+## Atualizacao 2026-07-29 - Fase 8.3
+
+As tabelas legadas `servicos`, `servico_especialidades` e
+`profissional_servicos` foram removidas fisicamente. Agenda interna, Booking
+publico e historico nao devem consultar legado nem fazer fallback para IDs
+antigos.
+
+Snapshots antigos continuam legiveis pelos campos materializados em
+`agendamento_servicos` e `cliente_historico_atendimentos`; novos fluxos usam o
+novo MER como fonte de preco, duracao, especialidade, profissional e servico.
