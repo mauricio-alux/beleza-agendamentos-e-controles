@@ -13,6 +13,7 @@ import {
   businessTypesService,
   type BusinessType,
   type BusinessTypeCatalogAssociation,
+  type OperationalProfile,
   type TaxonomyRole,
   type TaxonomySpecialty
 } from "@/services/business-types.service";
@@ -105,6 +106,7 @@ export function BusinessTypesManager() {
   const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
   const [roles, setRoles] = useState<TaxonomyRole[]>([]);
   const [specialties, setSpecialties] = useState<TaxonomySpecialty[]>([]);
+  const [operationalProfiles, setOperationalProfiles] = useState<OperationalProfile[]>([]);
   const [roleForm, setRoleForm] = useState<RoleFormState>(EMPTY_ROLE_FORM);
   const [specialtyForm, setSpecialtyForm] = useState<SpecialtyFormState>(EMPTY_SPECIALTY_FORM);
   const [catalogSpecialtyIds, setCatalogSpecialtyIds] = useState<string[]>([]);
@@ -150,16 +152,18 @@ export function BusinessTypesManager() {
     setIsLoading(true);
     setError("");
     try {
-      const [nextTypes, nextCatalog, nextRoles, nextGlobalSpecialties] = await Promise.all([
+      const [nextTypes, nextCatalog, nextRoles, nextGlobalSpecialties, nextProfiles] = await Promise.all([
         businessTypesService.listAdmin(session, { includeInactive: "true" }),
         businessTypesService.listAdminCatalog(session),
         businessTypesService.listAdminRoles(session),
-        businessTypesService.listAdminGlobalSpecialties(session)
+        businessTypesService.listAdminGlobalSpecialties(session),
+        businessTypesService.listOperationalProfiles(session)
       ]);
       setTypes(nextTypes || []);
       setCatalog(nextCatalog || []);
       setRoles(nextRoles || []);
       setSpecialties(nextGlobalSpecialties || []);
+      setOperationalProfiles(nextProfiles || []);
       const nextSelected = selectedTypeId || nextTypes?.[0]?.id || "";
       setSelectedTypeId(nextSelected);
       if (nextSelected) {
@@ -439,6 +443,22 @@ export function BusinessTypesManager() {
     }
   }
 
+  async function updateOperationalProfile(profile: OperationalProfile, patch: Partial<OperationalProfile>) {
+    if (!session || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const saved = await businessTypesService.updateOperationalProfile(session, profile.id, patch);
+      setOperationalProfiles((current) => current.map((item) => item.id === saved.id ? { ...item, ...saved } : item));
+      setMessage("Perfil operacional atualizado.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar perfil operacional."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function toggleCatalogItem(item: ServiceCatalog) {
     if (isSaving || item.ativo === false) return;
     const current = associationByCatalogId.get(item.id);
@@ -499,6 +519,7 @@ export function BusinessTypesManager() {
         <nav className="flex flex-wrap gap-2 rounded-2xl border border-white/80 bg-white/85 p-3 shadow-soft">
           {[
             ["#tipos-negocio", "Tipos de negocio"],
+            ["#perfis-operacionais", "Perfis operacionais"],
             ["#servicos-catalogo", "Servicos de catalogo"],
             ["#especialidades", "Especialidades"],
             ["#cargos", "Cargos"],
@@ -509,6 +530,63 @@ export function BusinessTypesManager() {
             </Button>
           ))}
         </nav>
+
+        <section id="perfis-operacionais" className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-foreground">Perfis operacionais</h2>
+            <p className="text-sm text-muted-foreground">Defaults administrativos usados na inicializacao do estabelecimento.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {operationalProfiles.map((profile) => (
+              <div key={profile.id} className="rounded-xl border border-border bg-white/75 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-foreground">{profile.tipo_negocio?.nome || profile.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {profile.metrics?.servicos || 0} servicos - {profile.metrics?.cargos || 0} cargos - {profile.metrics?.defaults || 0} defaults
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${profile.ativo ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                    {profile.ativo ? "Ativo" : "Inativo"}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <Field label="Classificacao">
+                    <select
+                      value={profile.classificacao}
+                      onChange={(event) => updateOperationalProfile(profile, { classificacao: event.target.value as OperationalProfile["classificacao"] })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
+                    >
+                      <option value="especializado">Especializado</option>
+                      <option value="generalista">Generalista</option>
+                    </select>
+                  </Field>
+                  <div className="grid content-end gap-2">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={profile.exige_confirmacao_onboarding}
+                        onChange={(event) => updateOperationalProfile(profile, { exige_confirmacao_onboarding: event.target.checked })}
+                      />
+                      Confirmar no onboarding
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={profile.ativo}
+                        onChange={(event) => updateOperationalProfile(profile, { ativo: event.target.checked })}
+                      />
+                      Perfil ativo
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!operationalProfiles.length ? (
+              <FeedbackMessage tone="info" message="Nenhum perfil operacional encontrado." />
+            ) : null}
+          </div>
+        </section>
 
         <section className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
           <div id="tipos-negocio" className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft">

@@ -64,6 +64,24 @@ export type TaxonomySpecialty = {
   cargo?: TaxonomyRole | null;
 };
 
+export type OperationalProfile = {
+  id: string;
+  tipo_negocio_id: string;
+  tipo_negocio?: BusinessType | null;
+  classificacao: "especializado" | "generalista";
+  nome: string;
+  descricao?: string | null;
+  ativo: boolean;
+  exige_confirmacao_onboarding: boolean;
+  taxonomy_version: string;
+  origem: string;
+  metrics?: {
+    servicos: number;
+    cargos: number;
+    defaults: number;
+  };
+};
+
 export type TenantBusinessType = {
   id: string;
   tenant_id: string;
@@ -113,6 +131,15 @@ type AdminSpecialtyPayload = {
   descricao?: string | null;
   taxonomy_category_key?: string;
   ativo?: boolean;
+};
+
+type OperationalProfilePayload = {
+  classificacao?: "especializado" | "generalista";
+  nome?: string;
+  descricao?: string | null;
+  ativo?: boolean;
+  exige_confirmacao_onboarding?: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 type ApiEnvelope<T> = {
@@ -338,6 +365,17 @@ async function updateAdminSpecialty(session: AuthSession | null, id: string, pay
   });
 }
 
+async function listOperationalProfiles(session: AuthSession | null) {
+  return request<OperationalProfile[]>("/admin/taxonomia/perfis-operacionais", session);
+}
+
+async function updateOperationalProfile(session: AuthSession | null, id: string, payload: OperationalProfilePayload) {
+  return request<OperationalProfile>(`/admin/taxonomia/perfis-operacionais/${id}`, session, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export const businessTypesService = {
   listActive,
   listTenantTypes,
@@ -360,5 +398,7 @@ export const businessTypesService = {
   updateAdminRole,
   listAdminGlobalSpecialties,
   createAdminSpecialty,
-  updateAdminSpecialty
+  updateAdminSpecialty,
+  listOperationalProfiles,
+  updateOperationalProfile
 };

@@ -43,6 +43,9 @@ router.patch('/taxonomia/cargos/:id', requirePermission('platform.business_types
 router.get('/taxonomia/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminGlobalSpecialties));
 router.post('/taxonomia/especialidades', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateSpecialty));
 router.patch('/taxonomia/especialidades/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateSpecialty));
+router.get('/taxonomia/perfis-operacionais', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminOperationalProfiles));
+router.patch('/taxonomia/perfis-operacionais/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateOperationalProfile));
+router.post('/taxonomia/perfis-operacionais/defaults', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateOperationalDefault));
 router.get('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminDetail));
 router.post('/tipos-negocio', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreate));
 router.patch('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdate));

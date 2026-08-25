@@ -114,6 +114,33 @@ const updateSpecialtyPayloadSchema = specialtyPayloadSchema.partial()
     message: 'Informe ao menos um campo para atualizar a especialidade.'
   });
 
+const operationalProfileUpdateSchema = z.object({
+  classificacao: z.enum(['especializado', 'generalista']).optional(),
+  nome: z.string().min(2).max(150).optional(),
+  descricao: z.string().max(1000).nullable().optional(),
+  ativo: z.boolean().optional(),
+  exige_confirmacao_onboarding: z.boolean().optional(),
+  metadata: z.record(z.any()).optional()
+}).strict();
+
+const operationalProfileDefaultSchema = z.object({
+  perfil_operacional_id: z.string().uuid(),
+  servico_catalogo_id: z.string().uuid(),
+  especialidade_id: z.string().uuid().nullable().optional(),
+  region_scope: z.enum(['global', 'country', 'state', 'city']).default('global'),
+  country: z.string().length(2).nullable().optional(),
+  state: z.string().max(80).nullable().optional(),
+  city: z.string().max(120).nullable().optional(),
+  preco_min_referencia: z.number().nonnegative().nullable().optional(),
+  preco_referencia: z.number().nonnegative().nullable().optional(),
+  preco_max_referencia: z.number().nonnegative().nullable().optional(),
+  duracao_minutos: z.number().int().positive().nullable().optional(),
+  dias_retorno_recomendado: z.number().int().positive().nullable().optional(),
+  aceita_agendamento_online: z.boolean().default(true),
+  fonte: z.string().max(80).optional(),
+  metadata: z.record(z.any()).optional()
+}).strict();
+
 module.exports = {
   businessTypeSchema,
   updateBusinessTypeSchema,
@@ -127,5 +154,7 @@ module.exports = {
   updateRolePayloadSchema,
   specialtyPayloadSchema,
   updateSpecialtyPayloadSchema,
+  operationalProfileUpdateSchema,
+  operationalProfileDefaultSchema,
   slugify
 };

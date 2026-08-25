@@ -7,6 +7,7 @@ const planosService = require('../planos/planos.service');
 const subscriptionService = require('../subscription/subscription.service');
 const tenantsRepository = require('../tenants/tenants.repository');
 const businessTypesService = require('../business-types/business-types.service');
+const operationalProfilesService = require('../operational-profiles/operational-profiles.service');
 const usuariosRepository = require('../usuarios/usuarios.repository');
 const membershipsRepository = require('../memberships/memberships.repository');
 const onboardingRepository = require('./onboarding.repository');
@@ -467,22 +468,42 @@ async function updateOnboardingStatus(tenantId, usuarioId, status, extraMetadata
 async function createTenantStructure({ tenant, usuario, servicosIniciais = [] }) {
   const configuracao = await createInitialSettings(tenant, usuario.id);
   const profissional = await createDefaultProfessional(tenant, usuario);
-  const servicos = await createDefaultServices(tenant.id, servicosIniciais);
-  const servicoEspecialidades = await createDefaultServiceSpecialtyLinks(tenant.id, servicos);
-  const servicosComConfiguracoes = await onboardingRepository.findServicesByTenant(tenant.id);
-  const profissionalServicos = await createProfessionalServiceLinks(
-    tenant.id,
-    profissional,
-    servicosComConfiguracoes,
-    servicosIniciais
-  );
+  let servicos = [];
+  let servicoEspecialidades = [];
+  let profissionalServicos = [];
+  let perfilOperacional = null;
+
+  if (!servicosIniciais.length) {
+    perfilOperacional = await operationalProfilesService.initializeTenantFromProfile({
+      tenant,
+      profissional,
+      origin: 'operational_profile_onboarding'
+    });
+    servicos = await onboardingRepository.findServicesByTenant(tenant.id);
+    servicoEspecialidades = servicos.flatMap((servico) => servico.configuracoes || []);
+    profissionalServicos = perfilOperacional?.plan?.materialized?.profissional_servico_especialidades || [];
+  } else {
+    servicos = await createDefaultServices(tenant.id, servicosIniciais);
+    servicoEspecialidades = await createDefaultServiceSpecialtyLinks(tenant.id, servicos);
+    const servicosComConfiguracoes = await onboardingRepository.findServicesByTenant(tenant.id);
+    profissionalServicos = await createProfessionalServiceLinks(
+      tenant.id,
+      profissional,
+      servicosComConfiguracoes,
+      servicosIniciais
+    );
+  }
   const escalas = await createDefaultSchedule(tenant.id, profissional.id);
   const linkAgendamento = await createBookingLink(tenant, profissional);
 
   await updateOnboardingStatus(tenant.id, usuario.id, 'em_andamento', {
     tenant_created: { tenant_id: tenant.id },
     admin_created: { usuario_id: usuario.id },
-    services_created: { total: servicos.length },
+    services_created: {
+      total: servicos.length,
+      perfil_operacional_id: perfilOperacional?.plan?.perfil_operacional_id || null,
+      perfil_classificacao: perfilOperacional?.plan?.perfil_classificacao || null
+    },
     professional_created: { profissional_id: profissional.id },
     scale_created: { total: escalas.length },
     booking_link_created: { link_id: linkAgendamento.id }
@@ -494,6 +515,7 @@ async function createTenantStructure({ tenant, usuario, servicosIniciais = [] })
     servicos,
     servico_tenant_especialidades: servicoEspecialidades,
     profissional_servico_especialidades: profissionalServicos,
+    perfil_operacional: perfilOperacional,
     escalas,
     link_agendamento: linkAgendamento
   };

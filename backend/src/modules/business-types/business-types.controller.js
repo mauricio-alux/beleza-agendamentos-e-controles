@@ -11,8 +11,11 @@ const {
   rolePayloadSchema,
   updateRolePayloadSchema,
   specialtyPayloadSchema,
-  updateSpecialtyPayloadSchema
+  updateSpecialtyPayloadSchema,
+  operationalProfileUpdateSchema,
+  operationalProfileDefaultSchema
 } = require('./business-types.validators');
+const operationalProfilesService = require('../operational-profiles/operational-profiles.service');
 
 function platformContext(req) {
   return req.platformContext || {
@@ -158,6 +161,23 @@ async function tenantCatalog(req, res) {
   return res.json({ data });
 }
 
+async function adminOperationalProfiles(req, res) {
+  const data = await operationalProfilesService.listAdminProfiles(platformContext(req));
+  return res.json({ data });
+}
+
+async function adminUpdateOperationalProfile(req, res) {
+  const input = operationalProfileUpdateSchema.parse(req.body);
+  const data = await operationalProfilesService.updateAdminProfile(platformContext(req), req.params.id, input);
+  return res.json({ data });
+}
+
+async function adminCreateOperationalDefault(req, res) {
+  const input = operationalProfileDefaultSchema.parse(req.body);
+  const data = await operationalProfilesService.updateAdminDefault(platformContext(req), input);
+  return res.status(201).json({ data });
+}
+
 module.exports = {
   active,
   adminList,
@@ -181,5 +201,8 @@ module.exports = {
   adminReplaceServices,
   tenantTypes,
   tenantReplace,
-  tenantCatalog
+  tenantCatalog,
+  adminOperationalProfiles,
+  adminUpdateOperationalProfile,
+  adminCreateOperationalDefault
 };
