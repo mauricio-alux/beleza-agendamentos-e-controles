@@ -123,6 +123,16 @@ function installRepositoryMocks({ services, links }) {
   replace('listSpecialtiesByIds', async (ids) => (
     [hairSpecialty, braidsSpecialty].filter((specialty) => ids.includes(specialty.id))
   ));
+  replace('listCargoSpecialtyLinks', async (cargoId, specialtyIds = []) => (
+    [hairSpecialty, braidsSpecialty]
+      .filter((specialty) => specialty.cargo_id === cargoId)
+      .filter((specialty) => !specialtyIds.length || specialtyIds.includes(specialty.id))
+      .map((specialty) => ({
+        cargo_id: cargoId,
+        especialidade_id: specialty.id,
+        principal: true
+      }))
+  ));
   replace('listTenantSpecialtyStatuses', async () => []);
   replace('listServicesByIds', async (_tenantId, ids) => (
     services.filter((service) => ids.includes(service.id))
@@ -177,6 +187,59 @@ test('persists compatible specialties and services through one atomic repository
     assert.deepEqual(mocks.calls.atomic[0][4], [braidsServiceId]);
   } finally {
     mocks.restore();
+  }
+});
+
+test('allows an official specialty through the Taxonomy V2 N:N matrix without using legacy cargo_id as execution restriction', async () => {
+  const originals = {};
+  const calls = {
+    atomic: []
+  };
+  const replace = (name, implementation) => {
+    originals[name] = teamRepository[name];
+    teamRepository[name] = implementation;
+  };
+
+  replace('findById', async () => buildProfessional());
+  replace('findRoleById', async () => alternateHairRole);
+  replace('listSpecialtiesByIds', async (ids) => [hairSpecialty].filter((specialty) => ids.includes(specialty.id)));
+  replace('listCargoSpecialtyLinks', async (cargoId, specialtyIds = []) => {
+    assert.equal(cargoId, alternateHairRoleId);
+    assert.deepEqual(specialtyIds, [hairSpecialtyId]);
+    return [{
+      cargo_id: alternateHairRoleId,
+      especialidade_id: hairSpecialtyId,
+      principal: false
+    }];
+  });
+  replace('listTenantSpecialtyStatuses', async () => []);
+  replace('listServicesByIds', async () => []);
+  replace('updateWithOperationalLinks', async (...args) => {
+    calls.atomic.push(args);
+    return {
+      ...buildProfessional(),
+      cargo_id: alternateHairRoleId,
+      cargo_ref: alternateHairRole
+    };
+  });
+
+  try {
+    await teamService.update(tenantId, professionalId, {
+      nome_publico: 'Karol Fernanda',
+      tipo_usuario: 'Terceiro',
+      cargo_id: alternateHairRoleId,
+      percentual_comissao: 60,
+      aceita_agendamento_online: false,
+      especialidade_ids: [hairSpecialtyId],
+      servico_ids: []
+    });
+
+    assert.equal(calls.atomic.length, 1);
+    assert.deepEqual(calls.atomic[0][3], [hairSpecialtyId]);
+  } finally {
+    Object.entries(originals).forEach(([name, implementation]) => {
+      teamRepository[name] = implementation;
+    });
   }
 });
 

@@ -1,5 +1,12 @@
 const { supabaseAdmin } = require('../../config/supabase');
 
+function isMissingTaxonomyV2Relation(error) {
+  if (!error) return false;
+  return error.code === '42P01'
+    || error.code === 'PGRST205'
+    || /cargo_especialidades/i.test(error.message || '');
+}
+
 async function listByTenant(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('profissionais')
@@ -453,7 +460,7 @@ async function removeRole(id) {
   return data;
 }
 
-async function listSpecialties(filters = {}) {
+async function queryLegacySpecialties(filters = {}) {
   let query = supabaseAdmin
     .from('especialidades')
     .select('*, cargo:cargos(*)')
@@ -483,6 +490,87 @@ async function listSpecialties(filters = {}) {
     && specialty.cargo.ativo !== false
     && !specialty.cargo.deleted_at
   ));
+}
+
+async function querySpecialtiesByIds(ids = [], filters = {}) {
+  if (!ids.length) return [];
+
+  let query = supabaseAdmin
+    .from('especialidades')
+    .select('*, cargo:cargos(*)')
+    .in('id', ids)
+    .eq('ativo', true)
+    .is('deleted_at', null)
+    .order('nome', { ascending: true });
+
+  if (filters.categoryKey) {
+    query = query.eq('taxonomy_category_key', filters.categoryKey);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return (data || []).filter((specialty) => (
+    specialty.cargo
+    && specialty.cargo.ativo !== false
+    && !specialty.cargo.deleted_at
+    && (!specialty.tenant_id || specialty.tenant_id === filters.tenantId)
+  ));
+}
+
+async function listCargoSpecialtyLinks(cargoId, specialtyIds = [], options = {}) {
+  if (!cargoId) return [];
+
+  let query = supabaseAdmin
+    .from('cargo_especialidades')
+    .select('cargo_id,especialidade_id,principal,ativo,taxonomy_version,relation_source')
+    .eq('cargo_id', cargoId)
+    .eq('ativo', true)
+    .is('deleted_at', null);
+
+  if (specialtyIds.length) {
+    query = query.in('especialidade_id', specialtyIds);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    if (options.allowMissing === true && isMissingTaxonomyV2Relation(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  return data || [];
+}
+
+async function listSpecialties(filters = {}) {
+  if (filters.cargoId) {
+    const links = await listCargoSpecialtyLinks(filters.cargoId, [], { allowMissing: true });
+
+    if (links) {
+      const officialSpecialties = await querySpecialtiesByIds(
+        links.map((link) => link.especialidade_id),
+        filters
+      );
+      const localSpecialties = filters.tenantId
+        ? await queryLegacySpecialties({
+          ...filters,
+          cargoId: filters.cargoId
+        }).then((rows) => rows.filter((specialty) => specialty.tenant_id === filters.tenantId))
+        : [];
+      const byId = new Map();
+
+      [...officialSpecialties, ...localSpecialties].forEach((specialty) => {
+        byId.set(specialty.id, specialty);
+      });
+
+      return Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    }
+  }
+
+  return queryLegacySpecialties(filters);
 }
 
 async function listTenantSpecialtyStatuses(tenantId) {
@@ -662,6 +750,7 @@ module.exports = {
   updateRole,
   removeRole,
   listSpecialties,
+  listCargoSpecialtyLinks,
   listTenantSpecialtyStatuses,
   upsertTenantSpecialtyStatus,
   listSpecialtiesByIds,

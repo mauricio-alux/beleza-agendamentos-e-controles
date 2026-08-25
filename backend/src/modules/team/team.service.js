@@ -186,7 +186,29 @@ async function ensureCompatibleSpecialties(tenantId, cargoId, specialtyIds = [])
     throw new AppError('Uma ou mais especialidades sao invalidas.', 422, 'INVALID_SPECIALTY');
   }
 
-  const incompatible = specialties.find((specialty) => specialty.cargo_id !== cargoId);
+  const officialSpecialtyIds = specialties
+    .filter((specialty) => !specialty.tenant_id)
+    .map((specialty) => specialty.id);
+  const cargoSpecialtyLinks = await teamRepository.listCargoSpecialtyLinks(
+    cargoId,
+    officialSpecialtyIds,
+    { allowMissing: true }
+  );
+  const compatibleOfficialIds = cargoSpecialtyLinks
+    ? new Set(cargoSpecialtyLinks.map((link) => link.especialidade_id))
+    : null;
+
+  const incompatible = specialties.find((specialty) => {
+    if (specialty.tenant_id) {
+      return specialty.tenant_id !== tenantId || specialty.cargo_id !== cargoId;
+    }
+
+    if (!compatibleOfficialIds) {
+      return specialty.cargo_id !== cargoId;
+    }
+
+    return !compatibleOfficialIds.has(specialty.id);
+  });
 
   if (incompatible) {
     throw new AppError('Especialidade incompativel com o cargo selecionado.', 422, 'INCOMPATIBLE_SPECIALTY', {
