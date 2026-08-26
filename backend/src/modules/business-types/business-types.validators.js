@@ -141,6 +141,30 @@ const operationalProfileDefaultSchema = z.object({
   metadata: z.record(z.any()).optional()
 }).strict();
 
+const operationalProfileServiceSchema = z.object({
+  servico_catalogo_id: z.string().uuid(),
+  recomendado: z.boolean().optional().default(true),
+  obrigatorio: z.boolean().optional().default(false),
+  ativo: z.boolean().optional().default(true),
+  prioridade: z.number().int().min(0).optional().default(0),
+  metadata: z.record(z.any()).optional()
+}).strict();
+
+const operationalProfileRoleSchema = z.object({
+  cargo_id: z.string().uuid(),
+  especialidade_id: z.string().uuid().optional(),
+  recomendado: z.boolean().optional().default(true),
+  principal: z.boolean().optional().default(false),
+  ativo: z.boolean().optional().default(true),
+  prioridade: z.number().int().min(0).optional().default(0),
+  metadata: z.record(z.any()).optional()
+}).strict();
+
+const operationalProfileDefaultUpdateSchema = operationalProfileDefaultSchema.partial()
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: 'Informe ao menos um campo para atualizar o default.'
+  });
+
 module.exports = {
   businessTypeSchema,
   updateBusinessTypeSchema,
@@ -156,5 +180,8 @@ module.exports = {
   updateSpecialtyPayloadSchema,
   operationalProfileUpdateSchema,
   operationalProfileDefaultSchema,
+  operationalProfileDefaultUpdateSchema,
+  operationalProfileServiceSchema,
+  operationalProfileRoleSchema,
   slugify
 };

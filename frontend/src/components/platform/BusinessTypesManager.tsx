@@ -61,6 +61,16 @@ type SpecialtyFormState = {
   ativo: boolean;
 };
 
+type ProfileDraftState = {
+  serviceId: string;
+  roleId: string;
+  defaultServiceId: string;
+  defaultSpecialtyId: string;
+  defaultPrice: string;
+  defaultDuration: string;
+  defaultReturn: string;
+};
+
 const EMPTY_FORM: FormState = {
   id: "",
   nome: "",
@@ -98,6 +108,16 @@ const EMPTY_SPECIALTY_FORM: SpecialtyFormState = {
   ativo: true
 };
 
+const EMPTY_PROFILE_DRAFT: ProfileDraftState = {
+  serviceId: "",
+  roleId: "",
+  defaultServiceId: "",
+  defaultSpecialtyId: "",
+  defaultPrice: "",
+  defaultDuration: "",
+  defaultReturn: ""
+};
+
 export function BusinessTypesManager() {
   const { session } = useAuth();
   const [types, setTypes] = useState<BusinessType[]>([]);
@@ -107,6 +127,7 @@ export function BusinessTypesManager() {
   const [roles, setRoles] = useState<TaxonomyRole[]>([]);
   const [specialties, setSpecialties] = useState<TaxonomySpecialty[]>([]);
   const [operationalProfiles, setOperationalProfiles] = useState<OperationalProfile[]>([]);
+  const [profileDrafts, setProfileDrafts] = useState<Record<string, ProfileDraftState>>({});
   const [roleForm, setRoleForm] = useState<RoleFormState>(EMPTY_ROLE_FORM);
   const [specialtyForm, setSpecialtyForm] = useState<SpecialtyFormState>(EMPTY_SPECIALTY_FORM);
   const [catalogSpecialtyIds, setCatalogSpecialtyIds] = useState<string[]>([]);
@@ -459,6 +480,91 @@ export function BusinessTypesManager() {
     }
   }
 
+  function profileDraft(profileId: string) {
+    return profileDrafts[profileId] || EMPTY_PROFILE_DRAFT;
+  }
+
+  function updateProfileDraft(profileId: string, patch: Partial<ProfileDraftState>) {
+    setProfileDrafts((current) => ({
+      ...current,
+      [profileId]: {
+        ...(current[profileId] || EMPTY_PROFILE_DRAFT),
+        ...patch
+      }
+    }));
+  }
+
+  async function addProfileService(profile: OperationalProfile) {
+    const draft = profileDraft(profile.id);
+    if (!session || !draft.serviceId || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await businessTypesService.upsertOperationalProfileService(session, profile.id, {
+        servico_catalogo_id: draft.serviceId,
+        recomendado: true,
+        ativo: true,
+        prioridade: profile.servicos?.length || 0
+      });
+      await load();
+      setMessage("Servico recomendado atualizado.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar servicos recomendados."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function addProfileRole(profile: OperationalProfile) {
+    const draft = profileDraft(profile.id);
+    if (!session || !draft.roleId || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await businessTypesService.upsertOperationalProfileRole(session, profile.id, {
+        cargo_id: draft.roleId,
+        recomendado: true,
+        ativo: true,
+        prioridade: profile.cargos?.length || 0
+      });
+      await load();
+      setMessage("Cargo recomendado atualizado.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar cargos recomendados."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function addProfileDefault(profile: OperationalProfile) {
+    const draft = profileDraft(profile.id);
+    if (!session || !draft.defaultServiceId || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await businessTypesService.createOperationalProfileDefault(session, {
+        perfil_operacional_id: profile.id,
+        servico_catalogo_id: draft.defaultServiceId,
+        especialidade_id: draft.defaultSpecialtyId || null,
+        region_scope: "global",
+        preco_referencia: draft.defaultPrice ? Number(draft.defaultPrice) : null,
+        duracao_minutos: draft.defaultDuration ? Number(draft.defaultDuration) : null,
+        dias_retorno_recomendado: draft.defaultReturn ? Number(draft.defaultReturn) : null,
+        aceita_agendamento_online: true,
+        fonte: "administrative_reference"
+      });
+      await load();
+      setMessage("Preco inicial de referencia atualizado.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar defaults."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function toggleCatalogItem(item: ServiceCatalog) {
     if (isSaving || item.ativo === false) return;
     const current = associationByCatalogId.get(item.id);
@@ -578,6 +684,77 @@ export function BusinessTypesManager() {
                       />
                       Perfil ativo
                     </label>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <ProfileSummary
+                    title="Servicos recomendados"
+                    items={(profile.servicos || []).map((item) => `${item.servico_catalogo?.nome || "Servico"} - ${item.recomendado ? "recomendado" : "opcional"} - ordem ${item.prioridade ?? 0}`)}
+                  />
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select
+                      value={profileDraft(profile.id).serviceId}
+                      onChange={(event) => updateProfileDraft(profile.id, { serviceId: event.target.value })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
+                    >
+                      <option value="">Adicionar servico recomendado</option>
+                      {catalog.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                    </select>
+                    <Button type="button" variant="outline" onClick={() => addProfileService(profile)} disabled={isSaving || !profileDraft(profile.id).serviceId}>
+                      <Plus className="h-4 w-4" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  <ProfileSummary
+                    title="Cargos recomendados"
+                    items={(profile.cargos || []).map((item) => `${item.cargo?.nome || "Cargo"} - ${item.principal ? "principal" : "recomendado"} - ordem ${item.prioridade ?? 0}`)}
+                  />
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select
+                      value={profileDraft(profile.id).roleId}
+                      onChange={(event) => updateProfileDraft(profile.id, { roleId: event.target.value })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
+                    >
+                      <option value="">Adicionar cargo recomendado</option>
+                      {operationalRoles.map((role) => <option key={role.id} value={role.id}>{role.nome}</option>)}
+                    </select>
+                    <Button type="button" variant="outline" onClick={() => addProfileRole(profile)} disabled={isSaving || !profileDraft(profile.id).roleId}>
+                      <Plus className="h-4 w-4" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  <ProfileSummary
+                    title="Precos iniciais de referencia"
+                    items={(profile.defaults || []).slice(0, 6).map((item) => {
+                      const serviceName = catalog.find((catalogItem) => catalogItem.id === item.servico_catalogo_id)?.nome || "Servico";
+                      const specialtyName = specialties.find((specialty) => specialty.id === item.especialidade_id)?.nome || "geral";
+                      return `${serviceName} / ${specialtyName}: R$ ${item.preco_referencia ?? "-"} - ${item.duracao_minutos ?? "-"} min - retorno ${item.dias_retorno_recomendado ?? "-"} dias`;
+                    })}
+                  />
+                  <div className="grid gap-2 md:grid-cols-5">
+                    <select
+                      value={profileDraft(profile.id).defaultServiceId}
+                      onChange={(event) => updateProfileDraft(profile.id, { defaultServiceId: event.target.value, defaultSpecialtyId: "" })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm md:col-span-2"
+                    >
+                      <option value="">Servico</option>
+                      {catalog.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                    </select>
+                    <select
+                      value={profileDraft(profile.id).defaultSpecialtyId}
+                      onChange={(event) => updateProfileDraft(profile.id, { defaultSpecialtyId: event.target.value })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm md:col-span-2"
+                    >
+                      <option value="">Especialidade geral</option>
+                      {activeSpecialties.map((specialty) => <option key={specialty.id} value={specialty.id}>{specialty.nome}</option>)}
+                    </select>
+                    <Input value={profileDraft(profile.id).defaultPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultPrice: event.target.value })} placeholder="Preco" />
+                    <Input value={profileDraft(profile.id).defaultDuration} onChange={(event) => updateProfileDraft(profile.id, { defaultDuration: event.target.value })} placeholder="Duracao" />
+                    <Input value={profileDraft(profile.id).defaultReturn} onChange={(event) => updateProfileDraft(profile.id, { defaultReturn: event.target.value })} placeholder="Retorno" />
+                    <Button type="button" variant="outline" onClick={() => addProfileDefault(profile)} disabled={isSaving || !profileDraft(profile.id).defaultServiceId} className="md:col-span-2">
+                      <Save className="h-4 w-4" />
+                      Salvar referencia
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -918,6 +1095,21 @@ function TaxonomyMetric({ icon: Icon, label, value, hint }: { icon: typeof Tags;
       </div>
       <p className="mt-4 text-2xl font-bold text-foreground">{value}</p>
       <p className="mt-1 text-xs font-semibold text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+function ProfileSummary({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-xl border border-border bg-white/80 p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.length ? items.map((item) => (
+          <span key={item} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">{item}</span>
+        )) : (
+          <span className="text-xs font-semibold text-muted-foreground">Nenhum item configurado.</span>
+        )}
+      </div>
     </div>
   );
 }

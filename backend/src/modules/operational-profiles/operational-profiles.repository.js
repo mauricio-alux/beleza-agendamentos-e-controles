@@ -40,6 +40,18 @@ async function updateProfile(id, payload) {
   return data;
 }
 
+async function findProfileById(id) {
+  const { data, error } = await supabaseAdmin
+    .from('tipo_negocio_perfis_operacionais')
+    .select('*, tipo_negocio:tipos_negocio(id,nome,slug,ativo)')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 async function listProfileServices(profileId) {
   const { data, error } = await supabaseAdmin
     .from('perfil_operacional_servicos')
@@ -78,10 +90,120 @@ async function listProfileDefaults(profileId) {
   return data || [];
 }
 
+async function findCatalogServiceForProfile(profileId, catalogId) {
+  const profile = await findProfileById(profileId);
+  if (!profile) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from('tipo_negocio_servicos_catalogo')
+    .select('id,tipo_negocio_id,servico_catalogo_id,ativo,recomendado,ordem_exibicao')
+    .eq('tipo_negocio_id', profile.tipo_negocio_id)
+    .eq('servico_catalogo_id', catalogId)
+    .eq('ativo', true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function findCatalogSpecialty(catalogId, specialtyId) {
+  const { data, error } = await supabaseAdmin
+    .from('servico_catalogo_especialidades')
+    .select('id,servico_catalogo_id,especialidade_id,ativo')
+    .eq('servico_catalogo_id', catalogId)
+    .eq('especialidade_id', specialtyId)
+    .eq('ativo', true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function findCargoSpecialty(cargoId, specialtyId) {
+  const { data, error } = await supabaseAdmin
+    .from('cargo_especialidades')
+    .select('id,cargo_id,especialidade_id,ativo,principal,deleted_at')
+    .eq('cargo_id', cargoId)
+    .eq('especialidade_id', specialtyId)
+    .eq('ativo', true)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function upsertProfileService(profileId, input) {
+  const { data, error } = await supabaseAdmin
+    .from('perfil_operacional_servicos')
+    .upsert({
+      perfil_operacional_id: profileId,
+      servico_catalogo_id: input.servico_catalogo_id,
+      recomendado: input.recomendado !== false,
+      obrigatorio: input.obrigatorio === true,
+      ativo: input.ativo !== false,
+      prioridade: input.prioridade ?? 0,
+      origem: input.origem || 'masteradmin_taxonomy_governance',
+      metadata: input.metadata || {},
+      deleted_at: null
+    }, { onConflict: 'perfil_operacional_id,servico_catalogo_id' })
+    .select('*, servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,categoria_key,natureza,ativo,metadata)')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function upsertProfileRole(profileId, input) {
+  const { data, error } = await supabaseAdmin
+    .from('perfil_operacional_cargos')
+    .upsert({
+      perfil_operacional_id: profileId,
+      cargo_id: input.cargo_id,
+      recomendado: input.recomendado !== false,
+      principal: input.principal === true,
+      ativo: input.ativo !== false,
+      prioridade: input.prioridade ?? 0,
+      origem: input.origem || 'masteradmin_taxonomy_governance',
+      metadata: input.metadata || {},
+      deleted_at: null
+    }, { onConflict: 'perfil_operacional_id,cargo_id' })
+    .select('*, cargo:cargos(id,nome,categoria_profissional,ativo,deleted_at)')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function createProfileDefault(payload) {
   const { data, error } = await supabaseAdmin
     .from('perfil_operacional_defaults')
     .insert(payload)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function findProfileDefaultById(id) {
+  const { data, error } = await supabaseAdmin
+    .from('perfil_operacional_defaults')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateProfileDefault(id, payload) {
+  const { data, error } = await supabaseAdmin
+    .from('perfil_operacional_defaults')
+    .update(payload)
+    .eq('id', id)
+    .is('deleted_at', null)
     .select('*')
     .single();
 
@@ -211,12 +333,20 @@ async function listAppointments(tenantId) {
 
 module.exports = {
   findProfileByBusinessType,
+  findProfileById,
   listProfiles,
   updateProfile,
   listProfileServices,
   listProfileRoles,
   listProfileDefaults,
+  findCatalogServiceForProfile,
+  findCatalogSpecialty,
+  findCargoSpecialty,
+  upsertProfileService,
+  upsertProfileRole,
   createProfileDefault,
+  findProfileDefaultById,
+  updateProfileDefault,
   listCatalogSpecialties,
   listTenantTypes,
   listTenantOffers,

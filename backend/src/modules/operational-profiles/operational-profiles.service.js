@@ -44,6 +44,16 @@ function sanitizeProfile(profile, details = {}) {
   };
 }
 
+function withGovernanceMetadata(current = {}, patch = {}) {
+  return {
+    ...(current || {}),
+    ...patch,
+    governance: 'masteradmin_global_template',
+    tenant_overwrite_policy: 'never_auto_propagate_to_existing_tenants',
+    taxonomy_version: patch.taxonomy_version || current?.taxonomy_version || '2.1.0'
+  };
+}
+
 function defaultScopeScore(row, location) {
   if (row.region_scope === 'city') {
     return normalizeText(row.country) === location.country.toLowerCase()
@@ -227,6 +237,8 @@ async function applyTenantInitializationPlan(tenant, plan, options = {}) {
           aceita_agendamento_online: combination.defaults.aceita_agendamento_online,
           metadata: {
             origem: options.origin || 'operational_profile_onboarding',
+            config_origin: 'profile_default',
+            commercial_authority: 'tenant_after_materialization',
             perfil_operacional_id: plan.perfil_operacional_id,
             default_id: combination.defaults.default_id,
             fonte_preco: combination.defaults.fonte,
@@ -297,26 +309,109 @@ async function listAdminProfiles(context) {
 
 async function updateAdminProfile(context, id, input) {
   ensurePlatform(context);
+  const current = await repository.findProfileById(id);
+  if (!current) throw notFound('Perfil operacional nao encontrado.');
   const payload = {};
-  for (const key of ['classificacao', 'nome', 'descricao', 'ativo', 'exige_confirmacao_onboarding', 'metadata']) {
+  for (const key of ['classificacao', 'nome', 'descricao', 'ativo', 'exige_confirmacao_onboarding']) {
     if (Object.prototype.hasOwnProperty.call(input, key)) payload[key] = input[key];
   }
+  payload.metadata = withGovernanceMetadata(current.metadata, {
+    ...(input.metadata || {}),
+    last_updated_by: 'masteradmin',
+    last_update_scope: 'operational_profile'
+  });
   if (!Object.keys(payload).length) throw new AppError('Informe ao menos um campo para atualizar.', 422, 'OPERATIONAL_PROFILE_EMPTY_UPDATE');
   const updated = await repository.updateProfile(id, payload);
   return sanitizeProfile(updated);
 }
 
-async function updateAdminDefault(context, input) {
+async function validateProfileService(profileId, catalogId) {
+  const allowed = await repository.findCatalogServiceForProfile(profileId, catalogId);
+  if (!allowed) {
+    throw new AppError('Servico nao pertence aos servicos permitidos para este tipo de negocio.', 422, 'PROFILE_SERVICE_NOT_ALLOWED_FOR_BUSINESS_TYPE');
+  }
+  return allowed;
+}
+
+async function validateProfileDefault(profileId, input) {
+  await validateProfileService(profileId, input.servico_catalogo_id);
+  if (input.especialidade_id) {
+    const compatible = await repository.findCatalogSpecialty(input.servico_catalogo_id, input.especialidade_id);
+    if (!compatible) {
+      throw new AppError('Especialidade incompativel com o servico informado.', 422, 'PROFILE_DEFAULT_INCOMPATIBLE_SPECIALTY');
+    }
+  }
+}
+
+async function updateAdminProfileService(context, profileId, input) {
   ensurePlatform(context);
+  const current = await repository.findProfileById(profileId);
+  if (!current) throw notFound('Perfil operacional nao encontrado.');
+  await validateProfileService(profileId, input.servico_catalogo_id);
+  return repository.upsertProfileService(profileId, {
+    ...input,
+    origem: 'masteradmin_taxonomy_governance',
+    metadata: withGovernanceMetadata(input.metadata, {
+      managed_entity: 'perfil_operacional_servicos',
+      no_auto_tenant_propagation: true
+    })
+  });
+}
+
+async function updateAdminProfileRole(context, profileId, input) {
+  ensurePlatform(context);
+  const current = await repository.findProfileById(profileId);
+  if (!current) throw notFound('Perfil operacional nao encontrado.');
+  if (input.especialidade_id) {
+    const compatible = await repository.findCargoSpecialty(input.cargo_id, input.especialidade_id);
+    if (!compatible) {
+      throw new AppError('Cargo incompativel com a especialidade informada.', 422, 'PROFILE_ROLE_INCOMPATIBLE_SPECIALTY');
+    }
+  }
+  return repository.upsertProfileRole(profileId, {
+    ...input,
+    origem: 'masteradmin_taxonomy_governance',
+    metadata: withGovernanceMetadata(input.metadata, {
+      managed_entity: 'perfil_operacional_cargos',
+      principal_policy: 'recommendation_ordering_only_never_execution_restriction',
+      no_auto_tenant_propagation: true
+    })
+  });
+}
+
+async function createAdminDefault(context, input) {
+  ensurePlatform(context);
+  await validateProfileDefault(input.perfil_operacional_id, input);
   const saved = await repository.createProfileDefault({
     ...input,
     fonte: input.fonte || 'administrative_reference',
     metadata: {
-      ...(input.metadata || {}),
-      price_policy: 'administrative_reference_not_market_price'
+      ...withGovernanceMetadata(input.metadata, {
+        managed_entity: 'perfil_operacional_defaults',
+        price_policy: 'administrative_reference_not_market_price',
+        fallback_policy: 'city_state_country_global',
+        no_auto_tenant_propagation: true
+      })
     }
   });
   return saved;
+}
+
+async function updateAdminDefault(context, id, input) {
+  ensurePlatform(context);
+  const current = await repository.findProfileDefaultById(id);
+  if (!current) throw notFound('Default operacional nao encontrado.');
+  const merged = { ...current, ...input };
+  await validateProfileDefault(merged.perfil_operacional_id, merged);
+  const payload = { ...input };
+  payload.metadata = withGovernanceMetadata(current.metadata, {
+    ...(input.metadata || {}),
+    managed_entity: 'perfil_operacional_defaults',
+    price_policy: 'administrative_reference_not_market_price',
+    fallback_policy: 'city_state_country_global',
+    no_auto_tenant_propagation: true
+  });
+  return repository.updateProfileDefault(id, payload);
 }
 
 async function reconcileTenant(tenant, options = {}) {
@@ -352,6 +447,9 @@ module.exports = {
   initializeTenantFromProfile,
   listAdminProfiles,
   updateAdminProfile,
+  updateAdminProfileService,
+  updateAdminProfileRole,
+  createAdminDefault,
   updateAdminDefault,
   reconcileTenant,
   GENERALIST_CONFIRMATION_POLICY

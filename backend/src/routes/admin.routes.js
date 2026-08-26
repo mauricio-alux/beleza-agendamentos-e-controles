@@ -45,7 +45,10 @@ router.post('/taxonomia/especialidades', requirePermission('platform.business_ty
 router.patch('/taxonomia/especialidades/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateSpecialty));
 router.get('/taxonomia/perfis-operacionais', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminOperationalProfiles));
 router.patch('/taxonomia/perfis-operacionais/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateOperationalProfile));
+router.put('/taxonomia/perfis-operacionais/:id/servicos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpsertOperationalProfileService));
+router.put('/taxonomia/perfis-operacionais/:id/cargos', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpsertOperationalProfileRole));
 router.post('/taxonomia/perfis-operacionais/defaults', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreateOperationalDefault));
+router.patch('/taxonomia/perfis-operacionais/defaults/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdateOperationalDefault));
 router.get('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminDetail));
 router.post('/tipos-negocio', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminCreate));
 router.patch('/tipos-negocio/:id', requirePermission('platform.business_types.manage'), asyncHandler(businessTypesController.adminUpdate));

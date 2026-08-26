@@ -64,6 +64,44 @@ export type TaxonomySpecialty = {
   cargo?: TaxonomyRole | null;
 };
 
+export type OperationalProfileService = {
+  id: string;
+  servico_catalogo_id: string;
+  recomendado: boolean;
+  obrigatorio: boolean;
+  ativo: boolean;
+  prioridade: number;
+  servico_catalogo?: ServiceCatalog | null;
+};
+
+export type OperationalProfileRole = {
+  id: string;
+  cargo_id: string;
+  recomendado: boolean;
+  principal: boolean;
+  ativo: boolean;
+  prioridade: number;
+  cargo?: TaxonomyRole | null;
+};
+
+export type OperationalProfileDefault = {
+  id: string;
+  servico_catalogo_id: string;
+  especialidade_id?: string | null;
+  region_scope: "global" | "country" | "state" | "city";
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  preco_min_referencia?: number | null;
+  preco_referencia?: number | null;
+  preco_max_referencia?: number | null;
+  duracao_minutos?: number | null;
+  dias_retorno_recomendado?: number | null;
+  aceita_agendamento_online: boolean;
+  fonte: string;
+  ativo: boolean;
+};
+
 export type OperationalProfile = {
   id: string;
   tipo_negocio_id: string;
@@ -80,6 +118,9 @@ export type OperationalProfile = {
     cargos: number;
     defaults: number;
   };
+  servicos?: OperationalProfileService[];
+  cargos?: OperationalProfileRole[];
+  defaults?: OperationalProfileDefault[];
 };
 
 export type TenantBusinessType = {
@@ -139,6 +180,43 @@ type OperationalProfilePayload = {
   descricao?: string | null;
   ativo?: boolean;
   exige_confirmacao_onboarding?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+type OperationalProfileServicePayload = {
+  servico_catalogo_id: string;
+  recomendado?: boolean;
+  obrigatorio?: boolean;
+  ativo?: boolean;
+  prioridade?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type OperationalProfileRolePayload = {
+  cargo_id: string;
+  especialidade_id?: string;
+  recomendado?: boolean;
+  principal?: boolean;
+  ativo?: boolean;
+  prioridade?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type OperationalProfileDefaultPayload = {
+  perfil_operacional_id: string;
+  servico_catalogo_id: string;
+  especialidade_id?: string | null;
+  region_scope?: "global" | "country" | "state" | "city";
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  preco_min_referencia?: number | null;
+  preco_referencia?: number | null;
+  preco_max_referencia?: number | null;
+  duracao_minutos?: number | null;
+  dias_retorno_recomendado?: number | null;
+  aceita_agendamento_online?: boolean;
+  fonte?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -376,6 +454,27 @@ async function updateOperationalProfile(session: AuthSession | null, id: string,
   });
 }
 
+async function upsertOperationalProfileService(session: AuthSession | null, id: string, payload: OperationalProfileServicePayload) {
+  return request<OperationalProfileService>(`/admin/taxonomia/perfis-operacionais/${id}/servicos`, session, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function upsertOperationalProfileRole(session: AuthSession | null, id: string, payload: OperationalProfileRolePayload) {
+  return request<OperationalProfileRole>(`/admin/taxonomia/perfis-operacionais/${id}/cargos`, session, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function createOperationalProfileDefault(session: AuthSession | null, payload: OperationalProfileDefaultPayload) {
+  return request<OperationalProfileDefault>("/admin/taxonomia/perfis-operacionais/defaults", session, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export const businessTypesService = {
   listActive,
   listTenantTypes,
@@ -400,5 +499,8 @@ export const businessTypesService = {
   createAdminSpecialty,
   updateAdminSpecialty,
   listOperationalProfiles,
-  updateOperationalProfile
+  updateOperationalProfile,
+  upsertOperationalProfileService,
+  upsertOperationalProfileRole,
+  createOperationalProfileDefault
 };

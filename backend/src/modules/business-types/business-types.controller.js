@@ -13,7 +13,10 @@ const {
   specialtyPayloadSchema,
   updateSpecialtyPayloadSchema,
   operationalProfileUpdateSchema,
-  operationalProfileDefaultSchema
+  operationalProfileDefaultSchema,
+  operationalProfileDefaultUpdateSchema,
+  operationalProfileServiceSchema,
+  operationalProfileRoleSchema
 } = require('./business-types.validators');
 const operationalProfilesService = require('../operational-profiles/operational-profiles.service');
 
@@ -174,8 +177,26 @@ async function adminUpdateOperationalProfile(req, res) {
 
 async function adminCreateOperationalDefault(req, res) {
   const input = operationalProfileDefaultSchema.parse(req.body);
-  const data = await operationalProfilesService.updateAdminDefault(platformContext(req), input);
+  const data = await operationalProfilesService.createAdminDefault(platformContext(req), input);
   return res.status(201).json({ data });
+}
+
+async function adminUpdateOperationalDefault(req, res) {
+  const input = operationalProfileDefaultUpdateSchema.parse(req.body);
+  const data = await operationalProfilesService.updateAdminDefault(platformContext(req), req.params.id, input);
+  return res.json({ data });
+}
+
+async function adminUpsertOperationalProfileService(req, res) {
+  const input = operationalProfileServiceSchema.parse(req.body);
+  const data = await operationalProfilesService.updateAdminProfileService(platformContext(req), req.params.id, input);
+  return res.json({ data });
+}
+
+async function adminUpsertOperationalProfileRole(req, res) {
+  const input = operationalProfileRoleSchema.parse(req.body);
+  const data = await operationalProfilesService.updateAdminProfileRole(platformContext(req), req.params.id, input);
+  return res.json({ data });
 }
 
 module.exports = {
@@ -204,5 +225,8 @@ module.exports = {
   tenantCatalog,
   adminOperationalProfiles,
   adminUpdateOperationalProfile,
-  adminCreateOperationalDefault
+  adminCreateOperationalDefault,
+  adminUpdateOperationalDefault,
+  adminUpsertOperationalProfileService,
+  adminUpsertOperationalProfileRole
 };

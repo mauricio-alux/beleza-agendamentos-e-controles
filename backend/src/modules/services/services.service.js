@@ -297,6 +297,21 @@ async function resolveCatalogForCompatibility(current) {
   return catalog;
 }
 
+function resolveTenantCommercialOrigin(current = {}) {
+  if (!current.id) return 'tenant_added';
+
+  const metadata = current.metadata || {};
+  const previousOrigin = metadata.config_origin || null;
+  const profileMaterialized = previousOrigin === 'profile_default'
+    || metadata.default_id
+    || metadata.perfil_operacional_id
+    || metadata.origem === 'operational_profile_onboarding'
+    || metadata.origem === 'development_test_data_reconciliation';
+
+  if (profileMaterialized) return 'tenant_customized';
+  return previousOrigin || 'tenant_customized';
+}
+
 function mergeConfigurations(inputConfigs, currentConfigs = []) {
   const currentBySpecialty = new Map(currentConfigs.map((item) => [item.especialidade_id, item]));
   return inputConfigs.map((item) => {
@@ -310,7 +325,10 @@ function mergeConfigurations(inputConfigs, currentConfigs = []) {
       ativo: item.ativo ?? current.ativo ?? true,
       metadata: {
         ...(current.metadata || {}),
-        source: 'services_backend_phase_3'
+        source: 'services_backend_phase_3',
+        config_origin: resolveTenantCommercialOrigin(current),
+        commercial_authority: 'tenant',
+        tenant_customized_at: current.id ? new Date().toISOString() : undefined
       }
     };
   });
@@ -333,7 +351,9 @@ async function create(tenantId, input) {
     ativo: input.ativo !== false,
     metadata: {
       ...(existingOffer?.metadata || {}),
-      source: 'services_backend_phase_3'
+      source: 'services_backend_phase_3',
+      config_origin: resolveTenantCommercialOrigin(existingOffer || {}),
+      commercial_authority: 'tenant'
     }
   });
 
@@ -368,7 +388,9 @@ async function update(tenantId, id, input) {
       ativo: input.ativo !== false,
       metadata: {
         ...(current.metadata || {}),
-        source: 'services_backend_phase_3'
+        source: 'services_backend_phase_3',
+        config_origin: resolveTenantCommercialOrigin(current),
+        commercial_authority: 'tenant'
       }
     });
   }
@@ -452,6 +474,7 @@ module.exports = {
   listCatalog,
   getById,
   resolveCompatibleSpecialties,
+  resolveTenantCommercialOrigin,
   create,
   update,
   remove
