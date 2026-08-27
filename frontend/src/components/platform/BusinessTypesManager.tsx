@@ -13,6 +13,7 @@ import {
   businessTypesService,
   type BusinessType,
   type BusinessTypeCatalogAssociation,
+  type OperationalProfileDefault,
   type OperationalProfile,
   type TaxonomyRole,
   type TaxonomySpecialty
@@ -64,11 +65,20 @@ type SpecialtyFormState = {
 type ProfileDraftState = {
   serviceId: string;
   roleId: string;
+  defaultId: string;
   defaultServiceId: string;
   defaultSpecialtyId: string;
+  defaultRegionScope: "global" | "country" | "state" | "city";
+  defaultCountry: string;
+  defaultState: string;
+  defaultCity: string;
+  defaultMinPrice: string;
   defaultPrice: string;
+  defaultMaxPrice: string;
   defaultDuration: string;
   defaultReturn: string;
+  defaultOnline: boolean;
+  defaultStartDate: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -111,11 +121,20 @@ const EMPTY_SPECIALTY_FORM: SpecialtyFormState = {
 const EMPTY_PROFILE_DRAFT: ProfileDraftState = {
   serviceId: "",
   roleId: "",
+  defaultId: "",
   defaultServiceId: "",
   defaultSpecialtyId: "",
+  defaultRegionScope: "state",
+  defaultCountry: "BR",
+  defaultState: "SP",
+  defaultCity: "",
+  defaultMinPrice: "",
   defaultPrice: "",
+  defaultMaxPrice: "",
   defaultDuration: "",
-  defaultReturn: ""
+  defaultReturn: "",
+  defaultOnline: true,
+  defaultStartDate: ""
 };
 
 export function BusinessTypesManager() {
@@ -167,6 +186,18 @@ export function BusinessTypesManager() {
   const categoryLabel = (value?: string | null) => (
     value && (SERVICE_CATEGORY_LABELS as Record<string, string>)[value] ? (SERVICE_CATEGORY_LABELS as Record<string, string>)[value] : value || "Sem categoria"
   );
+  const serviceName = (id?: string | null) => catalog.find((item) => item.id === id)?.nome || "Servico";
+  const specialtyName = (id?: string | null) => specialties.find((specialty) => specialty.id === id)?.nome || "geral";
+  const numberOrNull = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed ? Number(trimmed) : null;
+  };
+  const regionLabel = (item: OperationalProfileDefault) => {
+    if (item.region_scope === "city") return [item.city, item.state, item.country].filter(Boolean).join(" / ");
+    if (item.region_scope === "state") return [item.state, item.country].filter(Boolean).join(" / ");
+    if (item.region_scope === "country") return item.country || "Pais";
+    return "Geral";
+  };
 
   async function load() {
     if (!session) return;
@@ -530,9 +561,9 @@ export function BusinessTypesManager() {
         prioridade: profile.cargos?.length || 0
       });
       await load();
-      setMessage("Cargo recomendado atualizado.");
+      setMessage("Cargo adicionado ao perfil operacional.");
     } catch (err) {
-      setError(getErrorMessage(err, "Nao foi possivel atualizar cargos recomendados."));
+      setError(getErrorMessage(err, "Nao foi possivel adicionar o cargo. Tente novamente."));
     } finally {
       setIsSaving(false);
     }
@@ -545,24 +576,60 @@ export function BusinessTypesManager() {
     setError("");
     setMessage("");
     try {
-      await businessTypesService.createOperationalProfileDefault(session, {
+      const regionScope = draft.defaultRegionScope;
+      const payload = {
         perfil_operacional_id: profile.id,
         servico_catalogo_id: draft.defaultServiceId,
         especialidade_id: draft.defaultSpecialtyId || null,
-        region_scope: "global",
-        preco_referencia: draft.defaultPrice ? Number(draft.defaultPrice) : null,
-        duracao_minutos: draft.defaultDuration ? Number(draft.defaultDuration) : null,
-        dias_retorno_recomendado: draft.defaultReturn ? Number(draft.defaultReturn) : null,
-        aceita_agendamento_online: true,
-        fonte: "administrative_reference"
-      });
+        region_scope: regionScope,
+        country: regionScope === "global" ? null : draft.defaultCountry.trim().toUpperCase() || null,
+        state: regionScope === "global" || regionScope === "country" ? null : draft.defaultState.trim().toUpperCase() || null,
+        city: regionScope === "city" ? draft.defaultCity.trim() || null : null,
+        preco_min_referencia: numberOrNull(draft.defaultMinPrice),
+        preco_referencia: numberOrNull(draft.defaultPrice),
+        preco_max_referencia: numberOrNull(draft.defaultMaxPrice),
+        duracao_minutos: numberOrNull(draft.defaultDuration),
+        dias_retorno_recomendado: numberOrNull(draft.defaultReturn),
+        aceita_agendamento_online: draft.defaultOnline,
+        vigencia_inicio: draft.defaultStartDate || undefined,
+        fonte: "administrative_reference",
+        metadata: {
+          price_policy: "administrative_reference_not_market_price",
+          fallback_policy: "city_state_country_global"
+        }
+      };
+      if (draft.defaultId) {
+        await businessTypesService.updateOperationalProfileDefault(session, draft.defaultId, payload);
+      } else {
+        await businessTypesService.createOperationalProfileDefault(session, payload);
+      }
       await load();
-      setMessage("Preco inicial de referencia atualizado.");
+      updateProfileDraft(profile.id, EMPTY_PROFILE_DRAFT);
+      setMessage("Referencia operacional atualizada.");
     } catch (err) {
       setError(getErrorMessage(err, "Nao foi possivel atualizar defaults."));
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function editProfileDefault(profileId: string, item: OperationalProfileDefault) {
+    updateProfileDraft(profileId, {
+      defaultId: item.id,
+      defaultServiceId: item.servico_catalogo_id,
+      defaultSpecialtyId: item.especialidade_id || "",
+      defaultRegionScope: item.region_scope || "global",
+      defaultCountry: item.country || "BR",
+      defaultState: item.state || "",
+      defaultCity: item.city || "",
+      defaultMinPrice: item.preco_min_referencia == null ? "" : String(item.preco_min_referencia),
+      defaultPrice: item.preco_referencia == null ? "" : String(item.preco_referencia),
+      defaultMaxPrice: item.preco_max_referencia == null ? "" : String(item.preco_max_referencia),
+      defaultDuration: item.duracao_minutos == null ? "" : String(item.duracao_minutos),
+      defaultReturn: item.dias_retorno_recomendado == null ? "" : String(item.dias_retorno_recomendado),
+      defaultOnline: item.aceita_agendamento_online !== false,
+      defaultStartDate: item.vigencia_inicio ? item.vigencia_inicio.slice(0, 10) : ""
+    });
   }
 
   function toggleCatalogItem(item: ServiceCatalog) {
@@ -724,14 +791,31 @@ export function BusinessTypesManager() {
                     </Button>
                   </div>
                   <ProfileSummary
-                    title="Precos iniciais de referencia"
-                    items={(profile.defaults || []).slice(0, 6).map((item) => {
-                      const serviceName = catalog.find((catalogItem) => catalogItem.id === item.servico_catalogo_id)?.nome || "Servico";
-                      const specialtyName = specialties.find((specialty) => specialty.id === item.especialidade_id)?.nome || "geral";
-                      return `${serviceName} / ${specialtyName}: R$ ${item.preco_referencia ?? "-"} - ${item.duracao_minutos ?? "-"} min - retorno ${item.dias_retorno_recomendado ?? "-"} dias`;
-                    })}
+                    title="Referencias operacionais"
+                    items={(profile.defaults || []).map((item) => (
+                      `${serviceName(item.servico_catalogo_id)} / ${specialtyName(item.especialidade_id)} - ${regionLabel(item)} - R$ ${item.preco_referencia ?? "-"} - ${item.duracao_minutos ?? "-"} min - retorno ${item.dias_retorno_recomendado ?? "-"} - online ${item.aceita_agendamento_online !== false ? "sim" : "nao"}`
+                    ))}
                   />
-                  <div className="grid gap-2 md:grid-cols-5">
+                  <div className="grid gap-2">
+                    {(profile.defaults || []).map((item) => (
+                      <div key={item.id} className="grid gap-2 rounded-xl border border-border bg-white/80 p-3 md:grid-cols-[1fr_auto] md:items-center">
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{serviceName(item.servico_catalogo_id)} / {specialtyName(item.especialidade_id)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {regionLabel(item)} - R$ {item.preco_min_referencia ?? "-"} / {item.preco_referencia ?? "-"} / {item.preco_max_referencia ?? "-"} - {item.duracao_minutos ?? "-"} min - retorno {item.dias_retorno_recomendado ?? "-"} - online {item.aceita_agendamento_online !== false ? "sim" : "nao"}
+                          </p>
+                        </div>
+                        <Button type="button" variant="outline" onClick={() => editProfileDefault(profile.id, item)} disabled={isSaving}>
+                          <Pencil className="h-4 w-4" />
+                          Editar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Se nao houver uma referencia especifica para a localizacao, sera utilizada a proxima referencia disponivel: Cidade, Estado, Pais, Geral.
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-6">
                     <select
                       value={profileDraft(profile.id).defaultServiceId}
                       onChange={(event) => updateProfileDraft(profile.id, { defaultServiceId: event.target.value, defaultSpecialtyId: "" })}
@@ -748,13 +832,49 @@ export function BusinessTypesManager() {
                       <option value="">Especialidade geral</option>
                       {activeSpecialties.map((specialty) => <option key={specialty.id} value={specialty.id}>{specialty.nome}</option>)}
                     </select>
+                    <select
+                      value={profileDraft(profile.id).defaultRegionScope}
+                      onChange={(event) => updateProfileDraft(profile.id, { defaultRegionScope: event.target.value as ProfileDraftState["defaultRegionScope"] })}
+                      className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm md:col-span-2"
+                    >
+                      <option value="global">Geral</option>
+                      <option value="country">Pais</option>
+                      <option value="state">Estado</option>
+                      <option value="city">Cidade</option>
+                    </select>
+                    {profileDraft(profile.id).defaultRegionScope !== "global" ? (
+                      <Input value={profileDraft(profile.id).defaultCountry} onChange={(event) => updateProfileDraft(profile.id, { defaultCountry: event.target.value.toUpperCase().slice(0, 2) })} placeholder="Pais" />
+                    ) : null}
+                    {["state", "city"].includes(profileDraft(profile.id).defaultRegionScope) ? (
+                      <Input value={profileDraft(profile.id).defaultState} onChange={(event) => updateProfileDraft(profile.id, { defaultState: event.target.value.toUpperCase() })} placeholder="Estado" />
+                    ) : null}
+                    {profileDraft(profile.id).defaultRegionScope === "city" ? (
+                      <Input value={profileDraft(profile.id).defaultCity} onChange={(event) => updateProfileDraft(profile.id, { defaultCity: event.target.value })} placeholder="Cidade" />
+                    ) : null}
+                    <Input value={profileDraft(profile.id).defaultMinPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMinPrice: event.target.value })} placeholder="Preco min." />
                     <Input value={profileDraft(profile.id).defaultPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultPrice: event.target.value })} placeholder="Preco" />
+                    <Input value={profileDraft(profile.id).defaultMaxPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMaxPrice: event.target.value })} placeholder="Preco max." />
                     <Input value={profileDraft(profile.id).defaultDuration} onChange={(event) => updateProfileDraft(profile.id, { defaultDuration: event.target.value })} placeholder="Duracao" />
                     <Input value={profileDraft(profile.id).defaultReturn} onChange={(event) => updateProfileDraft(profile.id, { defaultReturn: event.target.value })} placeholder="Retorno" />
+                    <Input type="date" value={profileDraft(profile.id).defaultStartDate} onChange={(event) => updateProfileDraft(profile.id, { defaultStartDate: event.target.value })} />
+                    <label className="flex h-11 items-center gap-2 rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm">
+                      <input
+                        type="checkbox"
+                        checked={profileDraft(profile.id).defaultOnline}
+                        onChange={(event) => updateProfileDraft(profile.id, { defaultOnline: event.target.checked })}
+                      />
+                      Online
+                    </label>
                     <Button type="button" variant="outline" onClick={() => addProfileDefault(profile)} disabled={isSaving || !profileDraft(profile.id).defaultServiceId} className="md:col-span-2">
                       <Save className="h-4 w-4" />
-                      Salvar referencia
+                      {profileDraft(profile.id).defaultId ? "Atualizar referencia" : "Salvar referencia"}
                     </Button>
+                    {profileDraft(profile.id).defaultId ? (
+                      <Button type="button" variant="ghost" onClick={() => updateProfileDraft(profile.id, EMPTY_PROFILE_DRAFT)} disabled={isSaving}>
+                        <X className="h-4 w-4" />
+                        Cancelar edicao
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </div>

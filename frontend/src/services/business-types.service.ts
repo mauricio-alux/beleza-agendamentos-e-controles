@@ -100,6 +100,8 @@ export type OperationalProfileDefault = {
   aceita_agendamento_online: boolean;
   fonte: string;
   ativo: boolean;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
 };
 
 export type OperationalProfile = {
@@ -216,6 +218,8 @@ type OperationalProfileDefaultPayload = {
   duracao_minutos?: number | null;
   dias_retorno_recomendado?: number | null;
   aceita_agendamento_online?: boolean;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
   fonte?: string;
   metadata?: Record<string, unknown>;
 };
@@ -475,6 +479,13 @@ async function createOperationalProfileDefault(session: AuthSession | null, payl
   });
 }
 
+async function updateOperationalProfileDefault(session: AuthSession | null, id: string, payload: Partial<OperationalProfileDefaultPayload>) {
+  return request<OperationalProfileDefault>(`/admin/taxonomia/perfis-operacionais/defaults/${id}`, session, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export const businessTypesService = {
   listActive,
   listTenantTypes,
@@ -502,5 +513,6 @@ export const businessTypesService = {
   updateOperationalProfile,
   upsertOperationalProfileService,
   upsertOperationalProfileRole,
-  createOperationalProfileDefault
+  createOperationalProfileDefault,
+  updateOperationalProfileDefault
 };

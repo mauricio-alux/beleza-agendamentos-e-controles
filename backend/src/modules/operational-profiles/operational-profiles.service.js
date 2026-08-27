@@ -90,6 +90,13 @@ function getServicesForInitialization(profile, services) {
   return activeServices.filter((item) => item.recomendado === true || item.obrigatorio === true);
 }
 
+function isTenantOwnedConfig(config = {}) {
+  const metadata = config.metadata || {};
+  return metadata.commercial_authority === 'tenant'
+    || metadata.config_origin === 'tenant_customized'
+    || metadata.config_origin === 'tenant_added';
+}
+
 function fingerprintRows(rows) {
   return crypto
     .createHash('sha256')
@@ -121,18 +128,29 @@ function buildPlan({ tenant, profile, services, roles, defaults, catalogSpecialt
         default_id: defaultRow?.id || null,
         fonte: defaultRow?.fonte || 'administrative_reference'
       };
+      const tenantOwned = currentConfig ? isTenantOwnedConfig(currentConfig) : false;
+      const effectiveDefaults = tenantOwned ? {
+        preco: currentConfig.preco ?? null,
+        duracao_minutos: currentConfig.duracao_minutos ?? null,
+        dias_retorno_recomendado: currentConfig.dias_retorno_recomendado ?? null,
+        aceita_agendamento_online: currentConfig.aceita_agendamento_online !== false,
+        default_id: currentConfig.metadata?.default_id || null,
+        fonte: currentConfig.metadata?.fonte_preco || 'tenant_configuration'
+      } : targetDefaults;
       const isNoop = currentConfig
-        && Number(currentConfig.preco ?? 0) === Number(targetDefaults.preco ?? 0)
-        && Number(currentConfig.duracao_minutos ?? 0) === Number(targetDefaults.duracao_minutos ?? 0)
-        && Number(currentConfig.dias_retorno_recomendado ?? 0) === Number(targetDefaults.dias_retorno_recomendado ?? 0)
-        && currentConfig.aceita_agendamento_online !== false === targetDefaults.aceita_agendamento_online
+        && (tenantOwned
+          || (Number(currentConfig.preco ?? 0) === Number(targetDefaults.preco ?? 0)
+            && Number(currentConfig.duracao_minutos ?? 0) === Number(targetDefaults.duracao_minutos ?? 0)
+            && Number(currentConfig.dias_retorno_recomendado ?? 0) === Number(targetDefaults.dias_retorno_recomendado ?? 0)
+            && (currentConfig.aceita_agendamento_online !== false) === targetDefaults.aceita_agendamento_online))
         && currentConfig.ativo !== false;
       return {
         action: currentConfig ? (isNoop ? 'noop' : 'update') : 'create',
         current_config_id: currentConfig?.id || null,
         especialidade_id: link.especialidade_id,
         especialidade_nome: link.especialidade?.nome || null,
-        defaults: targetDefaults
+        defaults: effectiveDefaults,
+        tenant_commercial_authority: tenantOwned
       };
     });
 
@@ -452,5 +470,6 @@ module.exports = {
   createAdminDefault,
   updateAdminDefault,
   reconcileTenant,
+  isTenantOwnedConfig,
   GENERALIST_CONFIRMATION_POLICY
 };
