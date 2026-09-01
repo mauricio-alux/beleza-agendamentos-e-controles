@@ -82,6 +82,50 @@ function specialtyRow(id = specialtyId, nome = 'Colorimetria') {
   };
 }
 
+async function runTenantCatalogScenario({
+  matrixActive = true,
+  matrixRecommended = false,
+  profileExists = true,
+  profileRecommended = false,
+  matrixAssociationExists = true,
+  typeId = principalTypeId,
+  typeName = 'Barbearia',
+  typeSlug = 'barbearia',
+  serviceId = catalogA,
+  serviceName = 'Servico funcional'
+} = {}) {
+  mock.method(repository, 'listTenantTypes', async () => [{
+    id: '77777777-7777-4777-8777-777777777777',
+    tenant_id: tenantId,
+    tipo_negocio_id: typeId,
+    principal: true,
+    ativo: true,
+    tipo_negocio: typeRow(typeId, typeSlug, typeName)
+  }]);
+  mock.method(repository, 'listTypeServices', async () => matrixAssociationExists ? [{
+    id: '99999999-9999-4999-8999-999999999999',
+    tipo_negocio_id: typeId,
+    servico_catalogo_id: serviceId,
+    recomendado: matrixRecommended,
+    ativo: matrixActive,
+    ordem_exibicao: 0,
+    servico_catalogo: catalogRow(serviceId, serviceName)
+  }] : []);
+  mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => (
+    profileExists ? [{ id: 'profile-functional', tipo_negocio_id: typeId }] : []
+  ));
+  mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => (
+    profileRecommended ? [{
+      perfil_operacional_id: 'profile-functional',
+      servico_catalogo_id: serviceId,
+      recomendado: true,
+      ativo: true
+    }] : []
+  ));
+
+  return service.listTenantApplicableCatalog(tenantId);
+}
+
 describe('business types MER segmentation', () => {
   it('normalizes slug on create and update payloads', () => {
     const create = businessTypeSchema.parse({ nome: 'Clinica de Estetica Avancada' });
@@ -147,7 +191,7 @@ describe('business types MER segmentation', () => {
     );
   });
 
-  it('returns unioned tenant catalog with recommended services deduplicated', async () => {
+  it('returns tenant catalog with applicable services from matrix and recommendations from profile', async () => {
     mock.method(repository, 'listTenantTypes', async () => [
       {
         id: '77777777-7777-4777-8777-777777777777',
@@ -176,7 +220,7 @@ describe('business types MER segmentation', () => {
           id: '99999999-9999-4999-8999-999999999999',
           tipo_negocio_id: principalTypeId,
           servico_catalogo_id: catalogA,
-          recomendado: true,
+          recomendado: false,
           ativo: true,
           ordem_exibicao: 0,
           servico_catalogo: catalogRow(catalogA, 'Corte')
@@ -192,13 +236,270 @@ describe('business types MER segmentation', () => {
         servico_catalogo: catalogRow(catalogA, 'Corte')
       }];
     });
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async (typeIds) => {
+      assert.deepEqual(new Set(typeIds), new Set([principalTypeId, complementaryTypeId]));
+      return [{ id: 'profile-1', tipo_negocio_id: principalTypeId }];
+    });
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async (profileIds) => {
+      assert.deepEqual(profileIds, ['profile-1']);
+      return [{ perfil_operacional_id: 'profile-1', servico_catalogo_id: catalogA, recomendado: true, ativo: true }];
+    });
 
     const result = await service.listTenantApplicableCatalog(tenantId);
 
     assert.equal(result.recomendados.length, 1);
     assert.equal(result.recomendados[0].id, catalogA);
+    assert.equal(result.recomendados[0].recomendacao_origem, 'perfil_operacional_servicos');
     assert.equal(result.recomendados[0].tipos_negocio.length, 2);
+    assert.equal(result.aplicaveis.length, 0);
     assert.equal(result.catalogo_adicional.length, 0);
+  });
+
+  it('does not promote matrix recommendations when the business type has no recommended profile service', async () => {
+    mock.method(repository, 'listTenantTypes', async () => [{
+      id: '77777777-7777-4777-8777-777777777777',
+      tenant_id: tenantId,
+      tipo_negocio_id: principalTypeId,
+      principal: true,
+      ativo: true,
+      tipo_negocio: typeRow(principalTypeId, 'nail-studio', 'Esmalteria / Nail Studio')
+    }]);
+    mock.method(repository, 'listTypeServices', async () => [{
+      id: '99999999-9999-4999-8999-999999999999',
+      tipo_negocio_id: principalTypeId,
+      servico_catalogo_id: catalogA,
+      recomendado: true,
+      ativo: true,
+      ordem_exibicao: 0,
+      servico_catalogo: catalogRow(catalogA, 'Banho de gel')
+    }]);
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => [{ id: 'profile-nail', tipo_negocio_id: principalTypeId }]);
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => []);
+
+    const result = await service.listTenantApplicableCatalog(tenantId);
+
+    assert.equal(result.recomendados.length, 0);
+    assert.equal(result.aplicaveis.length, 1);
+    assert.equal(result.aplicaveis[0].id, catalogA);
+    assert.equal(result.aplicaveis[0].recomendado, false);
+  });
+
+  it('allows a profile recommendation when the active matrix relation is applicable even if matrix legacy recommendation is false', async () => {
+    mock.method(repository, 'listTenantTypes', async () => [{
+      id: '77777777-7777-4777-8777-777777777777',
+      tenant_id: tenantId,
+      tipo_negocio_id: principalTypeId,
+      principal: true,
+      ativo: true,
+      tipo_negocio: typeRow(principalTypeId, 'barbearia', 'Barbearia')
+    }]);
+    mock.method(repository, 'listTypeServices', async () => [{
+      id: '99999999-9999-4999-8999-999999999999',
+      tipo_negocio_id: principalTypeId,
+      servico_catalogo_id: catalogA,
+      recomendado: false,
+      ativo: true,
+      ordem_exibicao: 0,
+      servico_catalogo: catalogRow(catalogA, 'Pigmentacao/camuflagem de barba')
+    }]);
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => [{ id: 'profile-barber', tipo_negocio_id: principalTypeId }]);
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => [{
+      perfil_operacional_id: 'profile-barber',
+      servico_catalogo_id: catalogA,
+      recomendado: true,
+      ativo: true
+    }]);
+
+    const result = await service.listTenantApplicableCatalog(tenantId);
+
+    assert.equal(result.recomendados.length, 1);
+    assert.equal(result.recomendados[0].id, catalogA);
+    assert.equal(result.aplicaveis.length, 0);
+  });
+
+  it('returns no tenant recommendations when there is no operational profile', async () => {
+    mock.method(repository, 'listTenantTypes', async () => [{
+      id: '77777777-7777-4777-8777-777777777777',
+      tenant_id: tenantId,
+      tipo_negocio_id: principalTypeId,
+      principal: true,
+      ativo: true,
+      tipo_negocio: typeRow(principalTypeId, 'outro', 'Outro')
+    }]);
+    mock.method(repository, 'listTypeServices', async () => [{
+      id: '99999999-9999-4999-8999-999999999999',
+      tipo_negocio_id: principalTypeId,
+      servico_catalogo_id: catalogA,
+      recomendado: true,
+      ativo: true,
+      ordem_exibicao: 0,
+      servico_catalogo: catalogRow(catalogA, 'Servico livre')
+    }]);
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => []);
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => {
+      throw new Error('should not load profile services without profiles');
+    });
+
+    const result = await service.listTenantApplicableCatalog(tenantId);
+
+    assert.equal(result.recomendados.length, 0);
+    assert.equal(result.aplicaveis.length, 1);
+  });
+
+  it('covers case A: applicable matrix false and profile false remains applicable only', async () => {
+    const result = await runTenantCatalogScenario({
+      matrixActive: true,
+      matrixRecommended: false,
+      profileExists: true,
+      profileRecommended: false,
+      serviceId: 'f633355c-73bf-48a9-99f4-2e7a1694beff',
+      serviceName: 'Pigmentacao/camuflagem de barba'
+    });
+
+    assert.equal(result.recomendados.length, 0);
+    assert.equal(result.aplicaveis.length, 1);
+    assert.equal(result.aplicaveis[0].id, 'f633355c-73bf-48a9-99f4-2e7a1694beff');
+  });
+
+  it('covers case D and N: legacy matrix recommendation changes do not affect profile-owned recommendations', async () => {
+    const matrixTrue = await runTenantCatalogScenario({
+      matrixActive: true,
+      matrixRecommended: true,
+      profileRecommended: true,
+      serviceName: 'Corte feminino'
+    });
+
+    mock.restoreAll();
+    mock.method(eventLogsService, 'logEvent', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenant', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenantsByTypeIds', async () => []);
+    mock.method(tenantServiceCatalogSync, 'syncAllTenants', async () => []);
+
+    const matrixFalse = await runTenantCatalogScenario({
+      matrixActive: true,
+      matrixRecommended: false,
+      profileRecommended: true,
+      serviceName: 'Corte feminino'
+    });
+
+    assert.deepEqual(
+      matrixTrue.recomendados.map((item) => ({
+        id: item.id,
+        recomendado: item.recomendado,
+        origem: item.recomendacao_origem
+      })),
+      matrixFalse.recomendados.map((item) => ({
+        id: item.id,
+        recomendado: item.recomendado,
+        origem: item.recomendacao_origem
+      }))
+    );
+    assert.equal(matrixFalse.recomendados[0].recomendacao_origem, 'perfil_operacional_servicos');
+  });
+
+  it('covers case E/G/H: non-applicable services do not appear even with profile recommendation or no profile', async () => {
+    const invalidRecommended = await runTenantCatalogScenario({
+      matrixActive: false,
+      matrixRecommended: true,
+      profileExists: true,
+      profileRecommended: true
+    });
+    assert.equal(invalidRecommended.recomendados.length, 0);
+    assert.equal(invalidRecommended.aplicaveis.length, 0);
+
+    mock.restoreAll();
+    mock.method(eventLogsService, 'logEvent', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenant', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenantsByTypeIds', async () => []);
+    mock.method(tenantServiceCatalogSync, 'syncAllTenants', async () => []);
+
+    const noProfile = await runTenantCatalogScenario({
+      matrixActive: false,
+      profileExists: false,
+      profileRecommended: false
+    });
+    assert.equal(noProfile.recomendados.length, 0);
+    assert.equal(noProfile.aplicaveis.length, 0);
+
+    mock.restoreAll();
+    mock.method(eventLogsService, 'logEvent', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenant', async () => null);
+    mock.method(tenantServiceCatalogSync, 'syncTenantsByTypeIds', async () => []);
+    mock.method(tenantServiceCatalogSync, 'syncAllTenants', async () => []);
+
+    const otherType = await runTenantCatalogScenario({
+      matrixAssociationExists: false,
+      profileExists: false,
+      typeName: 'Outro',
+      typeSlug: 'outro'
+    });
+    assert.equal(otherType.recomendados.length, 0);
+    assert.equal(otherType.aplicaveis.length, 0);
+  });
+
+  it('admin type service maintenance only requires applicability fields', async () => {
+    let receivedServices = null;
+    mock.method(repository, 'findTypeById', async () => typeRow(principalTypeId, 'barbearia', 'Barbearia'));
+    mock.method(repository, 'listAllCatalog', async () => [catalogRow(catalogA, 'Corte')]);
+    mock.method(repository, 'listTypeServices', async () => []);
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => []);
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => []);
+    mock.method(repository, 'replaceTypeServices', async (typeId, services) => {
+      assert.equal(typeId, principalTypeId);
+      receivedServices = services;
+      return [{
+        id: '99999999-9999-4999-8999-999999999999',
+        tipo_negocio_id: principalTypeId,
+        servico_catalogo_id: catalogA,
+        recomendado: true,
+        ativo: true,
+        ordem_exibicao: 2,
+        servico_catalogo: catalogRow(catalogA, 'Corte')
+      }];
+    });
+
+    const result = await service.replaceAdminTypeServices(
+      { role: 'MasterAdmin', userId: '77777777-7777-4777-8777-777777777777' },
+      principalTypeId,
+      { servicos: [{ servico_catalogo_id: catalogA, ativo: true, ordem_exibicao: 2 }] }
+    );
+
+    assert.deepEqual(receivedServices, [{ servico_catalogo_id: catalogA, ativo: true, ordem_exibicao: 2 }]);
+    assert.equal(result[0].aplicavel, true);
+    assert.equal(result[0].recomendado_deprecated, true);
+  });
+
+  it('covers case K: blocks removing applicability while an operational profile still recommends the service', async () => {
+    mock.method(repository, 'findTypeById', async () => typeRow(principalTypeId, 'barbearia', 'Barbearia'));
+    mock.method(repository, 'listAllCatalog', async () => [catalogRow(catalogA, 'Corte')]);
+    mock.method(repository, 'listTypeServices', async () => [{
+      id: '99999999-9999-4999-8999-999999999999',
+      tipo_negocio_id: principalTypeId,
+      servico_catalogo_id: catalogA,
+      recomendado: false,
+      ativo: true,
+      ordem_exibicao: 0,
+      servico_catalogo: catalogRow(catalogA, 'Corte')
+    }]);
+    mock.method(repository, 'listActiveProfilesByBusinessTypeIds', async () => [{ id: 'profile-barber', tipo_negocio_id: principalTypeId }]);
+    mock.method(repository, 'listRecommendedProfileServicesByProfileIds', async () => [{
+      perfil_operacional_id: 'profile-barber',
+      servico_catalogo_id: catalogA,
+      recomendado: true,
+      ativo: true
+    }]);
+    mock.method(repository, 'replaceTypeServices', async () => {
+      throw new Error('should block before changing business type services');
+    });
+
+    await assert.rejects(
+      () => service.replaceAdminTypeServices(
+        { role: 'MasterAdmin', userId: '77777777-7777-4777-8777-777777777777' },
+        principalTypeId,
+        { servicos: [] }
+      ),
+      (error) => error.code === 'BUSINESS_TYPE_SERVICE_RECOMMENDATION_DEPENDENCY'
+    );
   });
 
   it('blocks removing a tenant type when active offers depend only on it', async () => {

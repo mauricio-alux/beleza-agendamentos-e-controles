@@ -46,7 +46,7 @@ Todas as rotas passam por `authMiddleware`, `requirePlatformAdmin` e
 | `servicos_catalogo` | Global SaaS | MasterAdmin | Conceito canonico do servico. |
 | `especialidades` com `tenant_id is null` | Global SaaS | MasterAdmin | Especialidades oficiais. |
 | `cargos` | Global SaaS | MasterAdmin | Cargos oficiais usados por equipe. |
-| `tipo_negocio_servicos_catalogo` | Global SaaS | MasterAdmin | Matriz Tipo negocio x Servicos. |
+| `tipo_negocio_servicos_catalogo` | Global SaaS | MasterAdmin | Matriz Tipo negocio x Servicos aplicaveis. |
 | `servico_catalogo_especialidades` | Global SaaS | MasterAdmin | Matriz Servico x Especialidades. |
 | `especialidades.cargo_id` | Global SaaS | MasterAdmin | Matriz Cargo x Especialidades no MER atual. |
 | `tenant_tipos_negocio` | Estabelecimento | Estabelecimento/Admin SaaS operacional | Selecao dos tipos aplicaveis ao estabelecimento. |
@@ -72,6 +72,22 @@ mostra essa matriz sem criar tabela nova.
   historico, agenda e configuracoes do estabelecimento.
 - O termo exibido na interface e "Estabelecimento"; "tenant" fica restrito ao
   contrato tecnico e ao banco.
+
+## Autoridades da Taxonomia V2
+
+| Conceito | Fonte de verdade |
+| --- | --- |
+| Catalogo: servico existente | `servicos_catalogo` |
+| Tipo de negocio: servico aplicavel | `tipo_negocio_servicos_catalogo` com `ativo = true` |
+| Perfil operacional: servico recomendado | `perfil_operacional_servicos` com `ativo = true` e `recomendado = true` |
+| Defaults: valores iniciais sugeridos | `perfil_operacional_defaults` |
+| Tenant: servico efetivamente oferecido | `servico_tenants` e `servico_tenant_especialidades` |
+| Booking: servico agendavel online | `servico_tenant_especialidades.aceita_agendamento_online` e vinculos operacionais ativos |
+
+`tipo_negocio_servicos_catalogo.recomendado` permanece no schema como campo
+legado/deprecated para compatibilidade historica. Novos fluxos administrativos
+nao devem escrever esse campo, e regras de recomendacao nao devem le-lo como
+fonte funcional. A recomendacao inicial pertence ao Perfil Operacional.
 
 ## Conclusao
 

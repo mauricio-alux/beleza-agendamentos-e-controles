@@ -90,13 +90,70 @@ async function listProfileDefaults(profileId) {
   return data || [];
 }
 
+async function listCompatibleServicesForBusinessType(tipoNegocioId) {
+  const { data, error } = await supabaseAdmin
+    .from('tipo_negocio_servicos_catalogo')
+    .select('id,tipo_negocio_id,servico_catalogo_id,ativo,ordem_exibicao,servico_catalogo:servicos_catalogo(id,codigo_canonico,nome,categoria_key,natureza,ativo,metadata)')
+    .eq('tipo_negocio_id', tipoNegocioId)
+    .eq('ativo', true)
+    .order('ordem_exibicao', { ascending: true });
+
+  if (error) throw error;
+  return (data || []).filter((item) => item.servico_catalogo?.ativo !== false);
+}
+
+async function listCompatibleRolesForBusinessType(tipoNegocioId) {
+  const serviceLinks = await listCompatibleServicesForBusinessType(tipoNegocioId);
+  const catalogIds = [...new Set(serviceLinks.map((item) => item.servico_catalogo_id).filter(Boolean))];
+  if (!catalogIds.length) return [];
+
+  const { data: specialtyLinks, error: specialtyError } = await supabaseAdmin
+    .from('servico_catalogo_especialidades')
+    .select('servico_catalogo_id,especialidade_id,ativo')
+    .in('servico_catalogo_id', catalogIds)
+    .eq('ativo', true);
+
+  if (specialtyError) throw specialtyError;
+
+  const specialtyIds = [...new Set((specialtyLinks || []).map((item) => item.especialidade_id).filter(Boolean))];
+  if (!specialtyIds.length) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('cargo_especialidades')
+    .select('id,cargo_id,especialidade_id,ativo,principal,deleted_at,cargo:cargos(id,nome,categoria_profissional,ativo,deleted_at)')
+    .in('especialidade_id', specialtyIds)
+    .eq('ativo', true)
+    .is('deleted_at', null);
+
+  if (error) throw error;
+
+  const byRoleId = new Map();
+  for (const item of data || []) {
+    if (!item.cargo || item.cargo.ativo === false || item.cargo.deleted_at) continue;
+    if (!byRoleId.has(item.cargo_id)) {
+      byRoleId.set(item.cargo_id, {
+        cargo_id: item.cargo_id,
+        cargo: item.cargo,
+        principal: item.principal === true,
+        especialidade_ids: [item.especialidade_id]
+      });
+    } else {
+      const current = byRoleId.get(item.cargo_id);
+      current.principal = current.principal || item.principal === true;
+      current.especialidade_ids.push(item.especialidade_id);
+    }
+  }
+
+  return [...byRoleId.values()].sort((a, b) => (a.cargo?.nome || '').localeCompare(b.cargo?.nome || '', 'pt-BR', { sensitivity: 'base' }));
+}
+
 async function findCatalogServiceForProfile(profileId, catalogId) {
   const profile = await findProfileById(profileId);
   if (!profile) return null;
 
   const { data, error } = await supabaseAdmin
     .from('tipo_negocio_servicos_catalogo')
-    .select('id,tipo_negocio_id,servico_catalogo_id,ativo,recomendado,ordem_exibicao')
+    .select('id,tipo_negocio_id,servico_catalogo_id,ativo,ordem_exibicao')
     .eq('tipo_negocio_id', profile.tipo_negocio_id)
     .eq('servico_catalogo_id', catalogId)
     .eq('ativo', true)
@@ -104,6 +161,13 @@ async function findCatalogServiceForProfile(profileId, catalogId) {
 
   if (error) throw error;
   return data;
+}
+
+async function findCargoForProfile(profileId, cargoId) {
+  const profile = await findProfileById(profileId);
+  if (!profile) return null;
+  const compatibleRoles = await listCompatibleRolesForBusinessType(profile.tipo_negocio_id);
+  return compatibleRoles.find((item) => item.cargo_id === cargoId) || null;
 }
 
 async function findCatalogSpecialty(catalogId, specialtyId) {
@@ -339,7 +403,10 @@ module.exports = {
   listProfileServices,
   listProfileRoles,
   listProfileDefaults,
+  listCompatibleServicesForBusinessType,
+  listCompatibleRolesForBusinessType,
   findCatalogServiceForProfile,
+  findCargoForProfile,
   findCatalogSpecialty,
   findCargoSpecialty,
   upsertProfileService,

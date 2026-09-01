@@ -97,6 +97,45 @@ function isTenantOwnedConfig(config = {}) {
     || metadata.config_origin === 'tenant_added';
 }
 
+function recommendedProfileServices(services = []) {
+  return services.filter((item) => item.recomendado === true && item.ativo !== false);
+}
+
+function recommendedProfileRoles(roles = []) {
+  return roles.filter((item) => item.recomendado === true && item.ativo !== false);
+}
+
+function serviceCandidatesForProfile(compatibleServices = [], services = []) {
+  const recommendedIds = new Set(recommendedProfileServices(services).map((item) => item.servico_catalogo_id));
+  return compatibleServices.filter((item) => !recommendedIds.has(item.servico_catalogo_id));
+}
+
+function roleCandidatesForProfile(compatibleRoles = [], roles = []) {
+  const recommendedIds = new Set(recommendedProfileRoles(roles).map((item) => item.cargo_id));
+  return compatibleRoles.filter((item) => !recommendedIds.has(item.cargo_id));
+}
+
+function attachCatalogSpecialties(rows = [], catalogSpecialties = []) {
+  const byCatalogId = catalogSpecialties.reduce((acc, item) => {
+    const list = acc.get(item.servico_catalogo_id) || [];
+    list.push(item);
+    acc.set(item.servico_catalogo_id, list);
+    return acc;
+  }, new Map());
+
+  return rows.map((row) => {
+    const links = byCatalogId.get(row.servico_catalogo_id) || [];
+    return {
+      ...row,
+      servico_catalogo: row.servico_catalogo ? {
+        ...row.servico_catalogo,
+        compatibilidades: links,
+        especialidades_compativeis: links.map((link) => link.especialidade).filter(Boolean)
+      } : row.servico_catalogo
+    };
+  });
+}
+
 function fingerprintRows(rows) {
   return crypto
     .createHash('sha256')
@@ -307,18 +346,34 @@ async function listAdminProfiles(context) {
   ensurePlatform(context);
   const profiles = await repository.listProfiles({ includeInactive: true });
   return Promise.all(profiles.map(async (profile) => {
-    const [services, roles, defaults] = await Promise.all([
+    const [services, roles, defaults, compatibleServices, compatibleRoles] = await Promise.all([
       repository.listProfileServices(profile.id),
       repository.listProfileRoles(profile.id),
-      repository.listProfileDefaults(profile.id)
+      repository.listProfileDefaults(profile.id),
+      repository.listCompatibleServicesForBusinessType(profile.tipo_negocio_id),
+      repository.listCompatibleRolesForBusinessType(profile.tipo_negocio_id)
     ]);
+    const catalogIds = [...new Set([
+      ...services.map((item) => item.servico_catalogo_id),
+      ...defaults.map((item) => item.servico_catalogo_id),
+      ...compatibleServices.map((item) => item.servico_catalogo_id)
+    ].filter(Boolean))];
+    const catalogSpecialties = catalogIds.length ? await repository.listCatalogSpecialties(catalogIds) : [];
+    const servicesWithSpecialties = attachCatalogSpecialties(services, catalogSpecialties);
+    const compatibleServicesWithSpecialties = attachCatalogSpecialties(compatibleServices, catalogSpecialties);
+    const recommendedServices = recommendedProfileServices(servicesWithSpecialties);
+    const recommendedRoles = recommendedProfileRoles(roles);
     return sanitizeProfile(profile, {
-      servicos: services,
+      servicos: servicesWithSpecialties,
       cargos: roles,
       defaults,
+      servicos_recomendados: recommendedServices,
+      cargos_recomendados: recommendedRoles,
+      servicos_candidatos: serviceCandidatesForProfile(compatibleServicesWithSpecialties, servicesWithSpecialties),
+      cargos_candidatos: roleCandidatesForProfile(compatibleRoles, roles),
       metrics: {
-        servicos: services.length,
-        cargos: roles.length,
+        servicos: recommendedServices.length,
+        cargos: recommendedRoles.length,
         defaults: defaults.length
       }
     });
@@ -380,6 +435,10 @@ async function updateAdminProfileRole(context, profileId, input) {
   ensurePlatform(context);
   const current = await repository.findProfileById(profileId);
   if (!current) throw notFound('Perfil operacional nao encontrado.');
+  const compatibleRole = await repository.findCargoForProfile(profileId, input.cargo_id);
+  if (!compatibleRole) {
+    throw new AppError('Cargo nao pertence aos cargos permitidos para este tipo de negocio.', 422, 'PROFILE_ROLE_NOT_ALLOWED_FOR_BUSINESS_TYPE');
+  }
   if (input.especialidade_id) {
     const compatible = await repository.findCargoSpecialty(input.cargo_id, input.especialidade_id);
     if (!compatible) {
@@ -471,5 +530,9 @@ module.exports = {
   updateAdminDefault,
   reconcileTenant,
   isTenantOwnedConfig,
+  recommendedProfileServices,
+  recommendedProfileRoles,
+  serviceCandidatesForProfile,
+  roleCandidatesForProfile,
   GENERALIST_CONFIRMATION_POLICY
 };

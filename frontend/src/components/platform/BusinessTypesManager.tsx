@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BriefcaseBusiness, Check, Layers3, Pencil, Plus, RefreshCcw, Save, Search, Sparkles, Tags, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
   SERVICE_CATEGORY_LABELS,
   type ServiceCategory
 } from "@/constants/service-categories";
+import { orderCatalogByApplicabilityAndName } from "./business-type-service-ordering";
+import { orderOperationalReferenceCoverage } from "./operational-reference-ordering";
 
 type FormState = {
   id: string;
@@ -79,6 +81,12 @@ type ProfileDraftState = {
   defaultReturn: string;
   defaultOnline: boolean;
   defaultStartDate: string;
+};
+
+type DefaultSpecialtyOption = {
+  id: string;
+  nome: string;
+  ativo?: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -137,6 +145,27 @@ const EMPTY_PROFILE_DRAFT: ProfileDraftState = {
   defaultStartDate: ""
 };
 
+function compareBusinessTypeByVisibleName(a: Pick<BusinessType, "nome">, b: Pick<BusinessType, "nome">) {
+  return a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+}
+
+function operationalProfileBusinessTypeName(profile: OperationalProfile) {
+  return profile.tipo_negocio?.nome || profile.nome || "Perfil operacional";
+}
+
+function compareOperationalProfileByBusinessTypeName(a: OperationalProfile, b: OperationalProfile) {
+  return operationalProfileBusinessTypeName(a).localeCompare(
+    operationalProfileBusinessTypeName(b),
+    "pt-BR",
+    { sensitivity: "base" }
+  );
+}
+
+function isProfileDraftDirty(draft?: ProfileDraftState) {
+  if (!draft) return false;
+  return Object.entries(draft).some(([key, value]) => value !== EMPTY_PROFILE_DRAFT[key as keyof ProfileDraftState]);
+}
+
 export function BusinessTypesManager() {
   const { session } = useAuth();
   const [types, setTypes] = useState<BusinessType[]>([]);
@@ -146,6 +175,7 @@ export function BusinessTypesManager() {
   const [roles, setRoles] = useState<TaxonomyRole[]>([]);
   const [specialties, setSpecialties] = useState<TaxonomySpecialty[]>([]);
   const [operationalProfiles, setOperationalProfiles] = useState<OperationalProfile[]>([]);
+  const [selectedOperationalTypeId, setSelectedOperationalTypeId] = useState("");
   const [profileDrafts, setProfileDrafts] = useState<Record<string, ProfileDraftState>>({});
   const [roleForm, setRoleForm] = useState<RoleFormState>(EMPTY_ROLE_FORM);
   const [specialtyForm, setSpecialtyForm] = useState<SpecialtyFormState>(EMPTY_SPECIALTY_FORM);
@@ -160,23 +190,93 @@ export function BusinessTypesManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const profileDefaultEditorRef = useRef<HTMLDivElement | null>(null);
+  const profileDefaultServiceRef = useRef<HTMLSelectElement | null>(null);
 
   const selectedType = types.find((item) => item.id === selectedTypeId) || null;
   const associationByCatalogId = useMemo(
     () => new Map(associations.map((item) => [item.servico_catalogo_id, item])),
     [associations]
   );
-  const filteredTypes = types.filter((item) => {
-    const haystack = `${item.nome} ${item.slug}`.toLowerCase();
-    return (!query || haystack.includes(query.toLowerCase())) && (showInactive || item.ativo !== false);
-  });
-  const filteredCatalog = catalog.filter((item) => {
+  const filteredTypes = types
+    .filter((item) => {
+      const haystack = `${item.nome} ${item.slug}`.toLowerCase();
+      return (!query || haystack.includes(query.toLowerCase())) && (showInactive || item.ativo !== false);
+    })
+    .sort(compareBusinessTypeByVisibleName);
+  const filteredCatalog = useMemo(() => catalog.filter((item) => {
     const haystack = `${item.nome} ${item.codigo_canonico} ${item.categoria}`.toLowerCase();
     return !catalogQuery || haystack.includes(catalogQuery.toLowerCase());
-  });
+  }), [catalog, catalogQuery]);
+
+  const filteredApplicableCatalog = useMemo(
+    () => orderCatalogByApplicabilityAndName(filteredCatalog, associations),
+    [filteredCatalog, associations]
+  );
   const activeRoles = roles.filter((role) => role.ativo !== false);
   const activeSpecialties = specialties.filter((specialty) => specialty.ativo !== false);
   const operationalRoles = activeRoles.filter((role) => role.categoria_profissional !== "administrativo");
+  const profileRecommendedServices = (profile: OperationalProfile) => (
+    profile.servicos_recomendados || (profile.servicos || []).filter((item) => item.recomendado === true && item.ativo !== false)
+  );
+  const profileRecommendedRoles = (profile: OperationalProfile) => (
+    profile.cargos_recomendados || (profile.cargos || []).filter((item) => item.recomendado === true && item.ativo !== false)
+  );
+  const profileServiceCandidates = (profile: OperationalProfile) => profile.servicos_candidatos || [];
+  const profileRoleCandidates = (profile: OperationalProfile) => profile.cargos_candidatos || [];
+  const profileDefaultServiceOptions = (profile: OperationalProfile) => [...profileRecommendedServices(profile)]
+    .filter((item) => item.ativo !== false && item.servico_catalogo?.ativo !== false)
+    .sort((a, b) => (a.prioridade ?? 0) - (b.prioridade ?? 0));
+  const profileDefaultSpecialtyOptions = (profile: OperationalProfile): DefaultSpecialtyOption[] => {
+    const draft = profileDraft(profile.id);
+    if (!draft.defaultServiceId) return [];
+    const selectedService = profileDefaultServiceOptions(profile).find((item) => item.servico_catalogo_id === draft.defaultServiceId);
+    const compatibleSpecialties = selectedService?.servico_catalogo?.especialidades_compativeis
+      || selectedService?.servico_catalogo?.compatibilidades?.map((item) => item.especialidade).filter(Boolean)
+      || [];
+    const activeCompatible = compatibleSpecialties.reduce<DefaultSpecialtyOption[]>((acc, specialty) => {
+      if (specialty && specialty.ativo !== false) {
+        acc.push({ id: specialty.id, nome: specialty.nome, ativo: specialty.ativo });
+      }
+      return acc;
+    }, []);
+    if (activeCompatible.length) return activeCompatible;
+    return activeSpecialties;
+  };
+  const specialtyOptionsForRecommendedService = (service: NonNullable<OperationalProfile["servicos_recomendados"]>[number]): DefaultSpecialtyOption[] => {
+    const compatibleSpecialties = service.servico_catalogo?.especialidades_compativeis
+      || service.servico_catalogo?.compatibilidades?.map((item) => item.especialidade).filter(Boolean)
+      || [];
+    return compatibleSpecialties.reduce<DefaultSpecialtyOption[]>((acc, specialty) => {
+      if (specialty && specialty.ativo !== false) {
+        acc.push({ id: specialty.id, nome: specialty.nome, ativo: specialty.ativo });
+      }
+      return acc;
+    }, []);
+  };
+  const recommendedServiceSpecialtyLabel = (service: NonNullable<OperationalProfile["servicos_recomendados"]>[number]) => {
+    const specialties = specialtyOptionsForRecommendedService(service);
+    if (specialties.length === 1) return specialties[0].nome;
+    if (specialties.length > 1) return `${specialties.length} especialidades`;
+    return "Especialidade geral";
+  };
+  const profileReferenceCoverage = (profile: OperationalProfile) => {
+    const defaults = profile.defaults || [];
+    const services = profileRecommendedServices(profile)
+      .filter((item) => item.ativo !== false && item.servico_catalogo?.ativo !== false);
+
+    return orderOperationalReferenceCoverage({
+      services,
+      defaults,
+      getServiceName: (service) => service.servico_catalogo?.nome || serviceName(service.servico_catalogo_id),
+      getSpecialtyName: (item) => specialtyName(item.especialidade_id)
+    });
+  };
+  const sortedOperationalProfiles = useMemo(
+    () => [...operationalProfiles].sort(compareOperationalProfileByBusinessTypeName),
+    [operationalProfiles]
+  );
+  const selectedOperationalProfile = sortedOperationalProfiles.find((profile) => profile.tipo_negocio_id === selectedOperationalTypeId) || null;
   const isCatalogEditorOpen = isCreatingCatalog || Boolean(catalogForm.id);
   const activeServiceCategories = useMemo(() => (
     SERVICE_CATEGORIES
@@ -216,6 +316,12 @@ export function BusinessTypesManager() {
       setRoles(nextRoles || []);
       setSpecialties(nextGlobalSpecialties || []);
       setOperationalProfiles(nextProfiles || []);
+      const profileOptions = [...(nextProfiles || [])].sort(compareOperationalProfileByBusinessTypeName);
+      setSelectedOperationalTypeId((current) => (
+        current && profileOptions.some((profile) => profile.tipo_negocio_id === current)
+          ? current
+          : profileOptions[0]?.tipo_negocio_id || ""
+      ));
       const nextSelected = selectedTypeId || nextTypes?.[0]?.id || "";
       setSelectedTypeId(nextSelected);
       if (nextSelected) {
@@ -470,7 +576,7 @@ export function BusinessTypesManager() {
     }
   }
 
-  async function saveAssociations(next: BusinessTypeCatalogAssociation[], successMessage = "Associações do catálogo atualizadas.") {
+  async function saveAssociations(next: BusinessTypeCatalogAssociation[], successMessage = "Serviços aplicáveis atualizados.") {
     if (!session || !selectedTypeId || isSaving) return;
     setIsSaving(true);
     setError("");
@@ -481,7 +587,6 @@ export function BusinessTypesManager() {
         selectedTypeId,
         next.map((item) => ({
           servico_catalogo_id: item.servico_catalogo_id,
-          recomendado: item.recomendado,
           ativo: item.ativo,
           ordem_exibicao: item.ordem_exibicao ?? 0
         }))
@@ -525,6 +630,31 @@ export function BusinessTypesManager() {
     }));
   }
 
+  function selectOperationalProfile(typeId: string) {
+    const previousProfile = operationalProfiles.find((profile) => profile.tipo_negocio_id === selectedOperationalTypeId);
+    const previousDraft = previousProfile ? profileDrafts[previousProfile.id] : undefined;
+    const discardedDraft = previousProfile && previousProfile.tipo_negocio_id !== typeId && isProfileDraftDirty(previousDraft);
+    if (previousProfile && previousProfile.tipo_negocio_id !== typeId) {
+      setProfileDrafts((drafts) => ({
+        ...drafts,
+        [previousProfile.id]: EMPTY_PROFILE_DRAFT
+      }));
+    }
+    setSelectedOperationalTypeId(typeId);
+    setError("");
+    setMessage(discardedDraft ? "Edicao temporaria do perfil anterior descartada ao trocar de Tipo de Negocio." : "");
+  }
+
+  function scrollToProfileDefaultEditor() {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      profileDefaultEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        profileDefaultServiceRef.current?.focus({ preventScroll: true });
+      }, 250);
+    });
+  }
+
   async function addProfileService(profile: OperationalProfile) {
     const draft = profileDraft(profile.id);
     if (!session || !draft.serviceId || isSaving) return;
@@ -536,10 +666,10 @@ export function BusinessTypesManager() {
         servico_catalogo_id: draft.serviceId,
         recomendado: true,
         ativo: true,
-        prioridade: profile.servicos?.length || 0
+        prioridade: profileRecommendedServices(profile).length
       });
       await load();
-      setMessage("Servico recomendado atualizado.");
+      setMessage("Servico adicionado ao perfil operacional.");
     } catch (err) {
       setError(getErrorMessage(err, "Nao foi possivel atualizar servicos recomendados."));
     } finally {
@@ -558,12 +688,55 @@ export function BusinessTypesManager() {
         cargo_id: draft.roleId,
         recomendado: true,
         ativo: true,
-        prioridade: profile.cargos?.length || 0
+        prioridade: profileRecommendedRoles(profile).length
       });
       await load();
       setMessage("Cargo adicionado ao perfil operacional.");
     } catch (err) {
       setError(getErrorMessage(err, "Nao foi possivel adicionar o cargo. Tente novamente."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeProfileService(profile: OperationalProfile, item: NonNullable<OperationalProfile["servicos"]>[number]) {
+    if (!session || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await businessTypesService.upsertOperationalProfileService(session, profile.id, {
+        servico_catalogo_id: item.servico_catalogo_id,
+        recomendado: false,
+        ativo: item.ativo !== false,
+        prioridade: item.prioridade ?? 0
+      });
+      await load();
+      setMessage("Servico removido dos recomendados do perfil operacional.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar servicos recomendados."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeProfileRole(profile: OperationalProfile, item: NonNullable<OperationalProfile["cargos"]>[number]) {
+    if (!session || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await businessTypesService.upsertOperationalProfileRole(session, profile.id, {
+        cargo_id: item.cargo_id,
+        recomendado: false,
+        principal: item.principal === true,
+        ativo: item.ativo !== false,
+        prioridade: item.prioridade ?? 0
+      });
+      await load();
+      setMessage("Cargo removido dos recomendados do perfil operacional.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Nao foi possivel atualizar cargos recomendados."));
     } finally {
       setIsSaving(false);
     }
@@ -630,6 +803,18 @@ export function BusinessTypesManager() {
       defaultOnline: item.aceita_agendamento_online !== false,
       defaultStartDate: item.vigencia_inicio ? item.vigencia_inicio.slice(0, 10) : ""
     });
+    scrollToProfileDefaultEditor();
+  }
+
+  function startCreateProfileDefault(profileId: string, servicoCatalogoId: string) {
+    setProfileDrafts((current) => ({
+      ...current,
+      [profileId]: {
+        ...EMPTY_PROFILE_DRAFT,
+        defaultServiceId: servicoCatalogoId
+      }
+    }));
+    scrollToProfileDefaultEditor();
   }
 
   function toggleCatalogItem(item: ServiceCatalog) {
@@ -638,27 +823,12 @@ export function BusinessTypesManager() {
     const nextActive = current ? !current.ativo : true;
     const next = current
       ? associations.map((association) => association.servico_catalogo_id === item.id ? { ...association, ativo: nextActive } : association)
-      : [...associations, { tipo_negocio_id: selectedTypeId, servico_catalogo_id: item.id, recomendado: false, ativo: true, servico_catalogo: item }];
+      : [...associations, { tipo_negocio_id: selectedTypeId, servico_catalogo_id: item.id, ativo: true, servico_catalogo: item }];
     saveAssociations(
       next,
       selectedType
         ? `${item.nome} ${nextActive ? "agora é aplicável a" : "deixou de ser aplicável a"} ${selectedType.nome}.`
         : "Associação do catálogo atualizada."
-    );
-  }
-
-  function toggleRecommended(item: ServiceCatalog) {
-    if (isSaving || item.ativo === false) return;
-    const current = associationByCatalogId.get(item.id);
-    const nextRecommended = !current?.recomendado;
-    const next = current
-      ? associations.map((association) => association.servico_catalogo_id === item.id ? { ...association, ativo: true, recomendado: nextRecommended } : association)
-      : [...associations, { tipo_negocio_id: selectedTypeId, servico_catalogo_id: item.id, recomendado: true, ativo: true, servico_catalogo: item }];
-    saveAssociations(
-      next,
-      selectedType
-        ? `${item.nome} ${nextRecommended ? "agora é recomendado para" : "não é mais recomendado para"} ${selectedType.nome}.`
-        : "Recomendação do catálogo atualizada."
     );
   }
 
@@ -709,8 +879,28 @@ export function BusinessTypesManager() {
             <h2 className="text-lg font-bold text-foreground">Perfis operacionais</h2>
             <p className="text-sm text-muted-foreground">Defaults administrativos usados na inicializacao do estabelecimento.</p>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {operationalProfiles.map((profile) => (
+          <div className="mb-4 max-w-xl">
+            <Field label="Tipo de Negocio">
+              <select
+                aria-label="Selecionar Tipo de Negocio do Perfil Operacional"
+                value={selectedOperationalTypeId}
+                onChange={(event) => selectOperationalProfile(event.target.value)}
+                className="h-11 w-full min-w-0 rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
+                disabled={!sortedOperationalProfiles.length}
+              >
+                {!sortedOperationalProfiles.length ? <option value="">Nenhum Perfil Operacional configurado</option> : null}
+                {sortedOperationalProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.tipo_negocio_id}>
+                    {operationalProfileBusinessTypeName(profile)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="grid gap-3">
+            {selectedOperationalProfile ? (() => {
+              const profile = selectedOperationalProfile;
+              return (
               <div key={profile.id} className="rounded-xl border border-border bg-white/75 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -756,8 +946,18 @@ export function BusinessTypesManager() {
                 <div className="mt-4 grid gap-3">
                   <ProfileSummary
                     title="Servicos recomendados"
-                    items={(profile.servicos || []).map((item) => `${item.servico_catalogo?.nome || "Servico"} - ${item.recomendado ? "recomendado" : "opcional"} - ordem ${item.prioridade ?? 0}`)}
+                    items={profileRecommendedServices(profile).map((item) => `${item.servico_catalogo?.nome || "Servico"} - recomendado - ordem ${item.prioridade ?? 0}`)}
                   />
+                  {profileRecommendedServices(profile).length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {profileRecommendedServices(profile).map((item) => (
+                        <Button key={item.servico_catalogo_id} type="button" variant="ghost" onClick={() => removeProfileService(profile, item)} disabled={isSaving}>
+                          <X className="h-4 w-4" />
+                          Remover {item.servico_catalogo?.nome || "servico"}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                     <select
                       value={profileDraft(profile.id).serviceId}
@@ -765,7 +965,9 @@ export function BusinessTypesManager() {
                       className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
                     >
                       <option value="">Adicionar servico recomendado</option>
-                      {catalog.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                      {profileServiceCandidates(profile).map((item) => (
+                        <option key={item.servico_catalogo_id} value={item.servico_catalogo_id}>{item.servico_catalogo?.nome || "Servico"}</option>
+                      ))}
                     </select>
                     <Button type="button" variant="outline" onClick={() => addProfileService(profile)} disabled={isSaving || !profileDraft(profile.id).serviceId}>
                       <Plus className="h-4 w-4" />
@@ -774,8 +976,18 @@ export function BusinessTypesManager() {
                   </div>
                   <ProfileSummary
                     title="Cargos recomendados"
-                    items={(profile.cargos || []).map((item) => `${item.cargo?.nome || "Cargo"} - ${item.principal ? "principal" : "recomendado"} - ordem ${item.prioridade ?? 0}`)}
+                    items={profileRecommendedRoles(profile).map((item) => `${item.cargo?.nome || "Cargo"} - recomendado - ordem ${item.prioridade ?? 0}`)}
                   />
+                  {profileRecommendedRoles(profile).length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {profileRecommendedRoles(profile).map((item) => (
+                        <Button key={item.cargo_id} type="button" variant="ghost" onClick={() => removeProfileRole(profile, item)} disabled={isSaving}>
+                          <X className="h-4 w-4" />
+                          Remover {item.cargo?.nome || "cargo"}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                     <select
                       value={profileDraft(profile.id).roleId}
@@ -783,54 +995,78 @@ export function BusinessTypesManager() {
                       className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm"
                     >
                       <option value="">Adicionar cargo recomendado</option>
-                      {operationalRoles.map((role) => <option key={role.id} value={role.id}>{role.nome}</option>)}
+                      {profileRoleCandidates(profile).map((item) => (
+                        <option key={item.cargo_id} value={item.cargo_id}>{item.cargo?.nome || "Cargo"}</option>
+                      ))}
                     </select>
                     <Button type="button" variant="outline" onClick={() => addProfileRole(profile)} disabled={isSaving || !profileDraft(profile.id).roleId}>
                       <Plus className="h-4 w-4" />
                       Adicionar
                     </Button>
                   </div>
-                  <ProfileSummary
-                    title="Referencias operacionais"
-                    items={(profile.defaults || []).map((item) => (
-                      `${serviceName(item.servico_catalogo_id)} / ${specialtyName(item.especialidade_id)} - ${regionLabel(item)} - R$ ${item.preco_referencia ?? "-"} - ${item.duracao_minutos ?? "-"} min - retorno ${item.dias_retorno_recomendado ?? "-"} - online ${item.aceita_agendamento_online !== false ? "sim" : "nao"}`
-                    ))}
-                  />
-                  <div className="grid gap-2">
-                    {(profile.defaults || []).map((item) => (
-                      <div key={item.id} className="grid gap-2 rounded-xl border border-border bg-white/80 p-3 md:grid-cols-[1fr_auto] md:items-center">
-                        <div>
-                          <p className="text-sm font-bold text-foreground">{serviceName(item.servico_catalogo_id)} / {specialtyName(item.especialidade_id)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {regionLabel(item)} - R$ {item.preco_min_referencia ?? "-"} / {item.preco_referencia ?? "-"} / {item.preco_max_referencia ?? "-"} - {item.duracao_minutos ?? "-"} min - retorno {item.dias_retorno_recomendado ?? "-"} - online {item.aceita_agendamento_online !== false ? "sim" : "nao"}
-                          </p>
-                        </div>
-                        <Button type="button" variant="outline" onClick={() => editProfileDefault(profile.id, item)} disabled={isSaving}>
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </Button>
-                      </div>
-                    ))}
+                  <div className="rounded-xl border border-border bg-white/80 p-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Referencias operacionais</p>
+                    <div className="mt-3 grid gap-2">
+                      {profileReferenceCoverage(profile).map(({ service, defaults }) => (
+                        defaults.length ? defaults.map((item) => (
+                          <div key={item.id} className="grid gap-2 rounded-xl border border-border bg-white/80 p-3 md:grid-cols-[1fr_auto] md:items-center">
+                            <div>
+                              <p className="text-sm font-bold text-foreground">{serviceName(item.servico_catalogo_id)} / {specialtyName(item.especialidade_id)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {regionLabel(item)} - R$ {item.preco_min_referencia ?? "-"} / {item.preco_referencia ?? "-"} / {item.preco_max_referencia ?? "-"} - {item.duracao_minutos ?? "-"} min - retorno {item.dias_retorno_recomendado ?? "-"} - online {item.aceita_agendamento_online !== false ? "sim" : "nao"}
+                              </p>
+                            </div>
+                            <Button type="button" variant="outline" onClick={() => editProfileDefault(profile.id, item)} disabled={isSaving}>
+                              <Pencil className="h-4 w-4" />
+                              Editar
+                            </Button>
+                          </div>
+                        )) : (
+                          <div key={service.servico_catalogo_id} className="grid gap-2 rounded-xl border border-border bg-white/80 p-3 md:grid-cols-[1fr_auto] md:items-center">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-foreground">
+                                {service.servico_catalogo?.nome || serviceName(service.servico_catalogo_id)} / {recommendedServiceSpecialtyLabel(service)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">Sem referencia operacional configurada.</p>
+                            </div>
+                            <Button type="button" variant="outline" onClick={() => startCreateProfileDefault(profile.id, service.servico_catalogo_id)} disabled={isSaving}>
+                              <Plus className="h-4 w-4" />
+                              Criar referencia
+                            </Button>
+                          </div>
+                        )
+                      ))}
+                      {!profileReferenceCoverage(profile).length ? (
+                        <span className="text-xs font-semibold text-muted-foreground">Nenhum servico recomendado para cobertura de referencias.</span>
+                      ) : null}
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Se nao houver uma referencia especifica para a localizacao, sera utilizada a proxima referencia disponivel: Cidade, Estado, Pais, Geral.
                   </p>
-                  <div className="grid gap-2 md:grid-cols-6">
+                  <div ref={profileDefaultEditorRef} className="grid scroll-mt-28 gap-2 md:grid-cols-6">
                     <select
+                      ref={profileDefaultServiceRef}
                       value={profileDraft(profile.id).defaultServiceId}
                       onChange={(event) => updateProfileDraft(profile.id, { defaultServiceId: event.target.value, defaultSpecialtyId: "" })}
+                      aria-label="Servico da referencia operacional"
                       className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm md:col-span-2"
                     >
                       <option value="">Servico</option>
-                      {catalog.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                      {profileDefaultServiceOptions(profile).map((item) => (
+                        <option key={item.servico_catalogo_id} value={item.servico_catalogo_id}>
+                          {item.servico_catalogo?.nome || serviceName(item.servico_catalogo_id)}
+                        </option>
+                      ))}
                     </select>
                     <select
                       value={profileDraft(profile.id).defaultSpecialtyId}
                       onChange={(event) => updateProfileDraft(profile.id, { defaultSpecialtyId: event.target.value })}
                       className="h-11 w-full rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm md:col-span-2"
+                      disabled={!profileDraft(profile.id).defaultServiceId}
                     >
                       <option value="">Especialidade geral</option>
-                      {activeSpecialties.map((specialty) => <option key={specialty.id} value={specialty.id}>{specialty.nome}</option>)}
+                      {profileDefaultSpecialtyOptions(profile).map((specialty) => <option key={specialty.id} value={specialty.id}>{specialty.nome}</option>)}
                     </select>
                     <select
                       value={profileDraft(profile.id).defaultRegionScope}
@@ -851,12 +1087,24 @@ export function BusinessTypesManager() {
                     {profileDraft(profile.id).defaultRegionScope === "city" ? (
                       <Input value={profileDraft(profile.id).defaultCity} onChange={(event) => updateProfileDraft(profile.id, { defaultCity: event.target.value })} placeholder="Cidade" />
                     ) : null}
-                    <Input value={profileDraft(profile.id).defaultMinPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMinPrice: event.target.value })} placeholder="Preco min." />
-                    <Input value={profileDraft(profile.id).defaultPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultPrice: event.target.value })} placeholder="Preco" />
-                    <Input value={profileDraft(profile.id).defaultMaxPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMaxPrice: event.target.value })} placeholder="Preco max." />
-                    <Input value={profileDraft(profile.id).defaultDuration} onChange={(event) => updateProfileDraft(profile.id, { defaultDuration: event.target.value })} placeholder="Duracao" />
-                    <Input value={profileDraft(profile.id).defaultReturn} onChange={(event) => updateProfileDraft(profile.id, { defaultReturn: event.target.value })} placeholder="Retorno" />
-                    <Input type="date" value={profileDraft(profile.id).defaultStartDate} onChange={(event) => updateProfileDraft(profile.id, { defaultStartDate: event.target.value })} />
+                    <CompactLabeledControl id={`profile-${profile.id}-default-min-price`} label="Preco min. (R$)">
+                      <Input id={`profile-${profile.id}-default-min-price`} value={profileDraft(profile.id).defaultMinPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMinPrice: event.target.value })} placeholder="Preco min." />
+                    </CompactLabeledControl>
+                    <CompactLabeledControl id={`profile-${profile.id}-default-price`} label="Preco recomendado (R$)">
+                      <Input id={`profile-${profile.id}-default-price`} value={profileDraft(profile.id).defaultPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultPrice: event.target.value })} placeholder="Preco" />
+                    </CompactLabeledControl>
+                    <CompactLabeledControl id={`profile-${profile.id}-default-max-price`} label="Preco max. (R$)">
+                      <Input id={`profile-${profile.id}-default-max-price`} value={profileDraft(profile.id).defaultMaxPrice} onChange={(event) => updateProfileDraft(profile.id, { defaultMaxPrice: event.target.value })} placeholder="Preco max." />
+                    </CompactLabeledControl>
+                    <CompactLabeledControl id={`profile-${profile.id}-default-duration`} label="Duracao (min)">
+                      <Input id={`profile-${profile.id}-default-duration`} value={profileDraft(profile.id).defaultDuration} onChange={(event) => updateProfileDraft(profile.id, { defaultDuration: event.target.value })} placeholder="Duracao" />
+                    </CompactLabeledControl>
+                    <CompactLabeledControl id={`profile-${profile.id}-default-return`} label="Retorno (dias)">
+                      <Input id={`profile-${profile.id}-default-return`} value={profileDraft(profile.id).defaultReturn} onChange={(event) => updateProfileDraft(profile.id, { defaultReturn: event.target.value })} placeholder="Retorno" />
+                    </CompactLabeledControl>
+                    <CompactLabeledControl id={`profile-${profile.id}-default-start-date`} label="Validade">
+                      <Input id={`profile-${profile.id}-default-start-date`} type="date" value={profileDraft(profile.id).defaultStartDate} onChange={(event) => updateProfileDraft(profile.id, { defaultStartDate: event.target.value })} />
+                    </CompactLabeledControl>
                     <label className="flex h-11 items-center gap-2 rounded-2xl border border-input bg-white/90 px-3 text-sm font-semibold text-foreground shadow-sm">
                       <input
                         type="checkbox"
@@ -878,10 +1126,10 @@ export function BusinessTypesManager() {
                   </div>
                 </div>
               </div>
-            ))}
-            {!operationalProfiles.length ? (
-              <FeedbackMessage tone="info" message="Nenhum perfil operacional encontrado." />
-            ) : null}
+              );
+            })() : (
+              <FeedbackMessage tone="info" message="Nenhum Perfil Operacional configurado para este Tipo de Negocio." />
+            )}
           </div>
         </section>
 
@@ -944,8 +1192,9 @@ export function BusinessTypesManager() {
               <section id="matrizes" className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Servicos aplicaveis</p>
                     <h2 className="text-lg font-bold text-foreground">{selectedType.nome}</h2>
-                    <p className="text-sm text-muted-foreground">Associacao N:N com o catalogo oficial.</p>
+                    <p className="text-sm text-muted-foreground">Define quais Servicos fazem parte deste Tipo de Negocio.</p>
                   </div>
                   <div className="flex gap-2">
                     <Button type="button" variant="ghost" onClick={() => toggleStatus(selectedType)} disabled={isSaving}>{selectedType.ativo ? "Inativar" : "Ativar"}</Button>
@@ -956,11 +1205,11 @@ export function BusinessTypesManager() {
                   <Input value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Buscar servico do catalogo" />
                 </div>
                 <div className="grid gap-2">
-                  {filteredCatalog.map((item) => {
+                  {filteredApplicableCatalog.map((item) => {
                     const association = associationByCatalogId.get(item.id);
                     const active = association?.ativo === true;
                     return (
-                      <div key={item.id} className="grid gap-3 rounded-xl border border-border bg-white/75 p-3 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+                      <div key={item.id} className="grid gap-3 rounded-xl border border-border bg-white/75 p-3 md:grid-cols-[1fr_auto_auto] md:items-center">
                         <div>
                           <p className="font-bold text-foreground">{item.nome}</p>
                           <p className="text-xs text-muted-foreground">{item.codigo_canonico} - {item.categoria} - {item.ativo === false ? "catalogo inativo" : "catalogo ativo"}</p>
@@ -968,9 +1217,6 @@ export function BusinessTypesManager() {
                         <Button type="button" variant={active ? "default" : "outline"} onClick={() => toggleCatalogItem(item)} disabled={isSaving || item.ativo === false}>
                           {active ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                           Aplicavel
-                        </Button>
-                        <Button type="button" variant={association?.recomendado ? "accent" : "outline"} onClick={() => toggleRecommended(item)} disabled={isSaving || item.ativo === false}>
-                          Recomendado
                         </Button>
                         <Button
                           type="button"
@@ -1238,6 +1484,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function CompactLabeledControl({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <Label htmlFor={id} className="block truncate text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </Label>
       {children}
     </div>
   );

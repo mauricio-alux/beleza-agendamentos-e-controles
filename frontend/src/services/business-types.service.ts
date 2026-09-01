@@ -12,7 +12,8 @@ export type BusinessType = {
   ordem_exibicao?: number | null;
   metrics?: {
     servicos_associados: number;
-    servicos_recomendados: number;
+    servicos_aplicaveis?: number;
+    servicos_recomendados?: number;
     tenants_associados: number;
   };
 };
@@ -21,7 +22,9 @@ export type BusinessTypeCatalogAssociation = {
   id?: string;
   tipo_negocio_id: string;
   servico_catalogo_id: string;
-  recomendado: boolean;
+  aplicavel?: boolean;
+  recomendado?: boolean;
+  recomendado_deprecated?: boolean;
   ativo: boolean;
   ordem_exibicao?: number | null;
   servico_catalogo?: ServiceCatalog | null;
@@ -123,6 +126,15 @@ export type OperationalProfile = {
   servicos?: OperationalProfileService[];
   cargos?: OperationalProfileRole[];
   defaults?: OperationalProfileDefault[];
+  servicos_recomendados?: OperationalProfileService[];
+  cargos_recomendados?: OperationalProfileRole[];
+  servicos_candidatos?: BusinessTypeCatalogAssociation[];
+  cargos_candidatos?: Array<{
+    cargo_id: string;
+    principal: boolean;
+    especialidade_ids?: string[];
+    cargo?: TaxonomyRole | null;
+  }>;
 };
 
 export type TenantBusinessType = {
@@ -400,7 +412,6 @@ async function replaceAdminTypeServices(
   id: string,
   servicos: Array<{
     servico_catalogo_id: string;
-    recomendado?: boolean;
     ativo?: boolean;
     ordem_exibicao?: number | null;
   }>

@@ -36,7 +36,7 @@ async function listTypes({ includeInactive = false, search = '' } = {}) {
     .from('tipos_negocio')
     .select(`
       ${TYPE_SELECT},
-      tipo_negocio_servicos_catalogo(id, recomendado, ativo),
+      tipo_negocio_servicos_catalogo(id, ativo),
       tenant_tipos_negocio(id, ativo)
     `)
     .order('ordem_exibicao', { ascending: true })
@@ -115,7 +115,7 @@ async function replaceTypeServices(typeId, services) {
     if (!next) {
       const { error } = await supabaseAdmin
         .from('tipo_negocio_servicos_catalogo')
-        .update({ ativo: false, recomendado: false })
+        .update({ ativo: false })
         .eq('id', current.id);
       if (error) throw error;
     } else {
@@ -123,7 +123,6 @@ async function replaceTypeServices(typeId, services) {
         .from('tipo_negocio_servicos_catalogo')
         .update({
           ativo: next.ativo !== false,
-          recomendado: next.recomendado === true,
           ordem_exibicao: next.ordem_exibicao || 0
         })
         .eq('id', current.id);
@@ -136,7 +135,6 @@ async function replaceTypeServices(typeId, services) {
     tipo_negocio_id: typeId,
     servico_catalogo_id: item.servico_catalogo_id,
     ativo: item.ativo !== false,
-    recomendado: item.recomendado === true,
     ordem_exibicao: item.ordem_exibicao || 0
   }));
 
@@ -148,6 +146,37 @@ async function replaceTypeServices(typeId, services) {
   }
 
   return listTypeServices(typeId);
+}
+
+async function listActiveProfilesByBusinessTypeIds(typeIds) {
+  const ids = [...new Set((typeIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('tipo_negocio_perfis_operacionais')
+    .select('id,tipo_negocio_id,nome,ativo,deleted_at')
+    .in('tipo_negocio_id', ids)
+    .eq('ativo', true)
+    .is('deleted_at', null);
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function listRecommendedProfileServicesByProfileIds(profileIds) {
+  const ids = [...new Set((profileIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('perfil_operacional_servicos')
+    .select('id,perfil_operacional_id,servico_catalogo_id,recomendado,ativo,deleted_at')
+    .in('perfil_operacional_id', ids)
+    .eq('ativo', true)
+    .eq('recomendado', true)
+    .is('deleted_at', null);
+
+  if (error) throw error;
+  return data || [];
 }
 
 async function listTenantTypes(tenantId) {
@@ -416,6 +445,8 @@ module.exports = {
   updateType,
   listTypeServices,
   replaceTypeServices,
+  listActiveProfilesByBusinessTypeIds,
+  listRecommendedProfileServicesByProfileIds,
   listTenantTypes,
   replaceTenantTypes,
   listAllCatalog,

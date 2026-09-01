@@ -189,14 +189,23 @@ Novas fontes:
 
 - `tipos_negocio`: catalogo global SaaS de segmentos/modelos de negocio.
 - `tipo_negocio_servicos_catalogo`: relacao N:N entre tipo de negocio e
-  `servicos_catalogo`, com `recomendado`, `ativo` e ordem.
+  `servicos_catalogo`, em que associacao ativa significa servico aplicavel ao
+  tipo de negocio. O campo `recomendado` desta tabela e legado/deprecated e nao
+  deve orientar recomendacao funcional.
 - `tenant_tipos_negocio`: relacao N:N entre tenant e tipo de negocio, com no
   maximo um tipo principal ativo por tenant.
 
 Tipo de negocio nao e categoria de servico, cargo, profissao, especialidade,
-oferta comercial nem catalogo por tenant. Ele orienta recomendacao e
-organizacao do catalogo, mas nao cria `servico_tenants` automaticamente e nao
-remove ofertas, profissionais, agenda ou historico quando alterado.
+oferta comercial nem catalogo por tenant. Ele define quais servicos sao
+aplicaveis ao contexto do estabelecimento, mas nao define recomendacao
+operacional, nao cria `servico_tenants` automaticamente e nao remove ofertas,
+profissionais, agenda ou historico quando alterado.
+
+Desde a simplificacao da Taxonomia V2, a fonte funcional de servicos
+recomendados e exclusivamente `perfil_operacional_servicos.recomendado = true`.
+Defaults operacionais continuam em `perfil_operacional_defaults` e sugerem
+preco, duracao, retorno e online para inicializacao; nao definem
+aplicabilidade nem oferta real permanente do tenant.
 
 Desde 2026-08-05, a cadeia oficial do Bellory e:
 

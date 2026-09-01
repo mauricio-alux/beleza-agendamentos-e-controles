@@ -12,6 +12,7 @@ function ensurePlatform(context) {
 function sanitizeType(row) {
   const services = row.tipo_negocio_servicos_catalogo || [];
   const tenants = row.tenant_tipos_negocio || [];
+  const applicableServices = services.filter((item) => item.ativo !== false).length;
   return {
     id: row.id,
     nome: row.nome,
@@ -23,18 +24,21 @@ function sanitizeType(row) {
     criado_em: row.criado_em,
     atualizado_em: row.atualizado_em,
     metrics: {
-      servicos_associados: services.filter((item) => item.ativo !== false).length,
-      servicos_recomendados: services.filter((item) => item.ativo !== false && item.recomendado === true).length,
+      servicos_associados: applicableServices,
+      servicos_aplicaveis: applicableServices,
       tenants_associados: tenants.filter((item) => item.ativo !== false).length
     }
   };
 }
 
 function sanitizeAssociation(row) {
+  // Campo legado preservado temporariamente no contrato; nao governa recomendacao funcional.
   return {
     id: row.id,
     tipo_negocio_id: row.tipo_negocio_id,
     servico_catalogo_id: row.servico_catalogo_id,
+    aplicavel: row.ativo !== false,
+    recomendado_deprecated: row.recomendado === true,
     recomendado: row.recomendado === true,
     ativo: row.ativo !== false,
     ordem_exibicao: row.ordem_exibicao || 0,
@@ -352,6 +356,36 @@ async function replaceAdminTypeServices(context, id, input) {
       servico_catalogo_ids: [...new Set(invalidServices)]
     });
   }
+  const currentAssociations = await repository.listTypeServices(id);
+  const desiredActiveIds = new Set(
+    (input.servicos || [])
+      .filter((item) => item.ativo !== false)
+      .map((item) => item.servico_catalogo_id)
+  );
+  const removedApplicableIds = currentAssociations
+    .filter((item) => item.ativo !== false)
+    .map((item) => item.servico_catalogo_id)
+    .filter((catalogId) => !desiredActiveIds.has(catalogId));
+  if (removedApplicableIds.length) {
+    const profiles = await repository.listActiveProfilesByBusinessTypeIds([id]);
+    const profileServices = profiles.length
+      ? await repository.listRecommendedProfileServicesByProfileIds(profiles.map((profile) => profile.id))
+      : [];
+    const blockedIds = [...new Set(
+      profileServices
+        .filter((item) => item.recomendado === true && item.ativo !== false)
+        .map((item) => item.servico_catalogo_id)
+        .filter((catalogId) => removedApplicableIds.includes(catalogId))
+    )];
+    if (blockedIds.length) {
+      throw new AppError(
+        'Remova primeiro a recomendacao ativa do Perfil Operacional antes de retirar a aplicabilidade do servico.',
+        409,
+        'BUSINESS_TYPE_SERVICE_RECOMMENDATION_DEPENDENCY',
+        { servico_catalogo_ids: blockedIds }
+      );
+    }
+  }
   const services = await repository.replaceTypeServices(id, input.servicos || []);
   await tenantServiceCatalogSync.syncTenantsByTypeIds([id], {
     reason: 'business_type_services_updated'
@@ -377,7 +411,6 @@ async function resolveTenantAllowedCatalog(tenantId) {
     for (const association of associations) {
       if (association.ativo === false || association.servico_catalogo?.ativo === false) continue;
       addCatalogItem(byId, association.servico_catalogo, {
-        recomendado: association.recomendado,
         tipo: {
           id: row.tipo_negocio.id,
           nome: row.tipo_negocio.nome,
@@ -507,7 +540,6 @@ function addCatalogItem(map, catalog, source) {
     tipos_negocio: []
   };
   current.aplicavel = true;
-  current.recomendado = current.recomendado || source.recomendado === true;
   current.tipo_negocio_ids = [...new Set([...current.tipo_negocio_ids, source.tipo.id])];
   current.tipos_negocio = [
     ...current.tipos_negocio.filter((item) => item.id !== source.tipo.id),
@@ -516,14 +548,37 @@ function addCatalogItem(map, catalog, source) {
   map.set(catalog.id, current);
 }
 
+function applyRecommendationSource(catalog, recommendedIds) {
+  const isRecommended = recommendedIds.has(catalog.id);
+  return {
+    ...catalog,
+    recomendado: isRecommended,
+    recomendacao_origem: isRecommended ? 'perfil_operacional_servicos' : null
+  };
+}
+
 async function listTenantApplicableCatalog(tenantId) {
   const { tenantTypes, catalog: applicable } = await resolveTenantAllowedCatalog(tenantId);
-  const recommendedIds = new Set(applicable.filter((item) => item.recomendado).map((item) => item.id));
+  const activeTypeIds = tenantTypes
+    .filter((row) => row.tipo_negocio?.ativo !== false)
+    .map((row) => row.tipo_negocio_id);
+  const profiles = await repository.listActiveProfilesByBusinessTypeIds(activeTypeIds);
+  const profileIds = profiles.map((profile) => profile.id);
+  const profileServices = profileIds.length
+    ? await repository.listRecommendedProfileServicesByProfileIds(profileIds)
+    : [];
+  const applicableIds = new Set(applicable.map((item) => item.id));
+  const recommendedIds = new Set(
+    profileServices
+      .map((item) => item.servico_catalogo_id)
+      .filter((id) => applicableIds.has(id))
+  );
+  const normalized = applicable.map((item) => applyRecommendationSource(item, recommendedIds));
 
   return {
     tipos_tenant: tenantTypes.map(sanitizeTenantType),
-    recomendados: applicable.filter((item) => recommendedIds.has(item.id)).sort((a, b) => a.nome.localeCompare(b.nome)),
-    aplicaveis: applicable.filter((item) => !recommendedIds.has(item.id)).sort((a, b) => a.nome.localeCompare(b.nome)),
+    recomendados: normalized.filter((item) => recommendedIds.has(item.id)).sort((a, b) => a.nome.localeCompare(b.nome)),
+    aplicaveis: normalized.filter((item) => !recommendedIds.has(item.id)).sort((a, b) => a.nome.localeCompare(b.nome)),
     catalogo_adicional: []
   };
 }
