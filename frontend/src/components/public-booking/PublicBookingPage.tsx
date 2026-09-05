@@ -31,6 +31,7 @@ import {
 } from "@/utils/phone";
 import { APP_BRAND } from "@/config/app-brand";
 import { ClientDebugPanel } from "@/components/dev/client-debug-panel";
+import { upsertKnownTenant } from "@/lib/recurring-access.storage";
 
 type Props = {
   slug: string;
@@ -89,6 +90,18 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
   const [rememberIdentity, setRememberIdentity] = useState(true);
   const [success, setSuccess] = useState(false);
   const bookingChoiceRef = useRef<HTMLElement | null>(null);
+
+  function rememberTenantAccess(hasLocalIdentity: boolean, displayName = catalog?.tenant.nome_fantasia) {
+    if (!displayName || !hasLocalIdentity) return;
+    upsertKnownTenant({
+      slug,
+      displayName,
+      hasLocalIdentity: true
+    }, {
+      preferWhenEmpty: true,
+      source: "booking"
+    });
+  }
 
   async function loadUpcomingAppointments(token: string) {
     if (!token) {
@@ -157,6 +170,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
           setPhoneCountry("BR");
           setIdentityMessage(`Bem-vindo de volta, ${identity.client.nome}. Seus dados foram reconhecidos.`);
           if (identity.token) window.localStorage.setItem(storageKey, identity.token);
+          rememberTenantAccess(Boolean(identity.token || token), data.tenant.nome_fantasia);
           if (identity.token || token) {
             await loadUpcomingAppointments(identity.token || token || "");
           }
@@ -219,6 +233,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
         setIdentityMessage(`Bem-vindo de volta, ${identity.client.nome}. Seus dados foram reconhecidos.`);
         if (identity.token) {
           window.localStorage.setItem(storageKey, identity.token);
+          rememberTenantAccess(true);
           await loadUpcomingAppointments(identity.token);
         }
       } catch (err) {
@@ -366,6 +381,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
         setClientToken(resolvedToken);
         if (rememberIdentity) {
           window.localStorage.setItem(storageKey, resolvedToken);
+          rememberTenantAccess(true);
         } else {
           window.localStorage.removeItem(storageKey);
         }
