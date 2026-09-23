@@ -1,6 +1,7 @@
 import type { AvailabilityResponse, AvailabilitySlot, Professional, Service } from "@/services/agenda.service";
 import { normalizeUserMessage } from "@/lib/messages";
 import { API_URL } from "@/config/app-brand";
+import { createSessionId } from "@/lib/session-id";
 
 export type PublicBookingCatalog = {
   tenant: {
@@ -35,6 +36,7 @@ export type PublicAppointmentInput = {
   cliente?: {
     nome: string;
     telefone: string;
+    data_nascimento: string;
     email?: string;
   };
   observacoes?: string;
@@ -112,6 +114,30 @@ export type PublicClientIdentity = {
   };
 };
 
+export type PublicClientMe = {
+  nome: string;
+  telefone: string;
+  email?: string | null;
+  endereco?: {
+    cep?: string | null;
+    uf?: string | null;
+    cidade?: string | null;
+    logradouro?: string | null;
+    numero?: string | null;
+  } | null;
+  aceita_campanhas: boolean;
+  status: string;
+};
+
+export type PublicClientMeUpdate = {
+  token: string;
+  nome?: string;
+  telefone?: string;
+  email?: string | null;
+  endereco?: PublicClientMe["endereco"];
+  aceita_campanhas?: boolean;
+};
+
 export type PublicIdentityInput = {
   token?: string;
   campanha?: string;
@@ -121,6 +147,7 @@ export type PublicIdentityInput = {
   cliente?: {
     nome: string;
     telefone: string;
+    data_nascimento: string;
     email?: string;
   };
   contexto?: {
@@ -141,7 +168,34 @@ type ApiEnvelope<T> = {
   };
 };
 
-async function request<T>(path: string, init: RequestInit = {}) {
+// Pending operations live only in memory, never in PWA storage or URLs.
+const identityAttempts = new Map<string, { id: string; pending?: Promise<unknown> }>();
+function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const body = init.method === 'POST' && typeof init.body === 'string' ? JSON.parse(init.body) : null;
+  const identityOperation = body && ((path.endsWith('/identity') && body.cliente && !body.token)
+    || path.endsWith('/access/locate') || (path.endsWith('/appointments') && body.cliente && !body.client_context?.client_token));
+  if (!identityOperation) return performRequest<T>(path, init);
+  const key = JSON.stringify([path, body]);
+  let attempt = identityAttempts.get(key);
+  if (attempt?.pending) return attempt.pending as Promise<T>;
+  if (!attempt) {
+    // Bound failed attempts without evicting an in-flight operation.
+    if (identityAttempts.size >= 32) {
+      const old = [...identityAttempts].find(([, value]) => !value.pending);
+      if (old) identityAttempts.delete(old[0]);
+    }
+    attempt = { id: body.request_id || createSessionId() };
+    identityAttempts.set(key, attempt);
+  }
+  const current = attempt;
+  const pending = performRequest<T>(path, { ...init, body: JSON.stringify({ ...body, request_id: current.id }) })
+    .then(result => { identityAttempts.delete(key); return result; })
+    .catch(error => { current.pending = undefined; throw error; });
+  current.pending = pending;
+  return pending;
+}
+
+async function performRequest<T>(path: string, init: RequestInit = {}) {
   let response: Response;
 
   try {
@@ -195,6 +249,26 @@ export function getUpcomingPublicAppointments(slug: string, token: string) {
   return request<{ appointments: PublicOperationalAppointment[] }>(
     `/public/booking/${encodeURIComponent(slug)}/client/appointments/upcoming?${search.toString()}`
   );
+}
+
+export function locatePublicAccess(input: { telefone: string; data_nascimento: string; slug?: string }) {
+  return request<{ tenants?: Array<{ slug: string; displayName: string }>; slug?: string; identity?: PublicClientIdentity }>(
+    '/public/booking/access/locate', { method: 'POST', body: JSON.stringify(input) }
+  );
+}
+
+export function getPublicClientMe(slug: string, token: string) {
+  const search = new URLSearchParams({ token });
+  return request<PublicClientMe>(
+    `/public/booking/${encodeURIComponent(slug)}/client/me?${search.toString()}`
+  );
+}
+
+export function updatePublicClientMe(slug: string, input: PublicClientMeUpdate) {
+  return request<PublicClientMe>(`/public/booking/${encodeURIComponent(slug)}/client/me`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
 }
 
 export function createPublicAppointment(slug: string, input: PublicAppointmentInput) {

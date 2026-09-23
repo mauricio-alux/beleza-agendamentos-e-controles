@@ -1,5 +1,6 @@
 const service = require('./public-booking.service');
 const {
+  locateAccessSchema,
   slugSchema,
   publicAvailabilitySchema,
   publicIdentityContextSchema,
@@ -8,8 +9,15 @@ const {
   publicAppointmentActionSchema,
   publicAppointmentActionQuerySchema,
   publicClientUpcomingAppointmentsQuerySchema,
+  publicClientMeQuerySchema,
+  publicClientMeUpdateSchema,
   publicAppointmentRescheduleSchema
 } = require('./public-booking.validators');
+
+async function locateAccess(req, res) {
+  const data = await service.locateAccess(locateAccessSchema.parse(req.body));
+  return res.json({ data });
+}
 
 async function catalog(req, res) {
   const slug = slugSchema.parse(req.params.slug);
@@ -35,6 +43,20 @@ async function upcomingClientAppointments(req, res) {
   const slug = slugSchema.parse(req.params.slug);
   const input = publicClientUpcomingAppointmentsQuerySchema.parse(req.query);
   const data = await service.getUpcomingClientAppointments(slug, input);
+  return res.json({ data });
+}
+
+async function clientMe(req, res) {
+  const slug = slugSchema.parse(req.params.slug);
+  const input = publicClientMeQuerySchema.parse(req.query);
+  const data = await service.getClientMe(slug, input);
+  return res.json({ data });
+}
+
+async function updateClientMe(req, res) {
+  const slug = slugSchema.parse(req.params.slug);
+  const input = publicClientMeUpdateSchema.parse(req.body || {});
+  const data = await service.updateClientMe(slug, input);
   return res.json({ data });
 }
 
@@ -70,10 +92,13 @@ async function appointmentReschedule(req, res) {
 }
 
 module.exports = {
+  locateAccess,
   catalog,
   availability,
   identify,
   upcomingClientAppointments,
+  clientMe,
+  updateClientMe,
   create,
   appointmentByToken,
   appointmentActionContext,

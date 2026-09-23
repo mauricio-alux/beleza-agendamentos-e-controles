@@ -12,8 +12,10 @@ import {
   UserRound
 } from "lucide-react";
 import Link from "next/link";
+import { LocateAccess } from "./LocateAccess";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { InstallPwaPrompt } from "@/components/pwa/InstallPwaPrompt";
 import {
   getPublicBookingCatalog,
   getPublicClientMe,
@@ -155,6 +157,7 @@ export function RecurringAccessPage() {
   }, [markIdentityUnavailable, refreshKnownTenants]);
 
   useEffect(() => {
+    try {
     const tenants = listKnownTenants();
     setKnownTenants(tenants);
     const preferred = getPreferredTenant();
@@ -166,6 +169,10 @@ export function RecurringAccessPage() {
     }
 
     setState(tenants.length > 1 ? "choose" : "empty");
+    } catch {
+      setState("unavailable");
+      setMessage("Não foi possível ler o acesso salvo neste dispositivo. Verifique as permissões de armazenamento e tente novamente.");
+    }
   }, [loadTenant]);
 
   async function chooseTenant(slug: string) {
@@ -253,7 +260,13 @@ export function RecurringAccessPage() {
             <p className="mt-4 text-sm leading-6 text-muted-foreground">
               Abra o link de agendamento do estabelecimento uma vez. Depois disso, este dispositivo podera lembrar o acesso.
             </p>
+            {process.env.NEXT_PUBLIC_DEV_PWA_DIAGNOSTICS === "true" ? (
+              <Link href="/pwa-diagnostics" prefetch={false} className="mt-6 self-start text-xs text-muted-foreground underline underline-offset-4">
+                Diagnóstico DEV
+              </Link>
+            ) : null}
             {message ? <p className="mt-4 rounded-lg border border-primary/20 bg-white p-3 text-sm">{message}</p> : null}
+            <LocateAccess />
           </section>
         ) : null}
 
@@ -318,6 +331,8 @@ export function RecurringAccessPage() {
                 {clientName ? `Ola, ${clientName}` : "Seu acesso esta pronto"}
               </h1>
             </div>
+
+            <InstallPwaPrompt eligible />
 
             <section className="rounded-lg border border-primary/20 bg-white p-5 shadow-sm" aria-labelledby="next-appointment-title">
               <p className="text-xs font-bold uppercase text-accent">Proximo horario</p>

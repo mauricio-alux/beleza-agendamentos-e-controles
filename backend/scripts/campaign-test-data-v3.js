@@ -377,7 +377,7 @@ function clientPayload(ctx, user, index, scenario) {
   return {
     seedKey,
     nome: naturalClientName(index),
-    telefone: invalidPhone ? '119' : `+55119${String(70000000 + index).slice(0, 8)}`,
+    telefone: require('./campaign-test-phone').campaignTestPhone(index, invalidPhone),
     email: `${SEED}.${ctx.tenant.slug}.${user.id}.${index}@example.com`,
     data_nascimento: scenario === 'birthday_current' ? dateOnly(addDays(3)).replace(/^\d{4}/, '1990') : scenario === 'birthday_other_month' ? '1990-01-15' : '1990-07-15',
     metadata: metadata({ seed_key: seedKey, scenario, owner_user_id: user.id, owner_role: roleName(user), trace_label: `${ctx.tenant.slug}:${roleName(user)}:${index}` }),
@@ -390,6 +390,13 @@ async function upsertClient(ctx, user, index, scenario, professionalId) {
   const base = clientPayload(ctx, user, index, scenario);
   const existing = await supabaseAdmin.from('clientes').select('*').eq('email', base.email).maybeSingle();
   if (existing.error) throw existing.error;
+  const collision = await supabaseAdmin.from('clientes')
+    .select('id, vinculos:cliente_tenants!inner(tenant_id)')
+    .eq('telefone', base.telefone).eq('vinculos.tenant_id', ctx.tenant.id).is('deleted_at', null);
+  if (collision.error) throw collision.error;
+  if ((collision.data || []).some(row => row.id !== existing.data?.id)) {
+    throw new Error('Seed phone collision inside tenant; review controlled data before retrying.');
+  }
   const clientResult = existing.data
     ? await supabaseAdmin.from('clientes').update({ nome: base.nome, telefone: base.telefone, email: base.email, data_nascimento: base.data_nascimento, metadata: base.metadata, ativo: true, updated_at: new Date().toISOString() }).eq('id', existing.data.id).select().single()
     : await supabaseAdmin.from('clientes').insert({ nome: base.nome, telefone: base.telefone, email: base.email, data_nascimento: base.data_nascimento, metadata: base.metadata, ativo: true }).select().single();

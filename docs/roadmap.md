@@ -2,6 +2,13 @@
 
 ## Concluido
 
+- R1.6-B — CONCLUÍDA funcionalmente: migrations, gateway/staging, recuperação
+  telefone + DOB, TC tenant-scoped aditivo, C0/C1/CN, cliente existente/novo,
+  repetição sem duplicidade e upcoming por cliente_id, sem autorização por telefone.
+  Android recorrente aprovado no dispositivo moderno testado; iOS recuperação
+  aprovada no PWA standalone testado. Edição/reenvio e limpeza do alerta aprovados;
+  scroll horizontal eliminado. PWA única tenant-first do SaaS.
+
 - 6A - Landing Page
 - 6B - Login
 - 6C - Onboarding interno
@@ -11,7 +18,7 @@
   indicadores essenciais do ciclo operacional
 - 7 - Motor Inteligente de Agendamento
 - 7H - Hardening operacional da Agenda: filtros sem selecao oculta, timeline
-  diaria tenant-aware, identidade publica por telefone, recuperacao imediata
+  diaria tenant-aware, identidade publica (agora telefone + DOB), recuperacao imediata
   de agendamentos futuros e confirmacao extra para conclusao manual antecipada
 - 8.1.4.1 - Tela MasterAdmin de Comunicacao para manter
   `templates_mensagem` globais ou por tenant
@@ -29,6 +36,15 @@
 
 ## Proximo
 
+- Resolver gate de checkpoint Git se houver origem incerta nas alterações
+  acumuladas; ver [current-state.md](current-state.md).
+- Hardening específico das policies RLS de `tokens_cliente`, em tarefa própria.
+- Coordenação de rate limit para múltiplas instâncias e governança do perfil
+  compartilhado, conforme backlog da implementação R1.6-B.
+- Investigar/padronizar futuramente tipografia e escala de inputs mobile.
+  Variação residual iOS cosmética, não bloqueante e sem causa comprovada.
+- Usar gates R1.6-B como baseline; repetir somente validações afetadas por mudanças.
+
 - Estabilizacao pre-producao das etapas ja concluidas
 - Validacao recorrente com Supabase remoto, RBAC, tenant isolation e fluxos
   publicos de agendamento sobre o novo MER
@@ -40,6 +56,8 @@
   de desempenho para alimentar novas sugestoes da IA.
 
 ## Depois
+
+- Bootstrap/pairing/OTP avançado: evolução opcional, não requisito da PWA atual.
 
 - 8 - CRM Base
 - 9 - Gestao operacional do salao

@@ -26,18 +26,20 @@ const PHONE_COUNTRIES = {
 
 function normalizePhoneToE164(value = '', country = 'BR') {
   const config = PHONE_COUNTRIES[country] || PHONE_COUNTRIES.BR;
+  const text = String(value).trim();
   const digits = onlyDigits(value);
 
   if (!digits) return null;
 
-  const national = digits.startsWith(config.dialCode)
+  const national = digits.startsWith(config.dialCode) && digits.length > config.maxLength
     ? digits.slice(config.dialCode.length)
     : digits;
 
   const validLength = national.length >= config.minLength && national.length <= config.maxLength;
   const validNational = config.validateNational ? config.validateNational(national) : validLength;
 
-  if (!validLength || !validNational) {
+  if (!validLength || !validNational || !/^\+?[\d\s().-]+$/.test(text)
+    || (text.startsWith('+') && (!digits.startsWith(config.dialCode) || digits.length <= config.maxLength))) {
     const error = new Error('Telefone invalido para o pais selecionado.');
     error.code = 'INVALID_PHONE';
     throw error;

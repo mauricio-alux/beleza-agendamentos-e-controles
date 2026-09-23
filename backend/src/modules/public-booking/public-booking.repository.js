@@ -18,7 +18,7 @@ async function findActiveLink(slug) {
 async function findTenant(tenantId) {
   const { data, error } = await supabaseAdmin
     .from('tenants')
-    .select('id, nome_fantasia, slug, status')
+    .select('id, nome_fantasia, slug, status, ativo, deleted_at')
     .eq('id', tenantId)
     .is('deleted_at', null)
     .maybeSingle();

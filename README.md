@@ -30,6 +30,22 @@ relacionamento e uma base futura para IA aplicada a operacao.
 
 ## Status atual
 
+R1.6-B concluída no escopo funcional em 22/09/2026. O acesso público parte de
+`/agendar/[slug]`; `/acesso` é a entrada recorrente da PWA única do SaaS.
+A arquitetura é tenant-first, sem identidade global do cliente: recuperação
+por telefone + data de nascimento (DOB), TC restrito ao tenant e horários futuros
+autorizados por cliente_id. Telefone sozinho não concede TC.
+
+Android teve o fluxo recorrente aprovado no dispositivo moderno testado; iOS
+teve recuperação/identificação aprovada no PWA standalone do dispositivo testado.
+A variação visual residual no iOS é cosmética, não bloqueante e sem causa confirmada.
+
+Staging: [pwa-staging](https://pwa-staging-production.up.railway.app), no projeto
+Railway `pwa-dev-staging`, com gateway, frontend Next.js e backend Node.js.
+O environment interno `production` desse projeto é DEV/STAGING, não produção comercial.
+Checkpoint operacional e pendências: [Current State](docs/current-state.md).
+Evidências: [relatório R1.6-B](docs/audits/20260918-r1-6-b-deploy-staging.md).
+
 As etapas 6A a 7 estao documentadas como concluidas, incluindo landing page,
 login, cadastro, onboarding, dashboard estrutural, dashboard operacional MVP e
 motor inteligente de agendamento.

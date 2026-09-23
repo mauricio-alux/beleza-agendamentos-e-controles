@@ -7,6 +7,10 @@ const env = require('../config/env');
 const communicationService = require('../modules/communication/communication.service');
 
 const router = Router();
+const { identityLimiter } = require('../modules/public-booking/identity-rate-limit');
+// Responses include personal data or capabilities; errors must not be cached either.
+router.use('/booking', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+router.post('/booking/access/locate', identityLimiter, asyncHandler(publicBookingController.locateAccess));
 
 router.get('/health', (req, res) => res.json({ status: 'ok' }));
 router.get('/webhooks/whatsapp', (req, res) => {
@@ -32,9 +36,11 @@ router.post('/webhooks/whatsapp', asyncHandler(async (req, res) => {
 router.get('/plans', asyncHandler(planosController.listPublicPlans));
 router.get('/booking/:slug', asyncHandler(publicBookingController.catalog));
 router.get('/booking/:slug/availability', asyncHandler(publicBookingController.availability));
-router.post('/booking/:slug/identity', asyncHandler(publicBookingController.identify));
+router.post('/booking/:slug/identity', identityLimiter, asyncHandler(publicBookingController.identify));
+router.get('/booking/:slug/client/me', asyncHandler(publicBookingController.clientMe));
+router.patch('/booking/:slug/client/me', asyncHandler(publicBookingController.updateClientMe));
 router.get('/booking/:slug/client/appointments/upcoming', asyncHandler(publicBookingController.upcomingClientAppointments));
-router.post('/booking/:slug/appointments', asyncHandler(publicBookingController.create));
+router.post('/booking/:slug/appointments', identityLimiter, asyncHandler(publicBookingController.create));
 router.get('/booking/appointments/action', asyncHandler(publicBookingController.appointmentActionContext));
 router.get('/booking/appointments/token/:token', asyncHandler(publicBookingController.appointmentByToken));
 router.post('/booking/appointments/action', asyncHandler(publicBookingController.appointmentAction));

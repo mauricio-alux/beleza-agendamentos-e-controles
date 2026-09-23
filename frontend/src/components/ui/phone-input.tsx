@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { PhoneCountry, PHONE_COUNTRIES, formatPhone, getPhoneCountry } from "@/utils/phone";
 
 type PhoneInputProps = {
@@ -8,6 +9,8 @@ type PhoneInputProps = {
   country?: PhoneCountry;
   onCountryChange?: (country: PhoneCountry) => void;
   invalid?: boolean;
+  ariaDescribedBy?: string;
+  inputRef?: Ref<HTMLInputElement>;
   disabled?: boolean;
   required?: boolean;
   id?: string;
@@ -20,6 +23,8 @@ export function PhoneInput({
   country = "BR",
   onCountryChange,
   invalid = false,
+  ariaDescribedBy,
+  inputRef,
   disabled = false,
   required = false,
   id,
@@ -45,6 +50,7 @@ export function PhoneInput({
         ))}
       </select>
       <input
+        ref={inputRef}
         id={id}
         name={name}
         type="tel"
@@ -53,6 +59,7 @@ export function PhoneInput({
         disabled={disabled}
         required={required}
         aria-invalid={invalid || undefined}
+        aria-describedby={ariaDescribedBy}
         value={value}
         onChange={(event) => onChange(formatPhone(event.target.value, country))}
         placeholder={config.placeholder}

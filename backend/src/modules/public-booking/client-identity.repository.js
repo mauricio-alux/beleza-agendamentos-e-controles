@@ -155,6 +155,92 @@ async function updateIdentifiedClient(tenantId, clientId, payload) {
   return findClientContext(tenantId, clientId);
 }
 
+async function identifyWithBirth(payload) {
+  const { data, error } = await supabaseAdmin.rpc('identify_public_booking_client_v2', {
+    p_tenant_id: payload.tenantId, p_link_id: payload.linkId,
+    p_telefone: payload.telefone, p_nascimento: payload.data_nascimento,
+    p_nome: payload.nome || null, p_email: payload.email || null,
+    p_token_hash: payload.tokenHash, p_expires_at: payload.expiresAt,
+    p_lookup_only: payload.lookupOnly === true,
+    p_campaign_key: payload.campaignKey || null, p_origin: payload.origin || 'link_agendamento',
+    p_session_id: payload.sessionId || null, p_metadata: payload.metadata || {},
+    p_request_fingerprint: payload.requestFingerprint || null
+  });
+  if (error) {
+    if (['CLIENT_MATCH_UNAVAILABLE', 'AMBIGUOUS_CLIENT_MATCH', 'PHONE_EXISTS_BIRTHDATE_MISMATCH', 'PHONE_EXISTS_BIRTHDATE_MISSING'].includes(error.message)) {
+      throw require('./identity-policy').denied(error.message);
+    }
+    // Database errors may contain submitted values; do not pass details to logs/responses.
+    throw new (require('../../utils/errors').AppError)('Identificação temporariamente indisponível.', 503, 'IDENTITY_SERVICE_UNAVAILABLE');
+  }
+  return data;
+}
+
+async function discoverRelationships(pair) {
+  const { data, error } = await supabaseAdmin.from('cliente_tenants')
+    .select('*, cliente:clientes!inner(*), tenant:tenants!inner(*)')
+    .eq('cliente.telefone', pair.telefone);
+  if (error) throw new (require('../../utils/errors').AppError)('Identificação temporariamente indisponível.', 503, 'IDENTITY_SERVICE_UNAVAILABLE');
+  return data || [];
+}
+
+async function listPublicLinks(tenantIds) {
+  if (!tenantIds.length) return [];
+  const { data, error } = await supabaseAdmin.from('links_agendamento').select('*')
+    .in('tenant_id', tenantIds).order('created_at').order('id');
+  if (error) throw new (require('../../utils/errors').AppError)('Identificação temporariamente indisponível.', 503, 'IDENTITY_SERVICE_UNAVAILABLE');
+  return data || [];
+}
+
+async function hasOtherTenantLinks(tenantId, clientId) {
+  const { count, error } = await supabaseAdmin.from('cliente_tenants').select('id', { count: 'exact', head: true })
+    .eq('cliente_id', clientId).neq('tenant_id', tenantId).is('deleted_at', null);
+  if (error) throw error;
+  return count > 0;
+}
+
+async function updateSelfProfile(tenantId, clientId, payload) {
+  const context = await findClientContext(tenantId, clientId);
+  if (!context) return null;
+
+  const now = new Date().toISOString();
+  const clientPayload = { updated_at: now };
+  if (payload.nome !== undefined) clientPayload.nome = payload.nome;
+  if (payload.telefone !== undefined) clientPayload.telefone = payload.telefone;
+  if (payload.email !== undefined) clientPayload.email = payload.email;
+  if (payload.endereco !== undefined) {
+    clientPayload.metadata = {
+      ...(context.cliente?.metadata || {}),
+      endereco: payload.endereco
+    };
+  }
+
+  if (Object.keys(clientPayload).length > 1) {
+    const { error } = await supabaseAdmin
+      .from('clientes')
+      .update(clientPayload)
+      .eq('id', clientId)
+      .is('deleted_at', null);
+    if (error) throw error;
+  }
+
+  const linkPayload = { updated_at: now };
+  if (payload.nome !== undefined) linkPayload.nome_no_tenant = payload.nome;
+  if (payload.aceita_campanhas !== undefined) linkPayload.aceita_campanhas = payload.aceita_campanhas;
+
+  if (Object.keys(linkPayload).length > 1) {
+    const { error } = await supabaseAdmin
+      .from('cliente_tenants')
+      .update(linkPayload)
+      .eq('tenant_id', tenantId)
+      .eq('cliente_id', clientId)
+      .is('deleted_at', null);
+    if (error) throw error;
+  }
+
+  return findClientContext(tenantId, clientId);
+}
+
 async function listRecentAppointments(tenantId, clientId) {
   const { data, error } = await supabaseAdmin
     .from('agendamentos')
@@ -258,6 +344,10 @@ async function createToken(payload) {
 }
 
 module.exports = {
+  identifyWithBirth,
+  discoverRelationships,
+  listPublicLinks,
+  hasOtherTenantLinks,
   identifyClient,
   findClientByPhone,
   listClientIdsByPhone,
@@ -266,6 +356,7 @@ module.exports = {
   findClientContext,
   touchIdentity,
   updateIdentifiedClient,
+  updateSelfProfile,
   listRecentAppointments,
   recordAccess,
   findTenantClient,

@@ -45,6 +45,47 @@ combinacao original de profissional, servico e especialidade. A tela
 `/reagendar` envia `especialidade_id` na consulta de disponibilidade para
 evitar apresentar slots que seriam rejeitados pela validacao final do backend.
 
+## Meus dados do cliente final
+
+Clientes reconhecidos no Booking Publico podem consultar e atualizar seus
+proprios dados pelo fluxo **Meus dados** em `/agendar/{tenant_slug}`. A
+funcionalidade reutiliza a identidade publica existente:
+
+- token recebido em `tk` ou salvo em `localStorage` por slug;
+- hash SHA-256 persistido em `tokens_cliente`;
+- escopo por `tenant_id` e `cliente_id`;
+- expiracao configuravel por `CLIENT_TOKEN_TTL_DAYS`.
+
+Endpoints publicos:
+
+- `GET /public/booking/:slug/client/me?token=...`;
+- `PATCH /public/booking/:slug/client/me`.
+
+O backend resolve `slug -> tenant`, valida o token, resolve o cliente e usa esse
+contexto como autoridade. O frontend nao envia `cliente_id` para autorizar a
+operacao.
+
+Campos expostos no DTO publico:
+
+| Campo | Fonte | Escopo | Editavel pelo cliente |
+|---|---|---|---|
+| `nome` | `cliente_tenants.nome_no_tenant` com fallback para `clientes.nome` | relacionamento/pessoa | sim |
+| `telefone` | `clientes.telefone` | pessoa/identidade | sim, com checagem de duplicidade no tenant |
+| `email` | `clientes.email` | pessoa/contato | sim |
+| `endereco` | `clientes.metadata.endereco` | pessoa | sim |
+| `aceita_campanhas` | `cliente_tenants.aceita_campanhas` | relacionamento | sim |
+| `status` | `cliente_tenants.status` | relacionamento | somente leitura |
+
+O PATCH usa allowlist explicita e nao aceita atualizacao arbitraria de entidade.
+Alteracao de WhatsApp preserva o token atual porque a identidade publica e
+ancorada por `tokens_cliente.cliente_id`; antes de salvar, o backend impede
+duplicidade de WhatsApp dentro do mesmo tenant. Nao ha confirmacao externa por
+WhatsApp nesta etapa.
+
+O consentimento de campanhas e alterado somente quando enviado explicitamente.
+Dados historicos de agendamentos, campanhas executadas e mensagens ja
+renderizadas nao sao regravados por essa manutencao cadastral.
+
 ## Validacao da Fase 5.1
 
 Em 2026-07-29, o slug `espaco-vivian-beauty` foi validado no Supabase remoto

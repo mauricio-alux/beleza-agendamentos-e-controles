@@ -118,17 +118,25 @@ export function listKnownTenants(storageInput?: Storage | null) {
   const storage = getStorage(storageInput);
   if (!storage) return [];
   const parsed = safeParse(storage.getItem(KNOWN_TENANTS_KEY));
-  if (!Array.isArray(parsed)) {
-    storage.removeItem(KNOWN_TENANTS_KEY);
-    return [];
-  }
-
   const bySlug = new Map<string, KnownTenant>();
-  parsed.forEach((item) => {
+  (Array.isArray(parsed) ? parsed : []).forEach((item) => {
     const tenant = sanitizeKnownTenant(item);
     if (tenant) bySlug.set(tenant.slug, tenant);
   });
+  // A token key also contains a tenant reference. Presence is not token validity.
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (!key?.startsWith(BOOKING_IDENTITY_PREFIX) || !storage.getItem(key)) continue;
+    const slug = key.slice(BOOKING_IDENTITY_PREFIX.length);
+    if (isValidTenantSlug(slug) && !bySlug.has(slug)) {
+      bySlug.set(slug, { slug, displayName: slug, hasLocalIdentity: true, lastAccessAt: nowIso() });
+    }
+  }
 
+  if (!Array.isArray(parsed) && bySlug.size === 0) {
+    storage.removeItem(KNOWN_TENANTS_KEY);
+    return [];
+  }
   const tenants = [...bySlug.values()]
     .sort((left, right) => Date.parse(right.lastAccessAt) - Date.parse(left.lastAccessAt))
     .slice(0, MAX_KNOWN_TENANTS);

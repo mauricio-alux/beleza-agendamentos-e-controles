@@ -1,7 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import { AuthProvider } from "@/context/AuthProvider";
-import { APP_BRAND, buildAppUrl, withBrand } from "@/config/app-brand";
+import { APP_BRAND, withBrand } from "@/config/app-brand";
+import { PwaDiagnosticObserver } from "@/components/pwa/PwaDiagnosticObserver";
+import { PwaServiceWorker } from "@/components/pwa/PwaServiceWorker";
+import { PwaInstallProvider } from "@/components/pwa/PwaInstallProvider";
+import { PWA_THEME_COLOR } from "@/lib/pwa-manifest";
 import "./globals.css";
 
 const inter = Inter({
@@ -18,6 +22,7 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_BRAND.appUrl),
+  applicationName: APP_BRAND.appName,
   title: {
     default: withBrand("Tecnologia elegante para profissionais da beleza"),
     template: `%s | ${APP_BRAND.appName}`
@@ -44,14 +49,26 @@ export const metadata: Metadata = {
   alternates: {
     canonical: APP_BRAND.appUrl
   },
-  manifest: buildAppUrl("/manifest.webmanifest"),
   icons: {
-    icon: "/favicon.ico"
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icons/pwa-icon-192.png", sizes: "192x192", type: "image/png" }
+    ],
+    apple: [{ url: "/icons/pwa-icon-192.png", sizes: "192x192", type: "image/png" }]
+  },
+  appleWebApp: {
+    capable: true,
+    title: APP_BRAND.appName,
+    statusBarStyle: "default"
   },
   robots: {
     index: true,
     follow: true
   }
+};
+
+export const viewport: Viewport = {
+  themeColor: PWA_THEME_COLOR
 };
 
 export default function RootLayout({
@@ -61,8 +78,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
+      <head>
+        <link rel="manifest" href="/manifest.webmanifest"
+          crossOrigin={process.env.DEV_PWA_MANIFEST_CREDENTIALS === "true" ? "use-credentials" : undefined} />
+      </head>
       <body className={`${inter.variable} ${playfair.variable} font-sans antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
+        <PwaInstallProvider><AuthProvider>{children}</AuthProvider></PwaInstallProvider>
+        <PwaServiceWorker />
+        <PwaDiagnosticObserver />
       </body>
     </html>
   );

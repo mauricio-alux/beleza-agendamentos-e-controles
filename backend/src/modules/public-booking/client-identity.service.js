@@ -2,7 +2,9 @@ const crypto = require('crypto');
 const repository = require('./client-identity.repository');
 const { AppError, notFound } = require('../../utils/errors');
 const { normalizeEmail, normalizePhoneToE164 } = require('../../utils/normalize');
-const { bookingBaseUrl } = require('../../config/env');
+const { bookingBaseUrl, supabaseServiceRoleKey } = require('../../config/env');
+
+const policy = require('./identity-policy');
 
 const TOKEN_TTL_DAYS = Math.max(1, Number(process.env.CLIENT_TOKEN_TTL_DAYS || 180));
 
@@ -87,6 +89,18 @@ function sanitizeClient(context, history = []) {
   };
 }
 
+function sanitizeClientProfile(context) {
+  const client = context.cliente || {};
+  return {
+    nome: context.nome_no_tenant || client.nome,
+    telefone: client.telefone,
+    email: client.email || null,
+    endereco: client.metadata?.endereco || null,
+    aceita_campanhas: context.aceita_campanhas !== false,
+    status: context.status || 'ativo'
+  };
+}
+
 async function resolveToken(tenantId, token, options = {}) {
   if (!token) return null;
 
@@ -100,17 +114,12 @@ async function resolveToken(tenantId, token, options = {}) {
   }
 
   const context = await repository.findClientContext(tenantId, storedToken.cliente_id);
-  if (!context || context.status === 'bloqueado') {
+  if (!policy.eligibleClient(context)) {
     throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
   }
 
   await repository.touchIdentity(tenantId, storedToken.cliente_id, storedToken.id);
-  const updatedContext = options.client
-    ? await repository.updateIdentifiedClient(tenantId, storedToken.cliente_id, {
-      nome: options.client.nome?.trim(),
-      email: options.client.email ? normalizeEmail(options.client.email) : null
-    })
-    : await repository.findClientContext(tenantId, storedToken.cliente_id);
+  const updatedContext = await repository.findClientContext(tenantId, storedToken.cliente_id);
   const history = await repository.listRecentAppointments(tenantId, storedToken.cliente_id);
 
   if (options.track !== false) {
@@ -133,6 +142,68 @@ async function resolveToken(tenantId, token, options = {}) {
     expiresAt: storedToken.expira_em,
     recognized: true
   };
+}
+
+async function getSelfProfile(tenantId, token) {
+  const identity = await resolveToken(tenantId, token, { track: false });
+  const context = await repository.findClientContext(tenantId, identity.clientId);
+  if (!context) {
+    throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
+  }
+
+  return sanitizeClientProfile(context);
+}
+
+async function updateSelfProfile(tenantId, token, input) {
+  const identity = await resolveToken(tenantId, token, { track: false });
+  const context = await repository.findClientContext(tenantId, identity.clientId);
+  if (!context) {
+    throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
+  }
+
+  const payload = {};
+  if (input.nome !== undefined) payload.nome = input.nome.trim();
+  if (input.email !== undefined) payload.email = input.email ? normalizeEmail(input.email) : null;
+  if (input.aceita_campanhas !== undefined) payload.aceita_campanhas = input.aceita_campanhas;
+  if (input.endereco !== undefined) payload.endereco = normalizeAddress(input.endereco);
+
+  if (input.telefone !== undefined) {
+    const telefone = normalizeRequiredClientPhone(input.telefone);
+    const existing = await repository.findClientByPhone(tenantId, telefone);
+    if (existing && existing.id !== identity.clientId) {
+      throw new AppError(
+        'Este WhatsApp ja esta cadastrado para outro cliente neste salao.',
+        409,
+        'CLIENT_PHONE_DUPLICATE'
+      );
+    }
+    payload.telefone = telefone;
+  }
+
+  if (['nome', 'email', 'telefone', 'endereco'].some(key => payload[key] !== undefined)
+    && await repository.hasOtherTenantLinks(tenantId, identity.clientId)) {
+    const current = {
+      nome: context.nome_no_tenant || context.cliente.nome,
+      email: context.cliente.email ? normalizeEmail(context.cliente.email) : null,
+      telefone: context.cliente.telefone,
+      endereco: normalizeAddress(context.cliente.metadata?.endereco || null)
+    };
+    for (const key of ['nome', 'email', 'telefone', 'endereco']) {
+      if (payload[key] === undefined) continue;
+      if (JSON.stringify(payload[key]) !== JSON.stringify(current[key])) {
+        throw new AppError('Solicite a alteração destes dados ao estabelecimento.', 403, 'SHARED_CLIENT_PROFILE');
+      }
+      // A full profile form may resend unchanged fields with tenant consent.
+      // Do not write those fields into the shared client row.
+      delete payload[key];
+    }
+  }
+  const updated = await repository.updateSelfProfile(tenantId, identity.clientId, payload);
+  if (!updated) {
+    throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
+  }
+
+  return sanitizeClientProfile(updated);
 }
 
 async function identify(tenant, link, input) {
@@ -164,105 +235,67 @@ async function identify(tenant, link, input) {
     return { recognized: false };
   }
 
-  const telefone = normalizeRequiredClientPhone(input.cliente.telefone);
-  const existingClient = await repository.findClientByPhone(tenant.id, telefone);
-  if (existingClient?.vinculos?.some((linkItem) => linkItem.status === 'bloqueado')) {
-    throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
-  }
-  const token = generateToken();
-  const tokenExpiresAt = expiresAt();
-  const clientId = await repository.identifyClient({
-    tenantId: tenant.id,
-    linkId: link.id,
-    nome: input.cliente.nome.trim(),
-    telefone,
-    email: input.cliente.email ? normalizeEmail(input.cliente.email) : null,
-    tokenHash: hashToken(token),
-    expiresAt: tokenExpiresAt,
-    campaignKey: input.campanha,
-    origin: input.origem,
-    sessionId: input.sessao_id,
-    metadata: input.contexto
-  });
-  const context = await repository.findClientContext(tenant.id, clientId);
-  const history = await repository.listRecentAppointments(tenant.id, clientId);
+  return identifyByPair(tenant, link, input, false);
+}
 
-  return {
-    token,
-    clientId,
-    client: sanitizeClient(context, history),
-    expiresAt: tokenExpiresAt,
-    recognized: Boolean(existingClient)
-  };
+async function identifyByPair(tenant, link, input, lookupOnly) {
+  const pair = policy.normalizePair(input.cliente);
+  if (!policy.eligibleTenant(tenant) || !policy.eligibleLink(link)) throw policy.denied();
+  // Domain-separated server HMAC makes retries stable without storing raw credentials.
+  const token = input.request_id ? crypto.createHmac('sha256', supabaseServiceRoleKey)
+    .update(JSON.stringify(['public-identity-retry-v1',tenant.id,link.id,input.request_id])).digest('base64url')
+    : generateToken();
+  const metadata = Object.fromEntries(['referrer','user_agent','timezone','locale']
+    .filter(key => input.contexto?.[key] !== undefined).map(key => [key,input.contexto[key]]));
+  const requestFingerprint = hashToken(JSON.stringify([pair,lookupOnly,input.cliente?.nome?.trim() || null,
+    input.cliente?.email ? normalizeEmail(input.cliente.email) : null,
+    input.campanha || null,input.origem || 'link_agendamento',input.sessao_id || null,metadata]));
+  const tokenExpiresAt = expiresAt();
+  const result = await repository.identifyWithBirth({
+    tenantId: tenant.id, linkId: link.id, ...pair,
+    nome: input.cliente?.nome?.trim(),
+    email: input.cliente?.email ? normalizeEmail(input.cliente.email) : null,
+    tokenHash: hashToken(token), expiresAt: tokenExpiresAt, lookupOnly,
+    campaignKey: input.campanha, origin: input.origem, sessionId: input.sessao_id, metadata, requestFingerprint
+  });
+  if (!result?.client_id) throw policy.denied();
+  const context = await repository.findClientContext(tenant.id, result.client_id);
+  if (!policy.eligibleClient(context)) throw policy.denied();
+  const history = await repository.listRecentAppointments(tenant.id, result.client_id);
+  console.info('[public-identity]', { result: 'success' });
+  return { token, clientId: result.client_id, client: sanitizeClient(context, history),
+    expiresAt: result.expires_at || tokenExpiresAt, recognized: result.recognized === true };
 }
 
 async function lookupExistingClient(tenant, link, input) {
-  if (input.token) {
-    return resolveToken(tenant.id, input.token, {
-      linkId: link.id,
-      campaignKey: input.campanha,
-      origin: input.origem,
-      sessionId: input.sessao_id,
-      metadata: input.contexto
-    });
-  }
+  if (input.token) return resolveToken(tenant.id, input.token, { track: false });
+  return identifyByPair(tenant, link, input, true);
+}
 
-  if (!input.cliente?.telefone) {
-    throw new AppError('Informe seu celular/WhatsApp para continuar.', 422, 'PUBLIC_CLIENT_PHONE_REQUIRED');
-  }
-
-  const telefone = normalizeRequiredClientPhone(input.cliente.telefone);
-  const existingClient = await repository.findClientByPhone(tenant.id, telefone);
-
-  if (!existingClient) {
-    return { recognized: false };
-  }
-
-  if (existingClient.vinculos?.some((linkItem) => linkItem.status === 'bloqueado')) {
-    throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
-  }
-
-  const token = generateToken();
-  const tokenExpiresAt = expiresAt();
-  await repository.createToken({
-    tenantId: tenant.id,
-    clientId: existingClient.id,
-    tokenHash: hashToken(token),
-    expiresAt: tokenExpiresAt,
-    origin: input.origem || 'link_agendamento',
-    metadata: {
-      ...(input.contexto || {}),
-      lookup_only: true,
-      link_agendamento_id: link.id || null,
-      campanha: input.campanha || null,
-      sessao_id: input.sessao_id || null
+async function discoverAccess(input) {
+  const pair = policy.normalizePair(input);
+  const rows = (await repository.discoverRelationships(pair)).filter(row =>
+    policy.eligibleClient(row) && policy.eligibleTenant(row.tenant));
+  const links = (await repository.listPublicLinks([...new Set(rows.map(row => row.tenant_id))]))
+    .filter(policy.eligibleLink);
+  const candidates = [];
+  for (const tenantId of new Set(rows.map(row => row.tenant_id))) {
+    const link = links.find(item => item.tenant_id === tenantId);
+    if (!link) continue;
+    const matches = rows.filter(row => row.tenant_id === tenantId);
+    if (new Set(matches.map(row => row.cliente_id)).size !== 1) throw policy.denied('AMBIGUOUS_CLIENT_MATCH');
+    if (!matches[0].cliente.data_nascimento) {
+      policy.denied('PHONE_EXISTS_BIRTHDATE_MISSING');
+      continue;
     }
-  });
-
-  await repository.recordAccess({
-    tenantId: tenant.id,
-    linkId: link.id,
-    clientId: existingClient.id,
-    campaignKey: input.campanha,
-    origin: input.origem,
-    sessionId: input.sessao_id,
-    event: 'retorno',
-    metadata: {
-      ...(input.contexto || {}),
-      lookup_only: true
+    if (matches[0].cliente.data_nascimento !== pair.data_nascimento) {
+      policy.denied('PHONE_EXISTS_BIRTHDATE_MISMATCH');
+      continue;
     }
-  });
-
-  const context = await repository.findClientContext(tenant.id, existingClient.id);
-  const history = await repository.listRecentAppointments(tenant.id, existingClient.id);
-
-  return {
-    token,
-    clientId: existingClient.id,
-    client: sanitizeClient(context, history),
-    expiresAt: tokenExpiresAt,
-    recognized: true
-  };
+    candidates.push({ slug: link.slug, displayName: matches[0].tenant.nome_fantasia });
+  }
+  if (!candidates.length) throw policy.denied();
+  return { tenants: candidates };
 }
 
 async function issueClientLink(tenantId, clientId, slug) {
@@ -299,16 +332,29 @@ async function resolveClientIdentityForAppointment(tenantId, token) {
 }
 
 async function listRelatedClientIdsForAppointment(tenantId, clientId) {
-  const client = await repository.findClientById(clientId);
-  const relatedClientIds = client?.telefone
-    ? await repository.listClientIdsByPhone(tenantId, client.telefone)
-    : [];
+  return clientId ? [clientId] : [];
+}
 
-  return [...new Set([clientId, ...relatedClientIds].filter(Boolean))];
+function normalizeAddress(endereco) {
+  if (endereco === null) return null;
+  if (!endereco?.cep && !endereco?.uf && !endereco?.cidade && !endereco?.logradouro && !endereco?.numero) {
+    return null;
+  }
+
+  return {
+    cep: endereco.cep ? endereco.cep.replace(/\D/g, '') : null,
+    uf: endereco.uf || null,
+    cidade: endereco.cidade || null,
+    logradouro: endereco.logradouro || null,
+    numero: endereco.numero || null
+  };
 }
 
 module.exports = {
   identify,
+  discoverAccess,
+  getSelfProfile,
+  updateSelfProfile,
   issueClientLink,
   resolveClientForAppointment,
   resolveClientIdentityForAppointment,

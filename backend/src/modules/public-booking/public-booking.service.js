@@ -2,6 +2,7 @@ const agendaService = require('../agenda/agenda.service');
 const repository = require('./public-booking.repository');
 const clientIdentityService = require('./client-identity.service');
 const { AppError, notFound } = require('../../utils/errors');
+const identityPolicy = require('./identity-policy');
 
 async function resolveLink(slug) {
   const link = await repository.findActiveLink(slug);
@@ -12,7 +13,7 @@ async function resolveLink(slug) {
   }
 
   const tenant = await repository.findTenant(link.tenant_id);
-  if (!tenant || tenant.status === 'inativo' || tenant.status === 'cancelado') {
+  if (!identityPolicy.eligibleTenant(tenant) || !identityPolicy.eligibleLink(link)) {
     throw new AppError('Agendamento indisponivel para este salao', 404, 'BOOKING_UNAVAILABLE');
   }
 
@@ -201,13 +202,41 @@ async function getUpcomingClientAppointments(slug, input) {
   };
 }
 
+async function locateAccess(input) {
+  if (input.slug) {
+    try {
+      return { slug: input.slug, identity: await identifyClient(input.slug, {
+        lookup_only: true, request_id: input.request_id, cliente: { telefone: input.telefone, data_nascimento: input.data_nascimento }
+      }) };
+    } catch (error) {
+      if (error.statusCode >= 500) throw error;
+      throw identityPolicy.denied();
+    }
+  }
+  const result = await clientIdentityService.discoverAccess(input);
+  if (result.tenants.length === 1) return locateAccess({ ...input, slug: result.tenants[0].slug });
+  return result;
+}
+
+async function getClientMe(slug, input) {
+  const { tenant } = await resolveLink(slug);
+  return clientIdentityService.getSelfProfile(tenant.id, input.token);
+}
+
+async function updateClientMe(slug, input) {
+  const { tenant } = await resolveLink(slug);
+  const { token, ...payload } = input;
+  return clientIdentityService.updateSelfProfile(tenant.id, token, payload);
+}
+
 async function createAppointment(slug, input) {
   const { link, tenant } = await resolveLink(slug);
   await assertPublicSelection(slug, input);
   const clientToken = input.client_context?.client_token;
   const clientId = clientToken
     ? await clientIdentityService.resolveClientForAppointment(tenant.id, clientToken)
-    : null;
+    : (await clientIdentityService.identify(tenant, link, { cliente: input.cliente,
+      request_id: input.request_id, campanha: input.campanha, origem: input.origem, sessao_id: input.sessao_id })).clientId;
   if (!clientId && !input.cliente?.telefone) {
     throw new AppError('Informe seu celular/WhatsApp para continuar.', 422, 'PUBLIC_CLIENT_PHONE_REQUIRED');
   }
@@ -278,10 +307,13 @@ async function rescheduleAppointmentByToken(input) {
 }
 
 module.exports = {
+  locateAccess,
   getCatalog,
   getAvailability,
   identifyClient,
   getUpcomingClientAppointments,
+  getClientMe,
+  updateClientMe,
   createAppointment,
   getAppointmentByOperationalToken,
   runAppointmentAction,

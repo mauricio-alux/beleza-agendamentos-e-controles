@@ -62,7 +62,7 @@ servico_tenants` fica centralizada em
   indicadores essenciais do ciclo operacional
 - ETAPA-7: Motor Inteligente de Agendamento
 - ETAPA-7H: Hardening operacional da Agenda, incluindo filtros sem selecao
-  oculta, timeline diaria tenant-aware, identidade publica por telefone,
+  oculta, timeline diaria tenant-aware, identidade publica (agora telefone + DOB),
   recuperacao de agendamentos futuros e confirmacao extra para conclusao manual
 - ETAPA-8.1.4.1: Comunicacao SaaS MasterAdmin para manutencao de
   `templates_mensagem` globais ou por tenant
@@ -85,6 +85,32 @@ Executar estabilizacao pre-producao sobre os fluxos ja migrados, priorizando:
 cadastro, login, onboarding, configuracoes de servicos/especialidades, equipe,
 agenda publica, dashboard operacional, RBAC, tenant isolation, WhatsApp
 operacional, campanhas MVP e manutencao MasterAdmin.
+
+## Acesso público, recorrente e PWA — estado em 22/09/2026
+
+R1.6-B concluída funcionalmente; migrations e staging aprovados.
+O checkpoint operacional está em [current-state.md](current-state.md).
+
+- TENANT-FIRST: `/agendar/[slug]` inicia relação com estabelecimento;
+  `/acesso` é a entrada recorrente com referências locais de tenants.
+- Não existe identidade global do cliente. TC é tenant-scoped; cadastro
+  compartilhado não implica autorização entre estabelecimentos.
+- Telefone + DOB identificam/recuperam acesso. Telefone sozinho não concede TC.
+- Upcoming usa cliente_id autorizado, sem expansão de autorização por telefone.
+- Tokens são aditivos no fluxo aprovado; TC válido dispensa nova identificação.
+- A PWA é única para o SaaS, não por tenant. Bootstrap/pairing/OTP avançado
+  não é requisito do fluxo atual.
+- Railway: projeto `pwa-dev-staging`, serviço `pwa-staging`, environment interno
+  `production` exclusivo de DEV/STAGING, não produção comercial. Gateway integra
+  frontend/backend com Supabase DEV existente.
+- Android: fluxo recorrente fisicamente aprovado no dispositivo moderno testado.
+- iOS: recuperação/identificação aprovada no PWA standalone testado, incluindo
+  edição nativa de DOB, reenvio e limpeza do alerta. Scroll horizontal eliminado.
+  Não generalizar para todas as versões/dispositivos.
+- Variação visual residual no iOS é cosmética e não bloqueante. Hipótese de
+  escala/auto-zoom ligada à tipografia ainda não confirmada; sem CSS especulativo.
+- Próximos passos: estabilização e backlog específico do roadmap, incluindo
+  hardening das policies de tokens_cliente; não reabrir gates sem mudança afetada.
 
 ## Direcao visual
 

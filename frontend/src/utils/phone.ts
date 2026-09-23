@@ -24,8 +24,8 @@ export function getPhoneCountry(country: PhoneCountry = "BR") {
 export function getNationalPhone(value: string, country: PhoneCountry = "BR") {
   const config = getPhoneCountry(country);
   const digits = sanitizePhone(value);
-  const national = digits.startsWith(config.dialCode) ? digits.slice(config.dialCode.length) : digits;
-  return national.slice(0, config.maxLength);
+  const national = digits.startsWith(config.dialCode) && digits.length > config.maxLength ? digits.slice(config.dialCode.length) : digits;
+  return national;
 }
 
 export function normalizePhoneToE164(value: string, country: PhoneCountry = "BR") {
@@ -41,6 +41,8 @@ export function normalizePhoneToE164(value: string, country: PhoneCountry = "BR"
 
 export function isValidPhone(value: string, country: PhoneCountry = "BR") {
   const config = getPhoneCountry(country);
+  if (!/^\+?[\d\s().-]+$/.test(value.trim())) return false;
+  if (value.trim().startsWith("+") && (!sanitizePhone(value).startsWith(config.dialCode) || sanitizePhone(value).length <= config.maxLength)) return false;
   const national = getNationalPhone(value, country);
 
   if (national.length < config.minLength || national.length > config.maxLength) {
@@ -61,6 +63,7 @@ export function isValidBrazilianPhone(value: string) {
 
 export function formatPhone(value: string, country: PhoneCountry = "BR") {
   const national = getNationalPhone(value, country);
+  if (national.length > getPhoneCountry(country).maxLength) return value;
 
   if (country === "BR") {
     const ddd = national.slice(0, 2);
