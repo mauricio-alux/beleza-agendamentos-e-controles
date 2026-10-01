@@ -556,3 +556,41 @@ O módulo CRM deve representar:
 •	crescimento recorrente
 O usuário deve sentir:
 "O Bellory me ajuda a manter minhas clientes voltando."
+
+## RD-F — nascimento no ciclo administrativo
+
+Novos clientes em /clientes e na criação rápida pela Agenda exigem
+data_nascimento válida, não futura, no formato civil YYYY-MM-DD. O booking
+público mantém sua regra existente. A coluna clientes.data_nascimento continua
+nullable para compatibilidade com clientes legados; não há preenchimento automático.
+
+O POST /clients exige nascimento. O PATCH /clients/:id aceita somente campos
+informados: omitir preserva o valor. Nascimento enviado deve ser uma data válida;
+NULL e vazio são rejeitados. Legados podem editar outros campos e receber
+agendamentos sem preencher nascimento. Sua regularização acontece pela edição
+administrativa autorizada, sem alterar TCs.
+
+Nascimento é global. Mudança em cadastro existente com outro vínculo não excluído
+(inclusive temporariamente inativo/bloqueado) é negada, sem identificar os demais
+estabelecimentos. A verificação também vale quando POST encontra telefone já
+cadastrado. Reenviar o mesmo nascimento não constitui mudança. Autorizações
+clientes.write e validação do vínculo permanecem obrigatórias.
+
+A Agenda oferece seleção de cliente existente e criação de novo cliente. Apenas
+a segunda exige entrada de nascimento. A seleção envia cliente_id; não atualiza
+o nascimento do cliente. A listagem usa a permissão existente clientes.read.
+
+O perfil público não permite editar nascimento. Localizar meu acesso continua
+exigindo telefone+nascimento com erro genérico, sem corrigir cadastro anônimo.
+Campanhas mensais e automação diária continuam lendo clientes.data_nascimento;
+legados NULL permanecem fora da segmentação até regularização autorizada.
+
+A política civil do backend é reutilizada de identity-policy.js. Formulários usam
+input date com required quando aplicável, min e max, validação nativa e mensagens
+acessíveis; o backend permanece a autoridade. Não é enviada data por URL ou log.
+
+Limites: este delta não cria governança global nem transação SQL nova. A checagem
+de compartilhamento precede a escrita no padrão repository/service existente;
+não adiciona bloqueio transacional contra criação concorrente de vínculos.
+O updated_at técnico pode mudar pela trigger já existente. Não há mudança de
+schema, regras de TC, campanhas ou identidade pública.

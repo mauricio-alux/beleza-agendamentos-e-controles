@@ -1,6 +1,6 @@
 const clientsService = require('./clients.service');
 const { z } = require('zod');
-const { clientSchema, bookingTokenSchema } = require('./clients.validators');
+const { createClientSchema, updateClientSchema, bookingTokenSchema } = require('./clients.validators');
 
 async function list(req, res) {
   const data = await clientsService.list(req.tenantId);
@@ -8,14 +8,14 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const input = clientSchema.parse(req.body);
+  const input = createClientSchema.parse(req.body);
   const data = await clientsService.create(req.tenantId, input);
   return res.status(201).json({ data });
 }
 
 async function update(req, res) {
   const clientId = z.string().uuid().parse(req.params.id);
-  const input = clientSchema.parse(req.body);
+  const input = updateClientSchema.parse(req.body);
   const data = await clientsService.update(req.tenantId, clientId, input);
   return res.json({ data });
 }

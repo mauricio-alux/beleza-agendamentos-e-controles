@@ -6,6 +6,7 @@ import { Activity, Building2, CircleDollarSign, CreditCard, Gauge, LogOut, Megap
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { writeLastContext } from "@/lib/last-context";
 import { platformService, type PlatformSummary } from "@/services/platform.service";
 import { APP_BRAND } from "@/config/app-brand";
 import { resolveEventLabel } from "@/lib/event-display";
@@ -60,6 +61,7 @@ export function PlatformDashboard() {
       return;
     }
 
+    writeLastContext("professional");
     load();
   }, [isLoading, session?.access_token]);
 

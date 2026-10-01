@@ -37,6 +37,7 @@ router.get('/plans', asyncHandler(planosController.listPublicPlans));
 router.get('/booking/:slug', asyncHandler(publicBookingController.catalog));
 router.get('/booking/:slug/availability', asyncHandler(publicBookingController.availability));
 router.post('/booking/:slug/identity', identityLimiter, asyncHandler(publicBookingController.identify));
+router.post('/booking/:slug/client/context', asyncHandler(publicBookingController.probeClientContext));
 router.get('/booking/:slug/client/me', asyncHandler(publicBookingController.clientMe));
 router.patch('/booking/:slug/client/me', asyncHandler(publicBookingController.updateClientMe));
 router.get('/booking/:slug/client/appointments/upcoming', asyncHandler(publicBookingController.upcomingClientAppointments));

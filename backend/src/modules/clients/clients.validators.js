@@ -1,6 +1,8 @@
 const { z } = require('zod');
+const { validBirthDate } = require('../public-booking/identity-policy');
 
-const clientSchema = z.object({
+const createClientSchema = z.object({
+  data_nascimento: z.string({ required_error: 'Informe a data de nascimento.' }).refine(validBirthDate, 'Informe uma data de nascimento válida e não futura.'),
   nome: z.string().min(2).max(150),
   telefone: z.string().min(8).max(20),
   email: z.string().email().nullable().optional(),
@@ -16,11 +18,14 @@ const clientSchema = z.object({
   status: z.enum(['ativo', 'inativo']).optional()
 }).strict();
 
+const updateClientSchema = createClientSchema.partial();
+
 const bookingTokenSchema = z.object({
   slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9-]+$/i).optional()
 }).strict();
 
 module.exports = {
-  clientSchema,
+  createClientSchema,
+  updateClientSchema,
   bookingTokenSchema
 };

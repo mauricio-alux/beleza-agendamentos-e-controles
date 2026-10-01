@@ -104,6 +104,10 @@ type ApiEnvelope<T> = {
   };
 };
 
+export class AuthRequestError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
 const SESSION_KEY = "bellory.session";
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -162,11 +166,11 @@ async function request<T>(path: string, init: RequestInit = {}) {
       throw new Error(getFriendlyError(response.status, code, payload.message || payload.error?.message));
     }
 
-    throw new Error(normalizeUserMessage(
+    throw new AuthRequestError(normalizeUserMessage(
       payload.message || payload.error?.message || getFriendlyError(response.status, code),
       "error",
       code
-    ));
+    ), response.status);
   }
 
   if (!payload.data) {
@@ -181,7 +185,7 @@ function saveSession(session: AuthSession) {
     return;
   }
 
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  try { window.localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* In-memory session remains usable. */ }
 }
 
 function getStoredSession() {
@@ -189,25 +193,37 @@ function getStoredSession() {
     return null;
   }
 
-  const raw = window.localStorage.getItem(SESSION_KEY);
-  if (!raw) {
-    return null;
-  }
-
   try {
-    return JSON.parse(raw) as AuthSession;
-  } catch {
-    window.localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
+    const raw = window.localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (!value || typeof value.access_token !== "string" || !value.access_token) {
+      clearSession(); return null;
+    }
+    return value as AuthSession;
+  } catch { return null; }
 }
 
 function clearSession() {
-  if (typeof window === "undefined") {
-    return;
-  }
+  try { if (typeof window !== "undefined") window.localStorage.removeItem(SESSION_KEY); } catch { /* Storage may be blocked. */ }
+}
 
-  window.localStorage.removeItem(SESSION_KEY);
+export async function validateSession(stored: AuthSession | null): Promise<AuthSession | null> {
+  if (!stored) return null;
+  try {
+    const context = await me(stored.access_token);
+    return { ...stored, ...context };
+  } catch (error) {
+    if (!(error instanceof AuthRequestError) || ![401, 403].includes(error.status)) throw error;
+    if (error.status === 403 || !stored.refresh_token) return null;
+    try { return await refreshToken(stored.refresh_token, false); }
+    catch (refreshError) {
+      if (refreshError instanceof AuthRequestError && [400, 401, 403].includes(refreshError.status)) {
+        return null;
+      }
+      throw refreshError;
+    }
+  }
 }
 
 async function login(payload: LoginPayload) {
@@ -242,13 +258,13 @@ async function resetPassword(payload: ResetPasswordPayload) {
   });
 }
 
-async function refreshToken(refreshTokenValue: string) {
+async function refreshToken(refreshTokenValue: string, persist = true) {
   const session = await request<AuthSession>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify({ refresh_token: refreshTokenValue })
   });
 
-  saveSession(session);
+  if (persist) saveSession(session);
   return session;
 }
 

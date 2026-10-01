@@ -244,3 +244,15 @@ describe('public booking client identity', () => {
     );
   });
 });
+
+describe('read-only context availability',()=>{
+ for(const scenario of ['valid','missing','wrong tenant','expired','blocked client','repository failure'])it(scenario+' performs only validation reads',async()=>{
+  const calls=[];
+  for(const key of Object.keys(repository))if(typeof repository[key]==='function')mock.method(repository,key,async()=>{calls.push(key);throw Error('Forbidden repository call '+key);});
+  mock.method(repository,'findToken',async()=>{calls.push('findToken');if(scenario==='repository failure')throw Error('offline');return scenario==='missing'?null:{id:tokenId,tenant_id:scenario==='wrong tenant'?otherTenantId:tenant.id,cliente_id:clientId,expira_em:scenario==='expired'?'2000-01-01': '2099-01-01'};});
+  mock.method(repository,'findClientContext',async()=>{calls.push('findClientContext');const c=clientContext();if(scenario==='blocked client')c.cliente.ativo=false;return c;});
+  if(scenario==='valid')assert.deepEqual(await service.probeClientContext(tenant.id,'synthetic-token'),{available:true});
+  else await assert.rejects(service.probeClientContext(tenant.id,'synthetic-token'));
+  assert.ok(calls.every(x=>['findToken','findClientContext'].includes(x)));
+ });
+});

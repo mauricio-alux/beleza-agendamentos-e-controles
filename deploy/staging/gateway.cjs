@@ -1,12 +1,16 @@
 ﻿const http=require('node:http');
 function allowed(method,path){
+  if(method==='POST' && ['/api/auth/login','/api/auth/refresh','/api/auth/logout'].includes(path))return true;
+  if(method==='GET' && ['/api/auth/me','/api/onboarding/status','/api/dashboard/summary','/api/clients'].includes(path))return true;
+  if(method==='PATCH' && /^\/api\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(path))return true;
   const read=['GET','HEAD'].includes(method);
-  if(read && ['/','/acesso','/pwa-diagnostics','/offline','/manifest.webmanifest','/sw.js','/favicon.ico','/acao_agendamento','/reagendar','/api/public/health','/api/public/plans','/api/public/landing'].includes(path))return true;
+  if(read && ['/','/app','/login','/dashboard','/clientes','/agenda','/agenda/novo','/onboarding','/acesso','/pwa-diagnostics','/offline','/manifest.webmanifest','/sw.js','/favicon.ico','/acao_agendamento','/reagendar','/api/public/health','/api/public/plans','/api/public/landing'].includes(path))return true;
   const asset=path.replace(/%5b/ig,'[').replace(/%5d/ig,']');
   if(read && !asset.includes('..') && (/^\/_next\/static\/[a-zA-Z0-9_./\[\]-]+$/.test(asset)||/^\/(icons|images)\/[a-zA-Z0-9_./-]+$/.test(asset)))return true;
   if(read && /^\/agendar\/[^/]+\/?$/.test(path))return true;
   if(read && /^\/api\/public\/booking\/[^/]+(?:\/availability|\/client\/me|\/client\/appointments\/upcoming)?$/.test(path))return true;
   if(method==='POST' && path==='/api/public/booking/access/locate')return true;
+  if(method==='POST' && /^\/api\/public\/booking\/[a-z0-9-]{2,120}\/client\/context$/i.test(path))return true;
   if(method==='POST' && /^\/api\/public\/booking\/[^/]+\/(identity|appointments)$/.test(path))return true;
   if(method==='PATCH' && /^\/api\/public\/booking\/[^/]+\/client\/me$/.test(path))return true;
   if(read && /^\/api\/public\/booking\/appointments\/(action|token\/[^/]+)$/.test(path))return true;

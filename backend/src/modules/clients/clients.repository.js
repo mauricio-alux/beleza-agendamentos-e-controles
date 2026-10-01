@@ -38,6 +38,15 @@ async function findTenantLink(tenantId, clienteId) {
   return data;
 }
 
+// Non-deleted links remain relevant even if temporarily inactive or blocked.
+async function hasOtherTenantLinks(tenantId, clientId) {
+  const { count, error } = await supabaseAdmin.from('cliente_tenants')
+    .select('id', { count: 'exact', head: true })
+    .eq('cliente_id', clientId).neq('tenant_id', tenantId).is('deleted_at', null);
+  if (error) throw error;
+  return count > 0;
+}
+
 async function createClient(payload) {
   const { data, error } = await supabaseAdmin
     .from('clientes')
@@ -111,6 +120,7 @@ async function findActiveBookingLink(tenantId, slug) {
 }
 
 module.exports = {
+  hasOtherTenantLinks,
   listByTenant,
   findClientByPhone,
   findTenantLink,

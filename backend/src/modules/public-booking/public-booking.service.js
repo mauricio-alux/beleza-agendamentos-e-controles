@@ -218,6 +218,11 @@ async function locateAccess(input) {
   return result;
 }
 
+async function probeClientContext(slug, input) {
+  const { tenant } = await resolveLink(slug);
+  return clientIdentityService.probeClientContext(tenant.id, input.token);
+}
+
 async function getClientMe(slug, input) {
   const { tenant } = await resolveLink(slug);
   return clientIdentityService.getSelfProfile(tenant.id, input.token);
@@ -307,6 +312,7 @@ async function rescheduleAppointmentByToken(input) {
 }
 
 module.exports = {
+  probeClientContext,
   locateAccess,
   getCatalog,
   getAvailability,

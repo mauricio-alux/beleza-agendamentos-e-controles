@@ -1,4 +1,5 @@
 "use client";
+import { ContextAccessLink } from "@/components/app/ContextAccessLink";
 
 import {
   ArrowRight,
@@ -36,6 +37,7 @@ import {
   type KnownTenant
 } from "@/lib/recurring-access.storage";
 import { APP_BRAND } from "@/config/app-brand";
+import { writeLastContext } from "@/lib/last-context";
 
 type AccessState = "loading" | "empty" | "choose" | "recover" | "unavailable" | "ready";
 
@@ -54,6 +56,7 @@ function sortAppointments(appointments: PublicOperationalAppointment[]) {
 }
 
 export function RecurringAccessPage() {
+  useEffect(() => { writeLastContext("client"); }, []);
   const [state, setState] = useState<AccessState>("loading");
   const [knownTenants, setKnownTenants] = useState<KnownTenant[]>([]);
   const [currentSlug, setCurrentSlug] = useState("");
@@ -243,6 +246,11 @@ export function RecurringAccessPage() {
             </Button>
           ) : null}
         </header>
+        {(
+          <div className="flex justify-end">
+            <ContextAccessLink target="professional" />
+          </div>
+        )}
 
         {state === "loading" ? (
           <section className="grid flex-1 place-items-center" aria-live="polite">

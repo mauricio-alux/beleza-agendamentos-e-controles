@@ -384,7 +384,9 @@ async function create(
     servico_id: string;
     especialidade_id?: string;
     data_inicio: string;
-    cliente: {
+    cliente_id?: string;
+    cliente?: {
+      data_nascimento?: string;
       nome: string;
       telefone: string;
       email?: string;

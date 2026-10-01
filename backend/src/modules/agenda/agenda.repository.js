@@ -665,6 +665,7 @@ async function createClient(tenantId, payload) {
     .from('clientes')
     .insert({
       nome: payload.nome,
+      data_nascimento: payload.data_nascimento,
       telefone: payload.telefone,
       email: payload.email || null,
       metadata: payload.endereco ? { endereco: payload.endereco } : {}

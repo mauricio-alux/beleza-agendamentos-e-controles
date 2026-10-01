@@ -1,4 +1,14 @@
-# Estado atual em 14 de setembro de 2026
+# Estado atual — RD-H10 / 30 de setembro de 2026
+
+Último deploy RD-H9.2: `0489cdb0-d5c9-4ce0-9eb5-97746d21b0b9`, SUCCESS,
+projeto `pwa-dev-staging`, serviço `pwa-staging`, ambiente interno `production`
+exclusivo de DEV/STAGING. GET `/login`, `/dashboard`, `/app`: HTTP 200.
+Consolidação e passes físicos: [Current State](../../docs/current-state.md).
+Manifest vigente: `/manifest.webmanifest`, id `/acesso`, start_url `/app`,
+scope `/`, display `standalone`; SW global `/sw.js`.
+Nenhum novo deploy realizado na RD-H10. Os registros abaixo são históricos.
+
+# Histórico — 14 de setembro de 2026
 
 Staging publicado no Railway. Deployment SUCCESS; gate geral com bloqueio de revisão. Resultado completo, custos e limitações em [POST-DEPLOY.md](POST-DEPLOY.md).
 
@@ -130,3 +140,12 @@ Validação local: nove testes de infraestrutura aprovados (HTTP real com upstre
 Favicon: referência convencional em frontend/src/app/layout.tsx, arquivo /favicon.ico ausente. Não está no manifest atual; os três ícones PWA são PNGs separados. Os testes anteriores já obtiveram installabilityErrors vazio sem essa entrada no manifest, portanto não há evidência causal para instalação. Mantido sem alteração.
 
 Arquivos desta continuação: start.cjs, gateway.cjs, gateway.test.cjs, prepare-context.ps1 e README.md atualizados; supervise.cjs, supervise.test.cjs e railway.json criados. Sem mudança no código funcional, banco, migrations, DNS, commit, push ou instalação física.
+
+
+## RD-H2 — disponibilidade dos contextos (implementação local)
+
+Disponibilidade é evidência para UX/navegação, nunca autorização. Cliente exige TC validado no backend; profissional exige sessão revalidada e contexto interno. last-context permanece preferência somente entre contextos disponíveis. Query context pode iniciar um fluxo sem conferir identidade. Falha transitória mantém estado indeterminado.
+
+Política RD-H5: contexto ausente não gera convite permanente para adicioná-lo. Switches operacionais aparecem somente quando ambos os contextos estão disponíveis; no login, é permitido retornar a um cliente já validado. A aquisição do segundo contexto ocorre pelo fluxo normal correspondente (link/WhatsApp/agendamento para cliente; landing/login/cadastro para profissional), sem correlação entre identidades e sem remover o primeiro contexto. /app mantém escolha neutra quando nenhum está disponível e query context continua permitindo entrada explícita. A sondagem POST /api/public/booking/:slug/client/context recebe token no corpo e responde somente {available}; compartilha validação com o acesso recorrente, sem touch, histórico ou emissão de TC.
+
+Gate histórico da RD-H2: liberar estritamente esse método/path no gateway e validar em staging. Gateway, build e deploy não foram executados naquela etapa. Esse gate foi atendido posteriormente na RD-H3; não é pendência atual. RD-H5 e correção RD-H9.1 integram o staging publicado; estado consolidado na referência acima.

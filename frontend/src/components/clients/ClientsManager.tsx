@@ -13,6 +13,7 @@ import { clientsService, type SalonClient } from "@/services/clients.service";
 import { formatStoredPhone, getNationalPhone, isValidPhone, normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 type ClientFormState = {
+  data_nascimento: string;
   nome: string;
   telefone: string;
   email: string;
@@ -27,6 +28,7 @@ type ClientFormState = {
 };
 
 const EMPTY_FORM: ClientFormState = {
+  data_nascimento: "",
   nome: "",
   telefone: "",
   email: "",
@@ -46,6 +48,7 @@ export function ClientsManager() {
   const formRef = useRef<HTMLDivElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const editTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const editBaseline = useRef<ReturnType<typeof buildClientPayload> | null>(null);
   const [clients, setClients] = useState<SalonClient[]>([]);
   const [form, setForm] = useState<ClientFormState>(EMPTY_FORM);
   const [editForm, setEditForm] = useState<ClientFormState>(EMPTY_FORM);
@@ -163,6 +166,7 @@ export function ClientsManager() {
     const cepDigits = state.cep.replace(/\D/g, "");
 
     return {
+      data_nascimento: state.data_nascimento,
       nome: state.nome.trim(),
       telefone: normalizePhoneToE164(state.telefone, country),
       email: state.email.trim() || null,
@@ -185,6 +189,8 @@ export function ClientsManager() {
     event.preventDefault();
     if (!session) return;
 
+    if (!event.currentTarget.reportValidity()) return;
+    if (!form.data_nascimento) { setError('Informe a data de nascimento.'); return; }
     const validationMessage = validateClientForm(form, phoneCountry);
     if (validationMessage) {
       setError(validationMessage);
@@ -214,7 +220,8 @@ export function ClientsManager() {
     setSuccess("");
     setEditingClient(client);
     setEditPhoneCountry("BR");
-    setEditForm({
+    const nextForm: ClientFormState = {
+      data_nascimento: client.data_nascimento || "",
       nome: client.nome || "",
       telefone: getNationalPhone(client.telefone || "", "BR"),
       email: client.email || "",
@@ -226,7 +233,9 @@ export function ClientsManager() {
       observacoes: client.observacoes || "",
       aceita_campanhas: client.aceita_campanhas !== false,
       status: client.status === "inativo" ? "inativo" : "ativo"
-    });
+    };
+    setEditForm(nextForm);
+    editBaseline.current = buildClientPayload(nextForm, "BR");
   }
 
   function closeEdit() {
@@ -239,6 +248,8 @@ export function ClientsManager() {
     event.preventDefault();
     if (!session || !editingClient) return;
 
+    if (!event.currentTarget.reportValidity()) return;
+    if (editingClient.data_nascimento && !editForm.data_nascimento) { setError('A data de nascimento não pode ser apagada.'); return; }
     const validationMessage = validateClientForm(editForm, editPhoneCountry);
     if (validationMessage) {
       setError(validationMessage);
@@ -251,7 +262,19 @@ export function ClientsManager() {
     setSuccess("");
 
     try {
-      const updated = await clientsService.update(session, editingClient.id, buildClientPayload(editForm, editPhoneCountry));
+      const proposed = buildClientPayload(editForm, editPhoneCountry);
+      const baseline = editBaseline.current!;
+      const patch: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(proposed)) {
+        if (key === 'endereco') {
+          if (value && typeof value === 'object') {
+            const previous = baseline.endereco || {};
+            const changes = Object.fromEntries(Object.entries(value).filter(([field, next]) => next !== undefined && next !== previous[field as keyof typeof previous]));
+            if (Object.keys(changes).length) patch.endereco = changes;
+          }
+        } else if (value !== baseline[key as keyof typeof baseline] && !(key === 'data_nascimento' && !value)) patch[key] = value;
+      }
+      const updated = await clientsService.update(session, editingClient.id, patch);
       setClients((current) => current.map((client) => (client.id === updated.id ? updated : client)));
       closeEdit();
       setSuccess("Cliente atualizado com sucesso.");
@@ -297,7 +320,7 @@ export function ClientsManager() {
       </DashboardCard>
 
       <div ref={formRef}>
-        <DashboardCard title="Novo cliente" description="Nome e WhatsApp já são suficientes para operar a agenda.">
+        <DashboardCard title="Novo cliente" description="Informe nome, WhatsApp e data de nascimento para cadastrar um novo cliente.">
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-[1.2fr_0.9fr_1fr_0.8fr_auto]">
               <Input value={form.nome} onChange={(event) => setForm({ ...form, nome: event.target.value })} placeholder="Nome do cliente" />
@@ -310,6 +333,11 @@ export function ClientsManager() {
                   setForm({ ...form, telefone: "" });
                 }}
               />
+              <label className="grid gap-1 text-xs font-bold">Data de nascimento (obrigatória)
+                <Input type="date" required min="0001-01-01" max={new Date().toISOString().slice(0, 10)} value={form.data_nascimento}
+                  onChange={(event) => setForm({ ...form, data_nascimento: event.target.value })}
+                  onInvalid={() => setError("Informe uma data de nascimento válida e não futura.")} />
+              </label>
               <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="email opcional" />
               <Input
                 value={form.cep}
@@ -449,7 +477,13 @@ export function ClientsManager() {
             </div>
 
             <form onSubmit={handleUpdate} className="mt-5 space-y-4">
+              {error ? <FeedbackMessage tone="error" message={error} /> : null}
               <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-xs font-bold text-foreground">Data de nascimento
+                  <Input type="date" required={Boolean(editingClient?.data_nascimento)} min="0001-01-01" max={new Date().toISOString().slice(0, 10)} value={editForm.data_nascimento}
+                    onChange={(event) => setEditForm({ ...editForm, data_nascimento: event.target.value })}
+                    onInvalid={() => setError("Informe uma data de nascimento válida e não futura. Nascimento preenchido não pode ser apagado.")} />
+                </label>
                 <label className="space-y-1 text-xs font-bold text-foreground">
                   Nome
                   <Input value={editForm.nome} onChange={(event) => setEditForm({ ...editForm, nome: event.target.value })} />

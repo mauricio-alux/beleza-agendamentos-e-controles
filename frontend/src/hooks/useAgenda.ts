@@ -404,7 +404,9 @@ export function useAgenda(options: UseAgendaOptions = {}) {
 
   async function createAppointment(payload: {
     data_inicio: string;
-    cliente: {
+    cliente_id?: string;
+    cliente?: {
+      data_nascimento?: string;
       nome: string;
       telefone: string;
       email?: string;

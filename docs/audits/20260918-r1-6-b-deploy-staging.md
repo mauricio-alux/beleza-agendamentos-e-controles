@@ -1,11 +1,16 @@
 # R1.6-B — Deploy controlado e validação em staging
 
-**Estado vigente em 22/09/2026: R1.6-B concluída funcionalmente; Android e iOS
+**Checkpoint histórico de 22/09/2026: R1.6-B concluída funcionalmente; Android e iOS
 aprovados no escopo/dispositivos testados. Cleanup das fixtures exclusivas concluído,
 documentação consolidada e checkpoint Git pendente por segurança.** A variação
 visual residual iOS é cosmética, não bloqueante e sem causa confirmada. Seções
 anteriores abaixo são histórico; o fechamento ao final prevalece sobre seus gates
 intermediários. Último deployment aprovado: `4859a35c-0565-4998-94f3-7d6d3e85782a`.
+
+Nota RD-H10: este relatório preserva a evidência histórica R1.6-B. O deployment,
+manifest e validação física atuais estão em [Current State](../current-state.md).
+As referências abaixo a start_url `/acesso` e ausência de id descrevem aquela
+versão; hoje start_url é `/app` e id é `/acesso`.
 
 Data: 18/09/2026. Escopo: TXT “Aplicar via CODEX”, etapa incremental de deploy. Baseline: `20260918-r1-6-b-aplicacao-remota-migrations.md`.
 

@@ -35,7 +35,8 @@ test("manifest usa nome parametrizado do SaaS", () => {
   assert.equal(manifest.name, "MarcaTeste");
   assert.equal(manifest.short_name, "MarcaTeste");
   assert.equal(manifest.description.includes("MarcaTeste"), true);
-  assert.equal(manifest.start_url, "/acesso");
+  assert.equal(manifest.start_url, "/app");
+  assert.equal(manifest.id, "/acesso");
   assert.equal(manifest.scope, "/");
   assert.equal(manifest.display, "standalone");
 });

@@ -1,6 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
+import { writeLastContext } from "@/lib/last-context";
+import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { OnboardingHeader } from "@/components/onboarding/OnboardingHeader";
@@ -14,6 +16,10 @@ type OnboardingLayoutProps = {
 
 export function OnboardingLayout({ children }: OnboardingLayoutProps) {
   const { isLoading, error, progress } = useOnboarding();
+  const { session, isLoading: isAuthLoading } = useAuth();
+  useEffect(() => {
+    if (!isLoading && !error && !isAuthLoading && session) writeLastContext("professional");
+  }, [isLoading, error, isAuthLoading, session]);
 
   if (isLoading) {
     return (

@@ -6,7 +6,7 @@ function compile(file,globals,imports={}){
   {module:m,exports:m.exports,process:{env:{}},console,Intl,Date,Error,...globals,require:name=>{if(name in imports)return imports[name];throw Error('Unexpected import '+name);}});
  return m.exports;
 }
-function harness(store,api={}){
+function harness(store,api={},auth={session:null,isLoading:false}){
  const hooks=[],effects=[];let index=0,dirty=true,tree;const calls=[];
  const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]));
  const react={
@@ -25,9 +25,16 @@ function harness(store,api={}){
  };
  const jsx=(type,props)=>({type,props});
  const component=compile(__dirname+'/RecurringAccessPage.tsx',{window,document:{referrer:''}},{
+  '@/components/app/ContextAccessLink':{ContextAccessLink:'ContextAccessLink'},
   react,'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':new Proxy({},{get:(_,key)=>key}),
   'next/link':{default:'Link'},'./LocateAccess':{LocateAccess:'LocateAccess'},
   '@/components/ui/button':{Button:'Button'},'@/components/pwa/InstallPwaPrompt':{InstallPwaPrompt:'InstallPwaPrompt'},
+  '@/hooks/useAuth':{useAuth:()=>auth},
+  '@/lib/last-context':compile(__dirname+'/../../lib/last-context.ts',{window}),
+  '@/lib/internal-entry':compile(__dirname+'/../../lib/internal-entry.ts',{},{
+    '@/services/onboarding.service':{},'@/lib/recurring-access.storage':stored,
+    '@/lib/last-context':compile(__dirname+'/../../lib/last-context.ts',{window})
+  }),
   '@/services/public-booking.service':services,'@/lib/recurring-access.storage':stored,'@/config/app-brand':{APP_BRAND:{appName:'Fixture'}}
  }).RecurringAccessPage;
  return {calls,async render(){for(let n=0;n<20;n++){if(dirty){dirty=false;index=0;tree=component();effects.splice(0).forEach(fn=>fn());}await new Promise(resolve=>setImmediate(resolve));if(!dirty&&effects.length===0)return tree;}throw Error('Unsettled render');}};
@@ -76,4 +83,24 @@ test('frontend phone formatter never truncates excessive input and supports DDD 
  assert.equal(phone.formatPhone('169999999999'),'169999999999');
  assert.equal(phone.isValidPhone('169999999999'),false);
  assert.equal(phone.normalizePhoneToE164('55999999999'),'+5555999999999');
+});
+
+test('dual context offers /app return without touching internal session; client signout stays scoped',async()=>{
+ const internal={access_token:'internal-fixture',usuario:{tipo_usuario:'Administrador'},tenant:{id:'tenant-a'},active_membership:{role:'Administrador',status:'ativo',tenant_id:'tenant-a'}};
+ const store=storage({...saved,'bellory.session':JSON.stringify(internal)});
+ const app=harness(store,{}, {session:internal,isLoading:false}),all=nodes(await app.render());
+ const link=all.find(n=>n.type==='ContextAccessLink'&&n.props.target==='professional');
+ assert.ok(link);assert.equal(link.props.onClick,undefined);
+ assert.equal(all.some(n=>n.props?.href==='/dashboard'),false);
+ assert.equal(store.getItem('bellory.session'),JSON.stringify(internal));
+ assert.equal(store.getItem('esthya:booking-identity:studio-a'),'valid-existing-token');
+ const signout=all.find(n=>n.type==='Button'&&Array.isArray(n.props.children)&&n.props.children.some(x=>typeof x==='string'&&x.includes('Sair deste dispositivo')));
+ assert.ok(signout);signout.props.onClick();await app.render();
+ assert.equal(store.getItem('bellory.session'),JSON.stringify(internal));
+ assert.equal(store.getItem('esthya:booking-identity:studio-a'),null);
+});
+test('client-only context offers explicit professional entry without requiring a session',async()=>{
+ const store=storage(saved);
+ assert.equal(nodes(await harness(store).render()).some(n=>n.type==='ContextAccessLink'&&n.props.target==='professional'),true);
+ assert.equal(JSON.parse(store.getItem('esthya:last-context')).context,'client');
 });

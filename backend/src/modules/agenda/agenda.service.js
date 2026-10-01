@@ -1,3 +1,4 @@
+const { validBirthDate } = require('../public-booking/identity-policy');
 const { AppError, notFound } = require('../../utils/errors');
 const { onlyDigits, normalizePhoneToE164 } = require('../../utils/normalize');
 const agendaRepository = require('./agenda.repository');
@@ -730,7 +731,11 @@ async function resolveClient(tenantId, input) {
   const existing = await agendaRepository.findClientByPhone(tenantId, telefone);
   if (existing) return refreshClientIdentity(tenantId, existing, context, false, endereco);
 
+  if (!validBirthDate(input.cliente.data_nascimento)) {
+    throw new AppError('Informe uma data de nascimento válida e não futura para o novo cliente.', 422, 'CLIENT_BIRTH_DATE_REQUIRED');
+  }
   const client = await agendaRepository.createClient(tenantId, {
+    data_nascimento: input.cliente.data_nascimento,
     nome: input.cliente.nome,
     telefone,
     email: input.cliente.email,

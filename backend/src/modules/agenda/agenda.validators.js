@@ -1,10 +1,12 @@
 const { z } = require('zod');
+const { validBirthDate } = require('../public-booking/identity-policy');
 
 const uuid = z.string().uuid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const time = z.string().regex(/^\d{2}:\d{2}$/).nullable().optional();
 
 const clienteSchema = z.object({
+  data_nascimento: z.string().refine(validBirthDate, 'Informe uma data de nascimento válida e não futura.').optional(),
   nome: z.string().min(2).max(150),
   telefone: z.string().min(10).max(20),
   email: z.string().email().optional(),

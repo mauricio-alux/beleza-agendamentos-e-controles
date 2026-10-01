@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 
-export const PWA_START_URL = "/acesso";
+// Preserve the identity previously derived from start_url; this is app-wide, not a client route contract.
+export const PWA_ID = "/acesso";
+export const PWA_START_URL = "/app";
 export const PWA_SCOPE = "/";
 export const PWA_THEME_COLOR = "#e5687a";
 export const PWA_BACKGROUND_COLOR = "#fff8f8";
@@ -20,6 +22,7 @@ export function buildPwaManifest({ appName, shortName }: PwaManifestInput): Meta
   const short_name = normalizeBrandName(shortName, name);
 
   return {
+    id: PWA_ID,
     name,
     short_name,
     description: `Acesso rapido aos seus horarios e agendamentos no ${name}.`,

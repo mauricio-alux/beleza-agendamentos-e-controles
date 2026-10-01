@@ -220,6 +220,10 @@ type ApiEnvelope<T> = {
   };
 };
 
+export class DashboardRequestError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
 async function request<T>(path: string, token: string, signal?: AbortSignal) {
   let response: Response;
 
@@ -238,7 +242,7 @@ async function request<T>(path: string, token: string, signal?: AbortSignal) {
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Não foi possível carregar o dashboard.");
+    throw new DashboardRequestError(payload.error?.message || "Não foi possível carregar o dashboard.", response.status);
   }
 
   if (!payload.data) {

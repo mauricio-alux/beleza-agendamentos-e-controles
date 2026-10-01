@@ -1,7 +1,8 @@
 "use client";
+import { ContextAccessLink } from "@/components/app/ContextAccessLink";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { LoadingButton } from "@/components/auth/LoadingButton";
@@ -10,7 +11,8 @@ import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
-import { onboardingService } from "@/services/onboarding.service";
+import { resolveInternalEntry } from "@/lib/internal-entry";
+import { writeLastContext } from "@/lib/last-context";
 import { getErrorMessage } from "@/lib/messages";
 
 type FormErrors = {
@@ -30,9 +32,6 @@ export function LoginForm() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const onboardingPath = useMemo(() => process.env.NEXT_PUBLIC_AUTH_REDIRECT_PATH || "/onboarding", []);
-  const dashboardPath = useMemo(() => process.env.NEXT_PUBLIC_DASHBOARD_PATH || "/dashboard", []);
 
   function validate() {
     const nextErrors: FormErrors = {};
@@ -63,17 +62,9 @@ export function LoginForm() {
 
     try {
       const session = await login({ email: email.trim().toLowerCase(), senha, persist: remember });
-      if (session.usuario.tipo_usuario_global === "MasterAdmin" || session.usuario.tipo_usuario === "MasterAdmin") {
-        router.replace("/admin");
-        return;
-      }
-
-      try {
-        const onboardingStatus = await onboardingService.getStatus(session);
-        router.replace(onboardingStatus.progress >= 100 ? dashboardPath : onboardingPath);
-      } catch {
-        router.replace(onboardingPath);
-      }
+      const destination = await resolveInternalEntry(session);
+      writeLastContext("professional");
+      router.replace(destination);
     } catch (error) {
       setFormError(getErrorMessage(error, "Não foi possível conectar. Tente novamente."));
     } finally {
@@ -162,6 +153,7 @@ export function LoginForm() {
       </LoadingButton>
 
       <div className="grid gap-3 border-t border-border pt-5 text-center text-sm text-muted-foreground">
+        <ContextAccessLink target="client" allowClientReturn />
         <span>Ainda não tem uma conta?</span>
         <Button variant="outline" asChild>
           <Link href="/cadastro">Criar conta</Link>

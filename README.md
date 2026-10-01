@@ -30,6 +30,15 @@ relacionamento e uma base futura para IA aplicada a operacao.
 
 ## Status atual
 
+Fase 0.6C / RD-H10 consolidada em 30/09/2026: cenários somente cliente e somente
+profissional com PASS físico; correção RD-H9.1 com PASS técnico e físico em
+DEV/STAGING. Cenário de ambos os contextos da mesma pessoa ainda pendente.
+Arquitetura, instalação e evidências: [Current State](docs/current-state.md).
+Uma única PWA: `/app` é a entrada neutra/dispatcher; `/acesso`, o fluxo recorrente
+cliente. O dispatcher não concede autorização.
+
+### Histórico R1.6-B
+
 R1.6-B concluída no escopo funcional em 22/09/2026. O acesso público parte de
 `/agendar/[slug]`; `/acesso` é a entrada recorrente da PWA única do SaaS.
 A arquitetura é tenant-first, sem identidade global do cliente: recuperação

@@ -110,3 +110,21 @@ test('diagnostic CTA logs actual accepted/dismissed and prompt duration without 
     assert.ok(h.logs.some(e=>e.event==='userChoice='+outcome && e.details.elapsedMs>=0));
   }
 });
+
+test('operational variant reuses prompt with work copy and no client shortcut', async () => {
+  let calls=0;
+  const h=harness({context:{event:{prompt:async()=>{calls++;},userChoice:Promise.resolve({outcome:'accepted'})}}});
+  const tree=h.render({eligible:true,placement:'operational'});
+  assert.match(text(tree),/Instale MarcaDeTeste.*estabelecimento/);
+  assert.equal(nodes(tree).some(n=>n.props.href==='/acesso'),false);
+  await button(tree,'Adicionar ao celular').props.onClick();
+  assert.equal(calls,1);
+  assert.equal(h.install.event,null);
+});
+test('operational standalone hides installation and dismissal remains rediscoverable', () => {
+  assert.equal(harness({context:{standalone:true}}).render({eligible:true,placement:'operational'}),null);
+  const h=harness({stored:{'pwa-install-dismissed-at':String(Date.now())}});
+  const tree=h.render({eligible:true,placement:'operational'});
+  assert.ok(button(tree,'Adicionar ao celular'));
+  assert.equal(nodes(tree).some(n=>n.props.href),false);
+});

@@ -12,7 +12,7 @@ const DISMISS_KEY = "pwa-install-dismissed-at";
 
 export function InstallPwaPrompt({ eligible, placement = "recurring" }: {
   eligible: boolean;
-  placement?: "booking-success" | "recurring";
+  placement?: "booking-success" | "recurring" | "operational";
 }) {
   const { event, standalone, ready, consume } = usePwaInstall();
   const [dismissed, setDismissed] = useState(false);
@@ -58,7 +58,7 @@ export function InstallPwaPrompt({ eligible, placement = "recurring" }: {
 
   if (!eligible || !ready || standalone) return null;
   if (dismissed) {
-    return placement === "recurring" ? (
+    return placement !== "booking-success" ? (
       <Button type="button" variant="ghost" onClick={() => setDismissed(false)}>Adicionar ao celular</Button>
     ) : <Link className="text-sm font-semibold text-primary underline" href="/acesso">Acessar meus horários</Link>;
   }
@@ -66,7 +66,9 @@ export function InstallPwaPrompt({ eligible, placement = "recurring" }: {
     <section className="rounded-lg border border-primary/20 bg-white p-4 text-left shadow-sm" aria-label="Acesso rápido no celular">
       <h2 className="text-sm font-bold text-foreground">Tenha acesso rápido da próxima vez</h2>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        Adicione {APP_BRAND.appName} ao seu celular para acessar seus horários e fazer novos agendamentos sem precisar procurar este link novamente.
+        {placement === "operational"
+          ? `Instale ${APP_BRAND.appName} neste dispositivo para acessar seu estabelecimento diretamente pela tela inicial.`
+          : `Adicione ${APP_BRAND.appName} ao seu celular para acessar seus horários e fazer novos agendamentos sem precisar procurar este link novamente.`}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button type="button" disabled={pending} onClick={install}>Adicionar ao celular</Button>

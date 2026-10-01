@@ -1,4 +1,5 @@
 const service = require('./public-booking.service');
+const { AppError } = require('../../utils/errors');
 const {
   locateAccessSchema,
   slugSchema,
@@ -43,6 +44,15 @@ async function upcomingClientAppointments(req, res) {
   const slug = slugSchema.parse(req.params.slug);
   const input = publicClientUpcomingAppointmentsQuerySchema.parse(req.query);
   const data = await service.getUpcomingClientAppointments(slug, input);
+  return res.json({ data });
+}
+
+async function probeClientContext(req, res) {
+  const slug = slugSchema.parse(req.params.slug);
+  const parsed = publicClientMeQuerySchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError('Token de cliente invalido.', 401, 'CLIENT_TOKEN_INVALID');
+  const data = await service.probeClientContext(slug, parsed.data);
+  res.set('Cache-Control', 'no-store');
   return res.json({ data });
 }
 
@@ -92,6 +102,7 @@ async function appointmentReschedule(req, res) {
 }
 
 module.exports = {
+  probeClientContext,
   locateAccess,
   catalog,
   availability,

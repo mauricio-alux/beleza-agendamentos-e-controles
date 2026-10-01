@@ -14,11 +14,25 @@ import { Input } from "@/components/ui/input";
 import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { useAuth } from "@/hooks/useAuth";
+import { clientsService, type SalonClient } from "@/services/clients.service";
 import { useAgenda } from "@/hooks/useAgenda";
 import { normalizePhoneToE164, type PhoneCountry } from "@/utils/phone";
 
 export function NewAppointmentForm() {
   const router = useRouter();
+  const { session } = useAuth();
+  const [clients, setClients] = useState<SalonClient[]>([]);
+  const [existingClientId, setExistingClientId] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [clientError, setClientError] = useState("");
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    clientsService.list(session).then(rows => { if (active) setClients(rows); })
+      .catch(() => { if (active) setClientError("Não foi possível carregar os clientes existentes."); });
+    return () => { active = false; };
+  }, [session]);
   const agenda = useAgenda({ preventPastAvailability: true });
   const isAvailabilityConfigured = Boolean(
     agenda.date
@@ -125,11 +139,18 @@ export function NewAppointmentForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccess("");
-    if (!selectedSlot || !clientName.trim() || !clientPhone.trim()) return;
+    if (!event.currentTarget.reportValidity()) return;
+    if (!selectedSlot) return;
+    if (!existingClientId && (!clientName.trim() || !clientPhone.trim() || !birthDate)) {
+      setClientError("Informe nome, WhatsApp e data de nascimento para o novo cliente."); return;
+    }
+    setClientError("");
 
     const created = await agenda.createAppointment({
       data_inicio: selectedSlot,
-      cliente: {
+      cliente_id: existingClientId || undefined,
+      cliente: existingClientId ? undefined : {
+        data_nascimento: birthDate,
         nome: clientName.trim(),
         telefone: normalizePhoneToE164(clientPhone, clientPhoneCountry),
         email: clientEmail.trim() || undefined,
@@ -151,6 +172,8 @@ export function NewAppointmentForm() {
     });
 
     if (created) {
+      setBirthDate("");
+      setExistingClientId("");
       setSuccess("Solicitação enviada. O horário fica reservado enquanto aguarda confirmação.");
       setSelectedSlot("");
       setClientName("");
@@ -225,6 +248,19 @@ export function NewAppointmentForm() {
           </DashboardCard>
 
           <DashboardCard title="Cliente">
+            {clientError ? <FeedbackMessage tone="error" message={clientError} /> : null}
+            <label className="mb-4 grid gap-1 text-sm font-bold">Cliente existente ou novo
+              <select value={existingClientId} onChange={(event) => setExistingClientId(event.target.value)} className="rounded-lg border p-3">
+                <option value="">Criar novo cliente</option>
+                {clients.map(client => <option key={client.id} value={client.id}>{client.nome} — {client.telefone}</option>)}
+              </select>
+            </label>
+            <fieldset disabled={Boolean(existingClientId)} className={existingClientId ? "hidden" : ""}>
+            <label className="mb-4 grid gap-1 text-sm font-bold">Data de nascimento (obrigatória para novo cliente)
+              <Input type="date" required={!existingClientId} min="0001-01-01" max={new Date().toISOString().slice(0, 10)} value={birthDate}
+                onChange={(event) => setBirthDate(event.target.value)}
+                onInvalid={() => setClientError("Informe uma data de nascimento válida e não futura.")} />
+            </label>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Nome">
                 <Input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Nome do cliente" />
@@ -277,6 +313,7 @@ export function NewAppointmentForm() {
               </div>
             ) : null}
 
+            </fieldset>
             <LoadingButton className="mt-5 w-full" type="submit" isLoading={agenda.isSaving} disabled={!selectedSlot}>
               Criar agendamento
             </LoadingButton>

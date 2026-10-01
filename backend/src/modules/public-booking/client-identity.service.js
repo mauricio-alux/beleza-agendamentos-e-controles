@@ -101,7 +101,7 @@ function sanitizeClientProfile(context) {
   };
 }
 
-async function resolveToken(tenantId, token, options = {}) {
+async function validateToken(tenantId, token) {
   if (!token) return null;
 
   const storedToken = await repository.findToken(hashToken(token));
@@ -118,6 +118,17 @@ async function resolveToken(tenantId, token, options = {}) {
     throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
   }
 
+  return storedToken;
+}
+
+async function probeClientContext(tenantId, token) {
+  const validated = await validateToken(tenantId, token);
+  return { available: Boolean(validated) };
+}
+
+async function resolveToken(tenantId, token, options = {}) {
+  const storedToken = await validateToken(tenantId, token);
+  if (!storedToken) return null;
   await repository.touchIdentity(tenantId, storedToken.cliente_id, storedToken.id);
   const updatedContext = await repository.findClientContext(tenantId, storedToken.cliente_id);
   const history = await repository.listRecentAppointments(tenantId, storedToken.cliente_id);
@@ -351,6 +362,7 @@ function normalizeAddress(endereco) {
 }
 
 module.exports = {
+  probeClientContext,
   identify,
   discoverAccess,
   getSelfProfile,

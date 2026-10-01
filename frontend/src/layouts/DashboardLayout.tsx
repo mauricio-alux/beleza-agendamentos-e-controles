@@ -1,6 +1,10 @@
 "use client";
+import { ContextAccessLink } from "@/components/app/ContextAccessLink";
 
 import { ReactNode, useEffect } from "react";
+import Link from "next/link";
+import { InstallPwaPrompt } from "@/components/pwa/InstallPwaPrompt";
+import { Button } from "@/components/ui/button";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { MobileBottomNav } from "@/components/dashboard/MobileBottomNav";
@@ -8,6 +12,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TopHeader } from "@/components/dashboard/TopHeader";
 import { canAccessDashboardPath } from "@/components/dashboard/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { writeLastContext } from "@/lib/last-context";
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -18,6 +23,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const { session, isAuthenticated, isLoading } = useAuth();
   const canAccessPage = canAccessDashboardPath(session, pathname);
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && canAccessPage) writeLastContext("professional");
+  }, [isLoading, isAuthenticated, canAccessPage, pathname]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -63,6 +71,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col gap-4 pb-28 sm:gap-5 lg:pb-0">
           <TopHeader />
+          <div className="flex justify-end">
+            <ContextAccessLink target="client" />
+          </div>
+          <InstallPwaPrompt eligible placement="operational" />
           {children}
         </div>
       </div>

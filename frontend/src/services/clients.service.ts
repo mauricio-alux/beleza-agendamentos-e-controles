@@ -4,6 +4,7 @@ import { API_URL } from "@/config/app-brand";
 export type SalonClient = {
   id: string;
   tenant_link_id?: string | null;
+  data_nascimento: string | null;
   nome: string;
   telefone: string;
   email?: string | null;
@@ -24,6 +25,7 @@ export type SalonClient = {
 };
 
 export type SalonClientPayload = {
+  data_nascimento: string;
   nome: string;
   telefone: string;
   email?: string | null;
@@ -87,7 +89,7 @@ async function create(session: AuthSession | null, payload: SalonClientPayload) 
   });
 }
 
-async function update(session: AuthSession | null, clientId: string, payload: SalonClientPayload) {
+async function update(session: AuthSession | null, clientId: string, payload: Partial<SalonClientPayload>) {
   return request<SalonClient>(session, `/clients/${encodeURIComponent(clientId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload)
