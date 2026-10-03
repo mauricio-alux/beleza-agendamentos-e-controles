@@ -1,5 +1,6 @@
 "use client";
 import { ContextAccessLink } from "@/components/app/ContextAccessLink";
+import { isDefinitiveClientCredentialError } from "@/lib/client-credential-error";
 
 import {
   ArrowRight,
@@ -130,8 +131,7 @@ export function RecurringAccessPage() {
       });
 
       if (!identity.client) {
-        markIdentityUnavailable(normalizedSlug, nextCatalog.tenant.nome_fantasia);
-        return;
+        throw new Error("Não foi possível validar seu acesso agora. Tente novamente.");
       }
 
       setClientName(identity.client.nome || "");
@@ -147,7 +147,7 @@ export function RecurringAccessPage() {
       setState("ready");
     } catch (error) {
       const text = error instanceof Error ? error.message : "Nao foi possivel carregar este acesso.";
-      const isIdentityError = /token|identidade|cliente/i.test(text);
+      const isIdentityError = isDefinitiveClientCredentialError(error);
 
       if (isIdentityError && nextCatalog) {
         markIdentityUnavailable(normalizedSlug, nextCatalog.tenant.nome_fantasia);
@@ -198,8 +198,12 @@ export function RecurringAccessPage() {
     try {
       const nextProfile = await getPublicClientMe(currentSlug, token);
       setProfile(nextProfile);
-    } catch {
-      markIdentityUnavailable(currentSlug, currentTenantName);
+    } catch (error) {
+      if (isDefinitiveClientCredentialError(error)) {
+        markIdentityUnavailable(currentSlug, currentTenantName);
+      } else {
+        setMessage("Não foi possível carregar seus dados agora. Tente novamente.");
+      }
       setProfileOpen(false);
     } finally {
       setProfileLoading(false);
@@ -309,6 +313,9 @@ export function RecurringAccessPage() {
             </h1>
             <p className="mt-4 text-sm leading-6 text-muted-foreground">{message}</p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              {state === "unavailable" && currentSlug ? (
+                <Button onClick={() => void loadTenant(currentSlug)}>Tentar novamente</Button>
+              ) : null}
               {currentSlug ? (
                 <Button asChild>
                   <Link href={`/agendar/${encodeURIComponent(currentSlug)}`}>
@@ -333,6 +340,7 @@ export function RecurringAccessPage() {
 
         {state === "ready" ? (
           <section className="flex flex-1 flex-col gap-5 py-8">
+            {message ? <p role="alert">{message}</p> : null}
             <div>
               <p className="text-xs font-bold uppercase text-accent">{currentTenantName}</p>
               <h1 className="mt-2 font-display text-4xl leading-tight">

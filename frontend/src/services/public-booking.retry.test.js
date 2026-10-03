@@ -3,6 +3,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const ts=require('typescript');
+const credentialModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(require.resolve('../lib/client-credential-error.ts'),'utf8'),{
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText,{module:credentialModule,exports:credentialModule.exports,Error});
+const credentialErrors=credentialModule.exports;
 function load(fetch){
   let ids=0;
   const module={exports:{}};
@@ -12,13 +17,28 @@ function load(fetch){
   vm.runInNewContext(source,{module,exports:module.exports,fetch,URLSearchParams,Error,
     require(name){
       if(name.endsWith('messages'))return {normalizeUserMessage:x=>x};
+      if(name.endsWith('client-credential-error'))return credentialErrors;
       if(name.endsWith('app-brand'))return {API_URL:'http://local.invalid'};
       if(name.endsWith('session-id'))return {createSessionId:()=>`attempt-${++ids}`};
       throw Error(name);
     }});
   return module.exports;
 }
-const input={cliente:{nome:'User',telefone:'+5516999999999',data_nascimento:'1990-01-01'},campanha:'winter'};
+// Fixtures sinteticas, sem origem em pessoas ou DEV/STAGING; nunca usar para contato.
+const TEST_PHONE = '+5511000000001';
+const TEST_BIRTH_DATE = '2000-02-29'; // Data arbitraria de fixture.
+const input={cliente:{nome:'User',telefone:TEST_PHONE,data_nascimento:TEST_BIRTH_DATE},campanha:'winter'};
+for(const [status,code,definitive] of [[401,'CLIENT_TOKEN_INVALID',true],[410,'CLIENT_TOKEN_EXPIRED',true],
+ [403,'CLIENT_IDENTITY_UNAVAILABLE',true],[422,'CLIENT_MATCH_UNAVAILABLE',true],
+ [503,'CLIENT_TOKEN_INVALID',false],[401,'UNAUTHORIZED',false]])
+test('public service preserves structured credential error '+status+' '+code,async()=>{
+ const api=load(async()=>({ok:false,status,json:async()=>({error:{code,message:'Fixture error'}})}));
+ await assert.rejects(api.identifyPublicBookingClient('studio',{token:'fixture-token'}),error=>{
+  assert.equal(error.status,status);assert.equal(error.code,code);
+  assert.equal(credentialErrors.isDefinitiveClientCredentialError(error),definitive);return true;
+ });
+});
+
 test('lost response retry reuses operation ID and completed next operation is independent',async()=>{
   const bodies=[];let fail=true;
   const api=load(async(url,init)=>{
@@ -45,7 +65,7 @@ test('empty PWA locate retries send same operation ID only in POST body',async()
   let failed=false;const sent=[];
   const api=load(async(url,init)=>{sent.push({url,body:JSON.parse(init.body)});
     if(!failed){failed=true;throw Error('lost');}return {ok:true,json:async()=>({data:{slug:'studio'}})};});
-  const pair={telefone:'+5516999999999',data_nascimento:'1990-01-01'};
+  const pair={telefone:TEST_PHONE,data_nascimento:TEST_BIRTH_DATE};
   await assert.rejects(api.locatePublicAccess(pair));await api.locatePublicAccess(pair);
   assert.equal(sent[0].body.request_id,sent[1].body.request_id);
   assert.ok(sent.every(x=>!x.url.includes(pair.telefone)&&!x.url.includes(pair.data_nascimento)));

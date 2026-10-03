@@ -13,6 +13,7 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ContextAccessLink } from "@/components/app/ContextAccessLink";
+import { isDefinitiveClientCredentialError } from "@/lib/client-credential-error";
 import { InstallPwaPrompt } from "@/components/pwa/InstallPwaPrompt";
 import { Input } from "@/components/ui/input";
 import { FeedbackMessage } from "@/components/ui/feedback-message";
@@ -126,6 +127,8 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
+  const [identityAttempt, setIdentityAttempt] = useState(0);
+  const [identityUnavailable, setIdentityUnavailable] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -178,6 +181,8 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setIdentityUnavailable(false);
     const storageKey = `esthya:booking-identity:${slug}`;
     const storedToken = window.localStorage.getItem(storageKey) || undefined;
     const token = linkToken || storedToken;
@@ -227,12 +232,17 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
           if (identity.token || token) {
             await loadUpcomingAppointments(identity.token || token || "");
           }
-        } catch {
+        } catch (error) {
           if (!active) return;
-          window.localStorage.removeItem(storageKey);
           setClientToken("");
           setClientId("");
-          setIdentityMessage("O link de identificacao nao e mais valido. Confirme seus dados para continuar.");
+          if (isDefinitiveClientCredentialError(error)) {
+            if (window.localStorage.getItem(storageKey) === token) window.localStorage.removeItem(storageKey);
+            setIdentityMessage("O link de identificacao nao e mais valido. Confirme seus dados para continuar.");
+          } else {
+            setIdentityUnavailable(true);
+            setIdentityMessage("Não foi possível validar seu acesso agora. Tente novamente.");
+          }
         }
       })
       .catch((err) => active && setError(err instanceof Error ? err.message : "Link indisponível."))
@@ -241,7 +251,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
     return () => {
       active = false;
     };
-  }, [campaign, linkToken, slug]);
+  }, [campaign, linkToken, slug, identityAttempt]);
 
   useEffect(() => {
     if (clientToken) {
@@ -520,6 +530,15 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Carregando agendamento" />
       </main>
     );
+  }
+
+  if (identityUnavailable) {
+    return renderWithDebug(<main className="grid min-h-screen place-items-center bg-[#fff8f8] px-6">
+      <div role="alert" className="max-w-md text-center">
+        <p>{identityMessage}</p>
+        <Button className="mt-4" onClick={() => setIdentityAttempt(value => value + 1)}>Tentar novamente</Button>
+      </div>
+    </main>);
   }
 
   if (!catalog) {

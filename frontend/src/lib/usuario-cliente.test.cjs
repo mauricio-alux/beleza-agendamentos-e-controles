@@ -14,7 +14,7 @@ const TEST_BIRTH_DATE = '2000-02-29'; // Data arbitraria de fixture, nao de pess
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const session = { access_token: 'synthetic', usuario: { id: 'u', tipo_usuario: 'Administrador' }, tenant: { id: 'professional' }, active_membership: { tenant_id: 'professional', role: 'Administrador', status: 'ativo' } };
-function harness(rows = [], respond, professional = 'available') {
+function harness(rows = [], respond, professional = 'available', identify) {
   const cache = {}, stored = new Map(), destinations = [], calls = [];
   const router = {push:x=>destinations.push(x)};
   const associations = { listClientAssociations: async () => rows, locateClientAssociation: async (s,id,input) => {
@@ -24,6 +24,7 @@ function harness(rows = [], respond, professional = 'available') {
     if (cache[relative]) return cache[relative];
     const module = {exports:{}};
     const req = name => {
+      if (name === '@/lib/client-credential-error') return load('lib/client-credential-error.ts');
       if (name === 'react' || name.startsWith('react/')) return dep(name);
       if (name === '@/hooks/useAuth') return {useAuth:()=>({session})};
       if (name === '@/hooks/useContextAvailability') return {useContextAvailability:()=>({client:{state: stored.has('esthya:booking-identity:salon') ? 'available' : 'unavailable'},professional,checking:false,session:professional==='available'?session:null})};
@@ -46,7 +47,7 @@ function harness(rows = [], respond, professional = 'available') {
       if (name === '@/services/public-booking.service') return {
         locatePublicAccess:()=>{throw Error('unscoped access');},
         getPublicBookingCatalog:async()=>({tenant:{id:'client-tenant',nome_fantasia:'Tenant Fixture A'},link:{},servicos:[],profissionais:[]}),
-        identifyPublicBookingClient:async()=>({token:'client-tc',clientId:'client',client:{nome:'Cliente teste',telefone:TEST_PHONE_A}}),
+        identifyPublicBookingClient: identify || (async()=>({token:'client-tc',clientId:'client',client:{nome:'Cliente teste',telefone:TEST_PHONE_A}})),
         getUpcomingPublicAppointments:async()=>({appointments:[]})
       };
       if (name === '@/lib/recurring-access.storage') return {bookingIdentityKey:s=>'esthya:booking-identity:'+s,upsertKnownTenant:()=>{}};
@@ -138,6 +139,36 @@ test('multiple associations select tenant before existing form; no identity unti
   assert.equal(h.stored.get('esthya:booking-identity:salon'),'synthetic-client');
   assert.equal(h.destinations[0],'/agendar/salon');await act(async()=>tree.unmount());
 });
+for (const [reason,status,code,definitive] of [
+  ['invalid',401,'CLIENT_TOKEN_INVALID',true],
+  ['revoked',401,'CLIENT_TOKEN_INVALID',true],
+  ['expired',410,'CLIENT_TOKEN_EXPIRED',true],
+  ['ineligible',403,'CLIENT_IDENTITY_UNAVAILABLE',true],
+  ['network',0,'',false],['timeout',0,'',false],
+  ['5xx',503,'CLIENT_TOKEN_INVALID',false],['unknown 401',401,'UNAUTHORIZED',false]
+]) test('PublicBookingPage credential lifecycle: '+reason,async()=>{
+  let fail=true;
+  const h=harness([],undefined,'unavailable',async()=>{
+    if(fail){
+      const {ClientCredentialError}=h.load('lib/client-credential-error.ts');
+      if(status)throw new ClientCredentialError('temporary identity error',status,code);
+      throw Error(reason);
+    }
+    return {token:'saved',clientId:'client',client:{nome:'Cliente teste',telefone:TEST_PHONE_A}};
+  });
+  h.stored.set('esthya:booking-identity:salon','saved');
+  const C=h.load('components/public-booking/PublicBookingPage.tsx').PublicBookingPage;let tree;
+  await act(async()=>{tree=create(React.createElement(C,{slug:'salon'}));});
+  assert.equal(h.stored.get('esthya:booking-identity:salon'),definitive?undefined:'saved');
+  if(!definitive){
+    fail=false;
+    await act(async()=>tree.root.findAllByType('button').find(b=>b.props.children==='Tentar novamente').props.onClick());
+    assert.equal(h.stored.get('esthya:booking-identity:salon'),'saved');
+    assert.ok(JSON.stringify(tree.toJSON()).includes('Cliente teste'));
+  }
+  await act(async()=>tree.unmount());
+});
+
 test('professional wins implicit opening despite last-client; client-only and explicit switch preserved',async()=>{
   const {resolveAppEntry}=harness().load('lib/internal-entry.ts');
   assert.equal(await resolveAppEntry({professional:'available',session,client:{state:'available'}}),'/dashboard');

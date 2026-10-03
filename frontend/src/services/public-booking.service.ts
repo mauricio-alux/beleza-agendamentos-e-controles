@@ -1,5 +1,6 @@
 import type { AvailabilityResponse, AvailabilitySlot, Professional, Service } from "@/services/agenda.service";
 import { normalizeUserMessage } from "@/lib/messages";
+import { ClientCredentialError } from "@/lib/client-credential-error";
 import { API_URL } from "@/config/app-brand";
 import { createSessionId } from "@/lib/session-id";
 
@@ -213,11 +214,11 @@ async function performRequest<T>(path: string, init: RequestInit = {}) {
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
 
   if (!response.ok) {
-    throw new Error(normalizeUserMessage(
+    throw new ClientCredentialError(normalizeUserMessage(
       payload.message || payload.error?.message || "Não foi possível concluir a solicitação.",
       "error",
       payload.code || payload.error?.code
-    ));
+    ), response.status, payload.code || payload.error?.code);
   }
 
   return payload.data as T;

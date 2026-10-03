@@ -6,6 +6,7 @@ function compile(file,globals,imports={}){
   {module:m,exports:m.exports,process:{env:{}},console,Intl,Date,Error,...globals,require:name=>{if(name in imports)return imports[name];throw Error('Unexpected import '+name);}});
  return m.exports;
 }
+const credentialErrors=compile(__dirname+'/../../lib/client-credential-error.ts',{});
 function harness(store,api={},auth={session:null,isLoading:false}){
  const hooks=[],effects=[];let index=0,dirty=true,tree;const calls=[];
  const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]));
@@ -26,6 +27,7 @@ function harness(store,api={},auth={session:null,isLoading:false}){
  const jsx=(type,props)=>({type,props});
  const component=compile(__dirname+'/RecurringAccessPage.tsx',{window,document:{referrer:''}},{
   '@/components/app/ContextAccessLink':{ContextAccessLink:'ContextAccessLink'},
+  '@/lib/client-credential-error':credentialErrors,
   react,'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':new Proxy({},{get:(_,key)=>key}),
   'next/link':{default:'Link'},'./LocateAccess':{LocateAccess:'LocateAccess'},
   '@/components/ui/button':{Button:'Button'},'@/components/pwa/InstallPwaPrompt':{InstallPwaPrompt:'InstallPwaPrompt'},
@@ -45,6 +47,32 @@ const saved={
  'esthya:known-tenants':JSON.stringify([{slug:'studio-a',displayName:'Fixture',hasLocalIdentity:true,lastAccessAt:'2026-01-01'}]),
  'esthya:booking-identity:studio-a':'valid-existing-token'
 };
+for(const scope of ['load','profile']) for(const [reason,status,code,definitive] of [
+ ['invalid',401,'CLIENT_TOKEN_INVALID',true],['revoked',401,'CLIENT_TOKEN_INVALID',true],
+ ['expired',410,'CLIENT_TOKEN_EXPIRED',true],['ineligible',403,'CLIENT_IDENTITY_UNAVAILABLE',true],
+ ['network',0,'',false],['timeout',0,'',false],['5xx',503,'CLIENT_TOKEN_INVALID',false]
+])test('recurring '+scope+' credential lifecycle '+reason,async()=>{
+ const store=storage(saved);let fail=true;
+ const operation=async()=>{
+  if(fail){if(status)throw new credentialErrors.ClientCredentialError('Falha cliente',status,code);throw Error(reason);}
+  return {token:'valid-existing-token',client:{nome:'Fixture'},nome:'Fixture'};
+ };
+ const app=harness(store,scope==='load'?{identifyPublicBookingClient:operation}:{getPublicClientMe:operation});
+ let tree=await app.render();
+ if(scope==='profile'){
+  await nodes(tree).find(n=>n.type==='Button'&&n.props.onClick?.name==='openProfile').props.onClick();
+  tree=await app.render();
+ }
+ assert.equal(store.getItem('esthya:booking-identity:studio-a'),definitive?null:'valid-existing-token');
+ assert.equal(JSON.parse(store.getItem('esthya:preferred-tenant')).slug,'studio-a');
+ if(!definitive){
+  fail=false;
+  const retry=nodes(tree).find(n=>n.type==='Button'&&(scope==='profile'?n.props.onClick?.name==='openProfile':n.props.children==='Tentar novamente'));
+  await retry.props.onClick();await app.render();
+  assert.equal(store.getItem('esthya:booking-identity:studio-a'),'valid-existing-token');
+ }
+});
+
 test('valid persisted TC on initial mount and remount bypasses locate and reidentification',async()=>{
  const store=storage(saved);
  for(let reopen=0;reopen<2;reopen++){
@@ -73,16 +101,19 @@ test('only truly empty readable state offers locate',async()=>{
  assert.equal(nodes(await harness(blocked).render()).some(n=>n.type==='LocateAccess'),false);
 });
 test('invalid TC preserves tenant reference and routes to same public booking',async()=>{
- const store=storage(saved),app=harness(store,{identifyPublicBookingClient:async()=>{throw Error('Token expirado');}});
+ const store=storage(saved),app=harness(store,{identifyPublicBookingClient:async()=>{throw new credentialErrors.ClientCredentialError('Token expirado',410,'CLIENT_TOKEN_EXPIRED');}});
  const all=nodes(await app.render());assert.ok(all.some(n=>n.props?.href==='/agendar/studio-a'));
  assert.equal(store.getItem('esthya:booking-identity:studio-a'),null);
  assert.equal(JSON.parse(store.getItem('esthya:preferred-tenant')).slug,'studio-a');
 });
 test('frontend phone formatter never truncates excessive input and supports DDD 55',()=>{
  const phone=compile(__dirname+'/../../utils/phone.ts',{});
- assert.equal(phone.formatPhone('169999999999'),'169999999999');
- assert.equal(phone.isValidPhone('169999999999'),false);
- assert.equal(phone.normalizePhoneToE164('55999999999'),'+5555999999999');
+ // Fixtures sinteticas: preservam excesso de digitos e DDD 55, sem contato real.
+ const TEST_PHONE_TOO_LONG='110000000001';
+ const TEST_PHONE_DDD_55='55000000001';
+ assert.equal(phone.formatPhone(TEST_PHONE_TOO_LONG),TEST_PHONE_TOO_LONG);
+ assert.equal(phone.isValidPhone(TEST_PHONE_TOO_LONG),false);
+ assert.equal(phone.normalizePhoneToE164(TEST_PHONE_DDD_55),'+55'+TEST_PHONE_DDD_55);
 });
 
 test('dual context offers /app return without touching internal session; client signout stays scoped',async()=>{
