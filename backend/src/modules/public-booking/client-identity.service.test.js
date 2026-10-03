@@ -1,7 +1,15 @@
 const assert = require('node:assert/strict');
-const { afterEach, describe, it, mock } = require('node:test');
+const { beforeEach, afterEach, describe, it, mock } = require('node:test');
 const repository = require('./client-identity.repository');
 const service = require('./client-identity.service');
+
+// Fixtures sinteticas, sem origem em DEV/STAGING: assinante iniciado em zero,
+// aceito pelo normalizador BR do projeto; nunca usar para contato ou envio.
+const TEST_PHONE_A = '+5511000000001';
+const TEST_PHONE_B = '+5511000000002';
+const TEST_BIRTH_DATE = '2000-02-29'; // Data arbitraria de fixture, nao de pessoa.
+const TEST_PHONE_A_FORMATTED = '(11) 00000-0001';
+const TEST_PHONE_B_FORMATTED = '(11) 00000-0002';
 
 const tenant = { id: '11111111-1111-4111-8111-111111111111', ativo: true, status: 'trial' };
 const otherTenantId = '22222222-2222-4222-8222-222222222222';
@@ -13,20 +21,21 @@ function clientContext() {
   return {
     tenant_id: tenant.id,
     cliente_id: clientId,
-    nome_no_tenant: 'Ana',
+    nome_no_tenant: 'Cliente Fixture A',
     status: 'ativo',
     ativo: true,
     metadata: {},
     cliente: {
       id: clientId,
       ativo: true,
-      nome: 'Ana',
-      telefone: '+5516999999999',
+      nome: 'Cliente Fixture A',
+      telefone: TEST_PHONE_A,
       email: null
     }
   };
 }
 
+beforeEach(() => mock.method(require('../usuario-cliente/usuario-cliente.repository'), 'candidates', async () => ({ users: [], clients: [], links: [] })));
 afterEach(() => mock.restoreAll());
 
 describe('public booking client identity', () => {
@@ -38,19 +47,19 @@ describe('public booking client identity', () => {
     mock.method(repository, 'identifyWithBirth', async payload => { received = payload; return {client_id:clientId,recognized:true}; });
     mock.method(repository, 'findClientContext', async () => clientContext());
     mock.method(repository, 'listRecentAppointments', async () => []);
-    const result = await service.identify(tenant, link, {cliente:{nome:'Different',email:'other@example.test',telefone:'(16) 99999-9999',data_nascimento:'1990-01-01'}});
+    const result = await service.identify(tenant, link, {cliente:{nome:'Different',email:'other@example.test',telefone:TEST_PHONE_A_FORMATTED,data_nascimento:TEST_BIRTH_DATE}});
     assert.equal(received.tenantId,tenant.id);
-    assert.equal(received.telefone,'+5516999999999');
-    assert.equal(received.data_nascimento,'1990-01-01');
+    assert.equal(received.telefone,TEST_PHONE_A);
+    assert.equal(received.data_nascimento,TEST_BIRTH_DATE);
     assert.equal(received.tokenHash,service.hashToken(result.token));
-    assert.equal(result.client.nome,'Ana');
+    assert.equal(result.client.nome,'Cliente Fixture A');
     assert.equal(result.client.email,null);
     assert.equal(result.clientId,clientId);
   });
 
   it('rejects phone alone and legacy lookup_only without birth uniformly before repository', async () => {
     mock.method(repository,'identifyWithBirth',async()=>{throw Error('unexpected database call');});
-    for (const lookup_only of [true,false]) for (const telefone of ['', '123', '+5516999999999']) {
+    for (const lookup_only of [true,false]) for (const telefone of ['', '123', TEST_PHONE_A]) {
       await assert.rejects(service.identify(tenant,link,{lookup_only,cliente:{nome:'Any',telefone}}),
         {code:'CLIENT_MATCH_UNAVAILABLE'});
     }
@@ -61,7 +70,7 @@ describe('public booking client identity', () => {
     mock.method(repository,'identifyWithBirth',async input=>{payload=input;return {client_id:clientId,recognized:true};});
     mock.method(repository,'findClientContext',async()=>clientContext());
     mock.method(repository,'listRecentAppointments',async()=>[]);
-    await service.identify(tenant,link,{lookup_only:true,cliente:{telefone:'+5516999999999',data_nascimento:'1990-01-01'}});
+    await service.identify(tenant,link,{lookup_only:true,cliente:{telefone:TEST_PHONE_A,data_nascimento:TEST_BIRTH_DATE}});
     assert.equal(payload.lookupOnly,true);
   });
 
@@ -75,7 +84,7 @@ describe('public booking client identity', () => {
     mock.method(repository,'findClientContext',async()=>clientContext());
     mock.method(repository,'listRecentAppointments',async()=>[]);
     mock.method(repository,'touchIdentity',async()=>{});
-    const fresh=await service.identify(tenant,link,{cliente:{nome:'Ana',telefone:'+5516999999999',data_nascimento:'1990-01-01'}});
+    const fresh=await service.identify(tenant,link,{cliente:{nome:'Cliente Fixture A',telefone:TEST_PHONE_A,data_nascimento:TEST_BIRTH_DATE}});
     assert.equal(await service.resolveClientForAppointment(tenant.id,'safari'),clientId);
     assert.equal(await service.resolveClientForAppointment(tenant.id,fresh.token),clientId);
     assert.notEqual(fresh.token,'safari');
@@ -142,7 +151,7 @@ describe('public booking client identity', () => {
       aceita_campanhas: false,
       cliente: {
         ...clientContext().cliente,
-        email: 'ana@example.com',
+        email: 'fixture-a@example.test',
         metadata: { endereco: { cep: '14000000', cidade: 'Ribeirao Preto' } }
       }
     }));
@@ -152,9 +161,9 @@ describe('public booking client identity', () => {
     const result = await service.getSelfProfile(tenant.id, 'valid-token');
 
     assert.deepEqual(result, {
-      nome: 'Ana',
-      telefone: '+5516999999999',
-      email: 'ana@example.com',
+      nome: 'Cliente Fixture A',
+      telefone: TEST_PHONE_A,
+      email: 'fixture-a@example.test',
       endereco: { cep: '14000000', cidade: 'Ribeirao Preto' },
       aceita_campanhas: false,
       status: 'ativo'
@@ -194,22 +203,22 @@ describe('public booking client identity', () => {
     });
 
     const result = await service.updateSelfProfile(tenant.id, 'valid-token', {
-      nome: 'Ana Paula',
-      telefone: '(16) 98888-7777',
-      email: 'ANA.PAULA@EXAMPLE.COM',
+      nome: 'Cliente Fixture B',
+      telefone: TEST_PHONE_B_FORMATTED,
+      email: 'FIXTURE-B@EXAMPLE.TEST',
       endereco: { cep: '14000-000', cidade: 'Ribeirao Preto' },
       aceita_campanhas: false
     });
 
     assert.deepEqual(writes.phoneLookup, {
       receivedTenantId: tenant.id,
-      telefone: '+5516988887777'
+      telefone: TEST_PHONE_B
     });
     assert.equal(writes.update.receivedTenantId, tenant.id);
     assert.equal(writes.update.receivedClientId, clientId);
     assert.deepEqual(writes.update.payload, {
-      nome: 'Ana Paula',
-      email: 'ana.paula@example.com',
+      nome: 'Cliente Fixture B',
+      email: 'fixture-b@example.test',
       aceita_campanhas: false,
       endereco: {
         cep: '14000000',
@@ -218,10 +227,10 @@ describe('public booking client identity', () => {
         logradouro: null,
         numero: null
       },
-      telefone: '+5516988887777'
+      telefone: TEST_PHONE_B
     });
-    assert.equal(result.nome, 'Ana Paula');
-    assert.equal(result.telefone, '+5516988887777');
+    assert.equal(result.nome, 'Cliente Fixture B');
+    assert.equal(result.telefone, TEST_PHONE_B);
   });
 
   it('rejects self profile WhatsApp updates that collide inside the tenant', async () => {
@@ -238,7 +247,7 @@ describe('public booking client identity', () => {
 
     await assert.rejects(
       service.updateSelfProfile(tenant.id, 'valid-token', {
-        telefone: '(16) 98888-7777'
+        telefone: TEST_PHONE_B_FORMATTED
       }),
       (error) => error.code === 'CLIENT_PHONE_DUPLICATE'
     );

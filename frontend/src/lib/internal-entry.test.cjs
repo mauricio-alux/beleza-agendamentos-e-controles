@@ -14,8 +14,8 @@ const preference = context => JSON.stringify({version:1,context,updatedAt:'2026-
 for (const [label,intent,last,known,session,expected] of [
  ['explicit client wins','client','professional',true,true,'/acesso'],
  ['explicit professional wins','professional','client',true,true,'/dashboard'],
- ['invalid intent ignored','admin','client',true,true,'/acesso'],
- ['last client wins',null,'client',true,true,'/acesso'],
+ ['invalid intent ignored','admin','client',true,true,'/dashboard'],
+ ['professional wins over last client',null,'client',true,true,'/dashboard'],
  ['last professional wins',null,'professional',true,true,'/dashboard'],
  ['professional without session','professional',null,true,false,'/login'],
  ['client without identity','client',null,false,false,'/acesso'],
@@ -95,7 +95,7 @@ for(const success of [false,true])test('login '+(success?'success records profes
 const src = path.resolve(__dirname, "..");
 const baseSession = () => ({
   access_token: "test-access", refresh_token: "test-refresh",
-  usuario: { tipo_usuario: "Administrador" },
+  usuario: { id: "user-a", tipo_usuario: "Administrador" },
   tenant: { id: "tenant-a" },
   active_membership: { role: "Administrador", status: "ativo", tenant_id: "tenant-a" },
   permissionContext: { scope: "tenant" }
@@ -119,6 +119,7 @@ function harness(intent = null) {
   let response = async () => ({ ok: true, status: 200, json: async () => ({data: baseSession()}) });
   let clientResponse = async () => ({ok:true,status:200,json:async()=>({data:{available:true}})});
   let progress = 100;
+  let associations = [];
   const cache = {};
   function load(relative) {
     const file = path.join(src, relative);
@@ -140,6 +141,7 @@ function harness(intent = null) {
       if (name === "@/config/app-brand") return { API_URL: "https://test.invalid", APP_BRAND: {appName:"MyEsthya"} };
       if (name === "@/lib/messages") return { normalizeUserMessage: m => m || "Request failed", getErrorMessage: () => "Request failed" };
       if (name === "@/services/onboarding.service") return { onboardingService: { getStatus: async () => { if (progress instanceof Error) throw progress; return {progress}; } } };
+      if (name === "@/services/usuario-cliente.service") return {listClientAssociations: async () => associations};
       if (name === "@/components/dashboard/navigation") return {canAccessDashboardPath:()=>true};
       for(const [file,symbol] of [['dashboard/MobileBottomNav','MobileBottomNav'],['dashboard/Sidebar','Sidebar'],['dashboard/TopHeader','TopHeader'],['pwa/InstallPwaPrompt','InstallPwaPrompt']]) if(name==='@/components/'+file)return {[symbol]:()=>null};
       if (name.startsWith("@/")) {
@@ -152,7 +154,7 @@ function harness(intent = null) {
       window: win, document: doc, fetch: (...args) => args[0].endsWith("/client/context") ? clientResponse(...args) : response(...args), AbortController, setTimeout, clearTimeout, Error, URL });
     return module.exports;
   }
-  return {data,events,destinations,storage,load,setClientResponse: fn => clientResponse=fn,setResponse: fn => response=fn,setProgress: value => progress=value,
+  return {data,events,destinations,storage,load,setAssociations: rows => associations=rows,setClientResponse: fn => clientResponse=fn,setResponse: fn => response=fn,setProgress: value => progress=value,
     seed: session => data.set("bellory.session",JSON.stringify(session)),
     mountDashboard: async (Child) => {
       const {AuthProvider}=load('context/AuthProvider.tsx');
@@ -171,7 +173,7 @@ function harness(intent = null) {
 async function dispose(tree) { await act(async()=>tree.unmount()); }
 for (const [label,internal,client,expected] of [
   ["internal",true,false,"/dashboard"], ["client",false,true,"/acesso"],
-  ["both",true,true,"/acesso"], ["neither",false,false,null]
+  ["both",true,true,"/dashboard"], ["neither",false,false,null]
 ]) test(label+" context dispatch", async()=>{
   const h=harness(); if(internal)h.seed(baseSession());
   if(client)h.data.set("esthya:booking-identity:salon-b","tc-b");
@@ -277,15 +279,16 @@ for(const known of [true,false])test('login offers return only for known client 
  assert.equal(links.some(x=>x.props.href==='/app?context=client'),known);await dispose(tree);
 });
 
-for(const target of ['client','professional'])for(const known of [true,false])test('switch only with both contexts '+target+' '+known+' preserves both stores',async()=>{
+for(const target of ['client','professional'])for(const known of [true,false])test('switch requires association or professional availability '+target+' '+known+' preserves both stores',async()=>{
  const h=harness();
+ if(target==='client' && known)h.setAssociations([{id:'pending-association'}]);
  if(target==='client'||known)h.seed(baseSession());
  if(target==='professional'||known)h.data.set('esthya:booking-identity:salon-b','tc-b');
  const previousSession=h.data.get('bellory.session'),previousToken=h.data.get('esthya:booking-identity:salon-b');
  const tree=await h.mount(target);const links=tree.root.findAllByType('a');
  assert.equal(links.length,known?1:0);
  if(known){
-  assert.equal(links[0].props.href,'/app?context='+target);
+  assert.equal(links[0].props.href,target==='client'?'/acesso/vinculos':'/app?context='+target);
   assert.equal(links[0].props.children,target==='client'?'Acessar como cliente':'Acessar área profissional');
   assert.equal(links[0].props.onClick,undefined);
  }
@@ -317,6 +320,7 @@ for(const target of ['client','professional'])test('external intent starts flow 
 
 for(const outcome of ['valid','transient','invalid'])test('real DashboardLayout/AuthProvider/ContextAccessLink background revalidation: '+outcome,async()=>{
  const h=harness();h.seed(baseSession());h.data.set('esthya:booking-identity:salon-b','fixture-client');
+ h.setAssociations([{id:'pending-association'}]);
  let me=0,finish,mounts=0,unmounts=0;
  h.setResponse(async url=>{
   assert.ok(url.endsWith('/auth/me'));

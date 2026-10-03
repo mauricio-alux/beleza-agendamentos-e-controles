@@ -1,3 +1,4 @@
+const { reconcileUsuarioClienteByPhone } = require('../usuario-cliente/usuario-cliente.service');
 const { AppError, notFound } = require('../../utils/errors');
 const { normalizeEmail, normalizePhoneToE164, onlyDigits } = require('../../utils/normalize');
 const { createClientSchema, updateClientSchema } = require('./clients.validators');
@@ -56,6 +57,7 @@ async function create(tenantId, input) {
       ativo: true
     });
 
+    await reconcileUsuarioClienteByPhone({ clienteId: existing.id });
     return sanitize({ ...updatedLink, cliente: updatedClient });
   }
 
@@ -77,6 +79,7 @@ async function create(tenantId, input) {
       status: 'ativo'
     });
 
+    await reconcileUsuarioClienteByPhone({ clienteId: client.id });
     return sanitize(link);
   } catch (error) {
     throw new AppError('Nao foi possivel vincular o cliente ao salao', 400, 'CLIENT_LINK_FAILED', error.message);
@@ -119,6 +122,7 @@ async function update(tenantId, clientId, input) {
     ? await clientsRepository.updateClient(clientId, clientPayload) : currentLink.cliente;
   const updatedLink = Object.keys(linkPayload).length
     ? await clientsRepository.updateTenantLink(tenantId, clientId, linkPayload) : currentLink;
+  await reconcileUsuarioClienteByPhone({ clienteId: clientId });
   return sanitize({ ...updatedLink, cliente: updatedClient });
 }
 

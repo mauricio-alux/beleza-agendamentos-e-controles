@@ -27,6 +27,7 @@ router.use('/onboarding', onboardingRoutes);
 router.use('/tenants', tenantsRoutes);
 router.use('/tenant', tenantRoutes);
 router.use('/usuarios', usuariosRoutes);
+router.use('/usuario-cliente', require('./usuario-cliente.routes'));
 router.use('/subscription', subscriptionRoutes);
 router.use('/agenda', agendaRoutes);
 router.use('/dashboard', dashboardRoutes);

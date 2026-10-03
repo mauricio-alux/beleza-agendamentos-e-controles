@@ -1,3 +1,4 @@
+const { reconcileUsuarioClienteByPhone } = require('../usuario-cliente/usuario-cliente.service');
 const crypto = require('crypto');
 const repository = require('./client-identity.repository');
 const { AppError, notFound } = require('../../utils/errors');
@@ -214,6 +215,7 @@ async function updateSelfProfile(tenantId, token, input) {
     throw new AppError('Cliente indisponivel para este salao.', 403, 'CLIENT_IDENTITY_UNAVAILABLE');
   }
 
+  await reconcileUsuarioClienteByPhone({ clienteId: identity.clientId });
   return sanitizeClientProfile(updated);
 }
 
@@ -273,6 +275,7 @@ async function identifyByPair(tenant, link, input, lookupOnly) {
   const context = await repository.findClientContext(tenant.id, result.client_id);
   if (!policy.eligibleClient(context)) throw policy.denied();
   const history = await repository.listRecentAppointments(tenant.id, result.client_id);
+  await reconcileUsuarioClienteByPhone({ clienteId: result.client_id });
   console.info('[public-identity]', { result: 'success' });
   return { token, clientId: result.client_id, client: sanitizeClient(context, history),
     expiresAt: result.expires_at || tokenExpiresAt, recognized: result.recognized === true };

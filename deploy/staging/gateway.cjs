@@ -1,5 +1,8 @@
 ﻿const http=require('node:http');
 function allowed(method,path){
+  if(['GET','HEAD'].includes(method) && path==='/acesso/vinculos')return true;
+  if(method==='GET' && path==='/api/usuario-cliente')return true;
+  if(method==='POST' && /^\/api\/usuario-cliente\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/locate$/i.test(path))return true;
   if(method==='POST' && ['/api/auth/login','/api/auth/refresh','/api/auth/logout'].includes(path))return true;
   if(method==='GET' && ['/api/auth/me','/api/onboarding/status','/api/dashboard/summary','/api/clients'].includes(path))return true;
   if(method==='PATCH' && /^\/api\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(path))return true;

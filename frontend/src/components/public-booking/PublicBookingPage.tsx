@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ContextAccessLink } from "@/components/app/ContextAccessLink";
 import { InstallPwaPrompt } from "@/components/pwa/InstallPwaPrompt";
 import { Input } from "@/components/ui/input";
 import { FeedbackMessage } from "@/components/ui/feedback-message";
@@ -547,6 +548,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
           </p>
           <div className="mt-6">
             <InstallPwaPrompt eligible={isIdentifiedClient && rememberIdentity} placement="booking-success" />
+            <ContextAccessLink target="professional" />
           </div>
         </section>
       </main>
@@ -558,7 +560,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
   return renderWithDebug(
     <main className="min-h-screen bg-[#fff8f8] pb-12 text-foreground">
       <header className="border-b border-primary/15 bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-4 sm:px-8">
           <span className="grid h-10 w-10 place-items-center rounded-full bg-primary text-white">
             <Sparkles className="h-5 w-5" />
           </span>
@@ -566,6 +568,7 @@ export function PublicBookingPage({ slug, campaign, linkToken }: Props) {
             <p className="font-display text-2xl">{APP_BRAND.appName}</p>
             <p className="text-xs text-muted-foreground">Agendamento online</p>
           </div>
+          <div className="ml-auto"><ContextAccessLink target="professional" /></div>
         </div>
       </header>
 

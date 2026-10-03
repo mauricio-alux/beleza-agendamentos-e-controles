@@ -7,9 +7,13 @@ import { FeedbackMessage } from "@/components/ui/feedback-message";
 import { locatePublicAccess } from "@/services/public-booking.service";
 import { bookingIdentityKey, upsertKnownTenant } from "@/lib/recurring-access.storage";
 
-export function LocateAccess() {
+type LocateProps = {
+  initialPhone?: string;
+  locateAssociation?: (input: { telefone: string; data_nascimento: string }) => ReturnType<typeof locatePublicAccess>;
+};
+export function LocateAccess({ initialPhone = "", locateAssociation }: LocateProps = {}) {
   const router = useRouter();
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(initialPhone);
   const [birth, setBirth] = useState("");
   const [tenants, setTenants] = useState<Array<{ slug: string; displayName: string }>>([]);
   const [busy, setBusy] = useState(false);
@@ -19,7 +23,9 @@ export function LocateAccess() {
     setBusy(true);
     setMessage("");
     try {
-      const result = await locatePublicAccess({ telefone: phone, data_nascimento: birth, ...(slug ? { slug } : {}) });
+      const result = locateAssociation
+        ? await locateAssociation({ telefone: phone, data_nascimento: birth })
+        : await locatePublicAccess({ telefone: phone, data_nascimento: birth, ...(slug ? { slug } : {}) });
       if (result.slug && result.identity?.token) {
         window.localStorage.setItem(bookingIdentityKey(result.slug), result.identity.token);
         upsertKnownTenant({ slug: result.slug, displayName: tenants.find(item => item.slug === result.slug)?.displayName,

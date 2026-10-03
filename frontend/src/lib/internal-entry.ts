@@ -1,7 +1,7 @@
 import type { AuthSession } from "@/services/auth.service";
 import { onboardingService } from "@/services/onboarding.service";
 import type { Availability } from "@/lib/context-availability";
-import { parseAppContext, readLastContext } from "@/lib/last-context";
+import { parseAppContext } from "@/lib/last-context";
 
 // Navigation only. Call with a session validated by the existing backend.
 export async function resolveInternalEntry(session: AuthSession) {
@@ -36,10 +36,11 @@ export async function resolveAppEntry(
     return availability.professional === "available" && availability.session && isInternalContext(availability.session)
       ? resolveInternalEntry(availability.session) : "/login";
   }
+  if (availability.professional === "available" && availability.session && isInternalContext(availability.session)) return resolveInternalEntry(availability.session);
   if (availability.client.state === "indeterminate" || availability.professional === "indeterminate") throw new Error("Verificação de acesso pendente.");
   const client = availability.client.state === "available";
   const professional = availability.professional === "available" && availability.session && isInternalContext(availability.session);
-  if (client && (!professional || readLastContext() !== "professional")) return "/acesso";
+  if (client) return "/acesso";
   if (professional && availability.session) return resolveInternalEntry(availability.session);
   return null;
 }

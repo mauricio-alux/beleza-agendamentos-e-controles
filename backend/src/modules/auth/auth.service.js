@@ -1,3 +1,4 @@
+const { reconcileUsuarioClienteByPhone } = require('../usuario-cliente/usuario-cliente.service');
 const { supabase, supabaseAdmin } = require('../../config/supabase');
 const { APP_BRAND, buildPublicAppUrl } = require('../../config/app-brand');
 const { AppError, forbidden, unauthorized } = require('../../utils/errors');
@@ -353,6 +354,7 @@ async function register(input, requestContext = {}) {
       usuarioId: onboarding.usuario.id
     });
 
+    await reconcileUsuarioClienteByPhone({ usuarioId: sessionContext.usuario.id });
     return {
       access_token: sessionData.session.access_token,
       refresh_token: sessionData.session.refresh_token,

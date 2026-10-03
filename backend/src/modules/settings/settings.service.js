@@ -1,3 +1,4 @@
+const { reconcileUsuarioClienteByPhone } = require('../usuario-cliente/usuario-cliente.service');
 const settingsRepository = require('./settings.repository');
 const { canAccessSection, canWriteSection, getAllowedSections, getRole } = require('./settings.permissions');
 const { BUSINESS_TYPES } = require('../../constants/business-types');
@@ -193,6 +194,7 @@ async function updateProfile(context, input) {
   }
 
   const updated = await settingsRepository.updateUsuario(context.tenantId, context.usuario.id, payload);
+  await reconcileUsuarioClienteByPhone({ usuarioId: updated.id });
   return sanitizeProfile(updated);
 }
 

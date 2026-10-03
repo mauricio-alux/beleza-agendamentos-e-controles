@@ -1,3 +1,4 @@
+const { reconcileUsuarioClienteByPhone } = require('../usuario-cliente/usuario-cliente.service');
 const usuariosRepository = require('./usuarios.repository');
 const membershipsRepository = require('../memberships/memberships.repository');
 const { supabaseAdmin } = require('../../config/supabase');
@@ -76,6 +77,7 @@ async function createTenantUser(tenantId, createdByUsuarioId, input) {
       }
     });
 
+    await reconcileUsuarioClienteByPhone({ usuarioId: usuario.id });
     return {
       ...usuario,
       tenant_id: tenantId,
