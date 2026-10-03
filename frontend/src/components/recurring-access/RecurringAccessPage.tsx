@@ -22,6 +22,8 @@ import {
   getPublicBookingCatalog,
   getPublicClientMe,
   getUpcomingPublicAppointments,
+  getPublicAppointmentHistory,
+  type PublicAppointmentHistory,
   identifyPublicBookingClient,
   type PublicBookingCatalog,
   type PublicClientMe,
@@ -64,6 +66,11 @@ export function RecurringAccessPage() {
   const [catalog, setCatalog] = useState<PublicBookingCatalog | null>(null);
   const [clientName, setClientName] = useState("");
   const [appointments, setAppointments] = useState<PublicOperationalAppointment[]>([]);
+  const [appointmentTab, setAppointmentTab] = useState<"upcoming" | "history">("upcoming");
+  const [history, setHistory] = useState<PublicAppointmentHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRetry, setHistoryRetry] = useState(0);
   const [profile, setProfile] = useState<PublicClientMe | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -99,6 +106,8 @@ export function RecurringAccessPage() {
     setCurrentSlug(normalizedSlug);
     setProfile(null);
     setProfileOpen(false);
+    setAppointmentTab("upcoming");
+    setHistory([]);
 
     let nextCatalog: PublicBookingCatalog | null = null;
 
@@ -177,6 +186,36 @@ export function RecurringAccessPage() {
       setMessage("Não foi possível ler o acesso salvo neste dispositivo. Verifique as permissões de armazenamento e tente novamente.");
     }
   }, [loadTenant]);
+
+  useEffect(() => {
+    if (state !== "ready" || appointmentTab !== "history") return;
+    let live = true;
+    setHistory([]);
+    setHistoryLoading(true);
+    setHistoryError("");
+    async function loadHistory() {
+      try {
+        const token = window.localStorage.getItem(bookingIdentityKey(currentSlug));
+        if (!token) {
+          if (live) markIdentityUnavailable(currentSlug, currentTenantName);
+          return;
+        }
+        const result = await getPublicAppointmentHistory(currentSlug, token);
+        if (live) setHistory(result.appointments || []);
+      } catch (error) {
+        if (!live) return;
+        if (isDefinitiveClientCredentialError(error)) {
+          markIdentityUnavailable(currentSlug, currentTenantName);
+        } else {
+          setHistoryError("Não foi possível carregar seu histórico. Tente novamente.");
+        }
+      } finally {
+        if (live) setHistoryLoading(false);
+      }
+    }
+    void loadHistory();
+    return () => { live = false; };
+  }, [state, appointmentTab, currentSlug, currentTenantName, historyRetry, markIdentityUnavailable]);
 
   async function chooseTenant(slug: string) {
     setPreferredTenant({ slug, source: "switcher" });
@@ -390,7 +429,10 @@ export function RecurringAccessPage() {
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </Button>
-              <Button type="button" variant="outline" size="lg" className="w-full justify-start" onClick={() => setAppointments(sortAppointments(appointments))}>
+              <Button type="button" variant="outline" size="lg" className="w-full justify-start" onClick={() => {
+                setAppointmentTab("upcoming");
+                document.getElementById("appointments-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}>
                 <Clock3 className="h-4 w-4" aria-hidden="true" />
                 Meus horarios
               </Button>
@@ -410,21 +452,44 @@ export function RecurringAccessPage() {
               </Button>
             </nav>
 
-            {appointments.length > 0 ? (
+            {(
               <section className="rounded-lg border border-border bg-white p-5 shadow-sm" aria-labelledby="appointments-title">
                 <h2 id="appointments-title" className="text-lg font-bold">Meus horarios</h2>
+                <div className="mt-3 flex gap-2" role="group" aria-label="Período dos horários">
+                  <Button type="button" variant={appointmentTab === "upcoming" ? "default" : "outline"} aria-pressed={appointmentTab === "upcoming"} onClick={() => setAppointmentTab("upcoming")}>Próximos</Button>
+                  <Button type="button" variant={appointmentTab === "history" ? "default" : "outline"} aria-pressed={appointmentTab === "history"} onClick={() => setAppointmentTab("history")}>Histórico</Button>
+                </div>
+                {appointmentTab === "upcoming" ? (
                 <div className="mt-4 grid gap-3">
+                  {!appointments.length ? <p className="text-sm text-muted-foreground">Nenhum horário futuro encontrado.</p> : null}
                   {sortAppointments(appointments).map((appointment) => (
                     <article key={appointment.id} className="rounded-lg border border-border bg-secondary/25 p-4">
                       <p className="text-sm font-bold">{appointment.servico?.nome || "Atendimento"}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {formatDateTime(appointment.data_inicio)} - {appointment.profissional?.nome_publico || "Profissional"}
                       </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {appointment.operational?.links?.reagendar ? <Button asChild variant="outline"><a href={appointment.operational.links.reagendar}>Reagendar</a></Button> : null}
+                        {appointment.operational?.links?.cancelar ? <Button asChild variant="ghost"><a href={appointment.operational.links.cancelar}>Cancelar</a></Button> : null}
+                      </div>
                     </article>
                   ))}
                 </div>
+                ) : (
+                  <div className="mt-4 grid gap-3" aria-live="polite">
+                    {historyLoading ? <p>Carregando histórico...</p> : historyError ? (
+                      <div role="alert"><p>{historyError}</p><Button type="button" variant="outline" onClick={() => setHistoryRetry(value => value + 1)}>Tentar novamente</Button></div>
+                    ) : history.length ? history.map(appointment => (
+                      <article key={appointment.id} className="rounded-lg border border-border bg-secondary/25 p-4">
+                        <p className="text-sm font-bold">{appointment.servico?.nome || "Atendimento"}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(appointment.data_inicio)} - {appointment.profissional?.nome_publico || "Profissional"}</p>
+                        <p className="mt-2 text-sm font-semibold">{({ concluido: "Concluído", cancelado: "Cancelado", no_show: "Não compareceu", "no-show": "Não compareceu" } as Record<string, string>)[appointment.status] || appointment.status}</p>
+                      </article>
+                    )) : <p className="text-sm text-muted-foreground">Você ainda não possui atendimentos no histórico.</p>}
+                  </div>
+                )}
               </section>
-            ) : null}
+            )}
           </section>
         ) : null}
 

@@ -14,7 +14,7 @@ function harness(store,api={},auth={session:null,isLoading:false}){
   useState(initial){const i=index++;if(!(i in hooks))hooks[i]=typeof initial==='function'?initial():initial;return [hooks[i],value=>{hooks[i]=typeof value==='function'?value(hooks[i]):value;dirty=true;}];},
   useMemo(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps))hooks[i]={value:fn(),deps};return hooks[i].value;},
   useCallback(fn,deps){return react.useMemo(()=>fn,deps);},
-  useEffect(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i],deps)){hooks[i]=deps;effects.push(fn);}}
+  useEffect(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]?.cleanup?.();const entry={deps};hooks[i]=entry;effects.push(()=>{entry.cleanup=fn();});}}
  };
  // React functions are called as module properties by TypeScript output.
  const window={localStorage:store,navigator:{userAgent:'test',language:'pt-BR'}};
@@ -22,7 +22,8 @@ function harness(store,api={},auth={session:null,isLoading:false}){
  const services={
   getPublicBookingCatalog:async slug=>({tenant:{nome_fantasia:'Fixture studio',slug}}),
   identifyPublicBookingClient:async(slug,input)=>{calls.push({slug,input});return {token:input.token,client:{nome:'Fixture'}};},
-  getUpcomingPublicAppointments:async(slug,token)=>{calls.push({upcoming:slug,token});return {appointments:[]};},...api
+  getUpcomingPublicAppointments:async(slug,token)=>{calls.push({upcoming:slug,token});return {appointments:[]};},
+  getPublicAppointmentHistory:async(slug,token)=>{calls.push({history:slug,token});return {appointments:[]};},...api
  };
  const jsx=(type,props)=>({type,props});
  const component=compile(__dirname+'/RecurringAccessPage.tsx',{window,document:{referrer:''}},{
@@ -47,6 +48,45 @@ const saved={
  'esthya:known-tenants':JSON.stringify([{slug:'studio-a',displayName:'Fixture',hasLocalIdentity:true,lastAccessAt:'2026-01-01'}]),
  'esthya:booking-identity:studio-a':'valid-existing-token'
 };
+function textOf(tree){if(typeof tree==='string')return tree;if(Array.isArray(tree))return tree.map(textOf).join(' ');return tree?.props?textOf(tree.props.children):'';}
+async function selectPeriod(app, label){const tree=await app.render();nodes(tree).find(n=>n.type==='Button'&&n.props.children===label).props.onClick();return app.render();}
+test('history tabs preserve upcoming links, render terminal labels, and use selected tenant TC',async()=>{
+ const store=storage(saved);let requests=0;
+ const future={id:'next',data_inicio:'2999-01-01',servico:{nome:'Future service'},operational:{links:{reagendar:'/reagendar?tk=fixture',cancelar:'/acao_agendamento?tk=fixture'}}};
+ const app=harness(store,{
+  getUpcomingPublicAppointments:async()=>({appointments:[future]}),
+  getPublicAppointmentHistory:async(slug,token)=>{requests++;assert.equal(slug,'studio-a');assert.equal(token,'valid-existing-token');return {appointments:['concluido','cancelado','no_show'].map((status,i)=>({id:String(i),data_inicio:'2000-01-01',status,servico:{nome:'Past service'},profissional:{nome_publico:'Fixture professional'}}))};}
+ });
+ let tree=await app.render();assert.equal(requests,0);
+ const section=()=>nodes(tree).find(n=>n.props?.['aria-labelledby']==='appointments-title');
+ assert.ok(nodes(section()).some(n=>n.props?.href===future.operational.links.reagendar));
+ assert.ok(nodes(section()).some(n=>n.props?.href===future.operational.links.cancelar));
+ tree=await selectPeriod(app,'Histórico');
+ for(const label of ['Concluído','Cancelado','Não compareceu','Past service','Fixture professional'])assert.ok(textOf(section()).includes(label));
+ assert.equal(nodes(section()).some(n=>n.props?.href),false);
+ tree=await selectPeriod(app,'Próximos');assert.ok(textOf(section()).includes('Future service'));assert.equal(requests,1);
+});
+test('empty history is shown normally and transient failure retries without removing TC',async()=>{
+ const store=storage(saved);let fail=true;
+ const app=harness(store,{getPublicAppointmentHistory:async()=>{if(fail)throw Error('network');return {appointments:[]};}});
+ let tree=await selectPeriod(app,'Histórico');assert.ok(textOf(tree).includes('Não foi possível carregar seu histórico'));
+ assert.equal(store.getItem('esthya:booking-identity:studio-a'),'valid-existing-token');
+ fail=false;nodes(tree).find(n=>n.type==='Button'&&n.props.children==='Tentar novamente').props.onClick();tree=await app.render();
+ assert.ok(textOf(tree).includes('Você ainda não possui atendimentos no histórico.'));
+ assert.equal(nodes(tree).some(n=>n.props?.role==='alert'),false);
+ tree=await selectPeriod(app,'Próximos');assert.ok(textOf(tree).includes('Nenhum horário futuro encontrado.'));
+});
+test('late history response is ignored after selecting another tenant',async()=>{
+ const store=storage({...saved,'esthya:known-tenants':JSON.stringify([{slug:'studio-a',displayName:'A'},{slug:'studio-b',displayName:'B'}]),'esthya:booking-identity:studio-b':'second-token'});
+ let finish;
+ const app=harness(store,{getPublicAppointmentHistory:async slug=>slug==='studio-a'?new Promise(resolve=>{finish=resolve;}):{appointments:[]}});
+ let tree=await selectPeriod(app,'Histórico');
+ nodes(tree).find(n=>n.type==='Button'&&textOf(n).includes('Trocar')).props.onClick();tree=await app.render();
+ await nodes(tree).find(n=>n.type==='button'&&textOf(n).includes('studio-b')).props.onClick();tree=await app.render();
+ finish({appointments:[{id:'old',data_inicio:'2000-01-01',status:'concluido',servico:{nome:'Wrong tenant history'}}]});
+ tree=await selectPeriod(app,'Histórico');assert.equal(textOf(tree).includes('Wrong tenant history'),false);
+ assert.ok(textOf(tree).includes('Você ainda não possui atendimentos no histórico.'));
+});
 for(const scope of ['load','profile']) for(const [reason,status,code,definitive] of [
  ['invalid',401,'CLIENT_TOKEN_INVALID',true],['revoked',401,'CLIENT_TOKEN_INVALID',true],
  ['expired',410,'CLIENT_TOKEN_EXPIRED',true],['ineligible',403,'CLIENT_IDENTITY_UNAVAILABLE',true],

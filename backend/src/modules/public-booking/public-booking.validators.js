@@ -73,7 +73,8 @@ const publicAppointmentActionQuerySchema = z.object({
 });
 
 const publicClientUpcomingAppointmentsQuerySchema = z.object({
-  token: z.string().min(20).max(200)
+  token: z.string().min(20).max(200),
+  view: z.enum(['upcoming', 'history']).optional()
 });
 
 const publicClientMeQuerySchema = z.object({

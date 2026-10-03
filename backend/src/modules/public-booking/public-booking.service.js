@@ -194,6 +194,10 @@ async function getUpcomingClientAppointments(slug, input) {
     };
   }
 
+  if (input.view === 'history') {
+    return { appointments: await agendaService.listClientAppointmentHistory(tenant.id, clientId) };
+  }
+
   const clientIds = await clientIdentityService.listRelatedClientIdsForAppointment(tenant.id, clientId);
   const appointments = await agendaService.listUpcomingClientAppointments(tenant.id, clientIds);
 

@@ -245,6 +245,17 @@ export function identifyPublicBookingClient(slug: string, input: PublicIdentityI
   });
 }
 
+export type PublicAppointmentHistory = Pick<PublicOperationalAppointment, "id" | "data_inicio" | "status" | "profissional"> & {
+  servico?: { nome: string };
+};
+
+export function getPublicAppointmentHistory(slug: string, token: string) {
+  const search = new URLSearchParams({ token, view: "history" });
+  return request<{ appointments: PublicAppointmentHistory[] }>(
+    `/public/booking/${encodeURIComponent(slug)}/client/appointments/upcoming?${search.toString()}`
+  );
+}
+
 export function getUpcomingPublicAppointments(slug: string, token: string) {
   const search = new URLSearchParams({ token });
   return request<{ appointments: PublicOperationalAppointment[] }>(

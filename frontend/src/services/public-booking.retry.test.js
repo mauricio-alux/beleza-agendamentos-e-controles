@@ -24,6 +24,10 @@ function load(fetch){
     }});
   return module.exports;
 }
+test('history request reuses current endpoint and encodes selected tenant and TC',async()=>{
+ const service=load(async(url,init)=>{const parsed=new URL(url);assert.equal(parsed.pathname,'/public/booking/studio%20fixture/client/appointments/upcoming');assert.equal(parsed.searchParams.get('view'),'history');assert.equal(parsed.searchParams.get('token'),'synthetic&token');assert.equal(init.method,undefined);return {ok:true,json:async()=>({data:{appointments:[]}})};});
+ assert.equal((await service.getPublicAppointmentHistory('studio fixture','synthetic&token')).appointments.length,0);
+});
 // Fixtures sinteticas, sem origem em pessoas ou DEV/STAGING; nunca usar para contato.
 const TEST_PHONE = '+5511000000001';
 const TEST_BIRTH_DATE = '2000-02-29'; // Data arbitraria de fixture.

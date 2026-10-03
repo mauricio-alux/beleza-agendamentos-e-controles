@@ -548,6 +548,19 @@ async function findAppointmentByOperationalToken(token) {
   return data;
 }
 
+async function listClientAppointmentHistory(tenantId, clientId, nowIso) {
+  const { data, error } = await supabaseAdmin
+    .from('agendamentos')
+    .select('id,data_inicio,status,metadata,profissional:profissionais(id,nome_publico),servicos:agendamento_servicos(nome_servico)')
+    .eq('tenant_id', tenantId)
+    .eq('cliente_id', clientId)
+    .lt('data_inicio', nowIso)
+    .is('deleted_at', null)
+    .order('data_inicio', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 async function listUpcomingClientAppointments(tenantId, clientIds, nowIso) {
   const normalizedClientIds = Array.isArray(clientIds) ? clientIds : [clientIds];
   const filteredClientIds = [...new Set(normalizedClientIds.filter(Boolean))];
@@ -1183,6 +1196,7 @@ module.exports = {
   findAppointmentById,
   findAppointmentByOperationalToken,
   listUpcomingClientAppointments,
+  listClientAppointmentHistory,
   listAutoCompletableAppointments,
   listConflicts,
   listBlocks,

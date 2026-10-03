@@ -1256,6 +1256,20 @@ async function getByOperationalToken(token) {
   return serializeOperationalAppointment({ ...appointment, tenant });
 }
 
+async function listClientAppointmentHistory(tenantId, clientId) {
+  const appointments = await agendaRepository.listClientAppointmentHistory(tenantId, clientId, new Date().toISOString());
+  return appointments
+    .filter(appointment => TERMINAL_APPOINTMENT_STATUSES.includes(getEffectiveAppointmentStatus(appointment)))
+    .sort((left, right) => new Date(right.data_inicio) - new Date(left.data_inicio))
+    .map(appointment => ({
+      id: appointment.id,
+      data_inicio: appointment.data_inicio,
+      status: getEffectiveAppointmentStatus(appointment),
+      profissional: appointment.profissional,
+      servico: { nome: (appointment.servicos || []).map(service => service.nome_servico).filter(Boolean).join(', ') }
+    }));
+}
+
 async function listUpcomingClientAppointments(tenantId, clientIds) {
   const [tenant, appointments] = await Promise.all([
     agendaRepository.getTenant(tenantId),
@@ -1350,6 +1364,7 @@ module.exports = {
   buildOperationalContext,
   getByOperationalToken,
   listUpcomingClientAppointments,
+  listClientAppointmentHistory,
   confirmByOperationalToken,
   cancelByOperationalToken,
   rescheduleByOperationalToken,
