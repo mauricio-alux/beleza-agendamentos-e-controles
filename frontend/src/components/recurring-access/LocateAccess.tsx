@@ -31,7 +31,7 @@ export function LocateAccess({ initialPhone = "", locateAssociation }: LocatePro
         upsertKnownTenant({ slug: result.slug, displayName: tenants.find(item => item.slug === result.slug)?.displayName,
           hasLocalIdentity: true }, { makePreferred: true, source: "access" });
         setPhone(""); setBirth(""); setTenants([]);
-        router.push(`/agendar/${encodeURIComponent(result.slug)}`);
+        router.push(locateAssociation ? "/acesso" : `/agendar/${encodeURIComponent(result.slug)}`);
       } else {
         setTenants(result.tenants || []);
       }

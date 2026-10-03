@@ -27,7 +27,7 @@ function SelectedAssociation({ selected, session }: { selected: ClientAssociatio
         window.localStorage.setItem(key, result.identity.token);
         upsertKnownTenant({ slug: selected.slug, displayName: selected.displayName, hasLocalIdentity: true },
           { makePreferred: true, source: "access" });
-        router.push(`/agendar/${encodeURIComponent(selected.slug)}`);
+        router.push("/acesso");
       } catch (error) {
         if (!live) return;
         if (isDefinitiveClientCredentialError(error)) {

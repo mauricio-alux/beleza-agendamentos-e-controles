@@ -50,7 +50,7 @@ function harness(rows = [], respond, professional = 'available', identify) {
         identifyPublicBookingClient: identify || (async()=>({token:'client-tc',clientId:'client',client:{nome:'Cliente teste',telefone:TEST_PHONE_A}})),
         getUpcomingPublicAppointments:async()=>({appointments:[]})
       };
-      if (name === '@/lib/recurring-access.storage') return {bookingIdentityKey:s=>'esthya:booking-identity:'+s,upsertKnownTenant:()=>{}};
+      if (name === '@/lib/recurring-access.storage') return load('lib/recurring-access.storage.ts');
       if (name === './LocateAccess') return load('components/recurring-access/LocateAccess.tsx');
       throw Error(name);
     };
@@ -93,7 +93,9 @@ test('saved TC waits for backend, sends only token, resumes without birth and pr
   assert.equal(Object.keys(h.calls[0].input).length,1);assert.equal(h.destinations.length,0);
   assert.equal(tree.root.findAllByType('form').length,0);
   await act(async()=>finish({slug:'salon',identity:{token:'saved'}}));
-  assert.equal(h.destinations[0],'/agendar/salon');assert.equal(tree.root.findAllByType('form').length,0);
+  assert.equal(h.destinations[0],'/acesso');assert.equal(tree.root.findAllByType('form').length,0);
+  assert.equal(JSON.parse(h.stored.get('esthya:preferred-tenant')).slug,'salon');
+  assert.equal(JSON.parse(h.stored.get('esthya:known-tenants'))[0].slug,'salon');
   assert.equal(pending.status_verificacao,'pendente');await act(async()=>tree.unmount());
 });
 test('no saved TC retains prefilled phone and required birth without calling locate',async()=>{
@@ -126,7 +128,7 @@ test('late successful response after unmount cannot navigate',async()=>{
   await act(async()=>finish({slug:'salon',identity:{token:'saved'}}));assert.equal(h.destinations.length,0);
 });
 test('multiple associations select tenant before existing form; no identity until successful submit',async()=>{
-  const h=harness([{id:'a',displayName:'Tenant Fixture A',telefone:TEST_PHONE_A},{id:'b',displayName:'Tenant Fixture B',telefone:TEST_PHONE_B}]);
+  const h=harness([{id:'a',slug:'other-salon',displayName:'Tenant Fixture A',telefone:TEST_PHONE_A},{id:'b',slug:'salon',displayName:'Tenant Fixture B',telefone:TEST_PHONE_B}]);
   const C=h.load('components/recurring-access/AssociationAccess.tsx').AssociationAccess;let tree;
   await act(async()=>{tree=create(React.createElement(C));});
   assert.equal(tree.root.findAllByType('form').length,0);
@@ -137,7 +139,9 @@ test('multiple associations select tenant before existing form; no identity unti
   await act(async()=>tree.root.findByType('form').props.onSubmit({preventDefault(){}}));
   assert.equal(h.calls[0].id,'b');assert.equal(h.calls[0].input.data_nascimento,TEST_BIRTH_DATE);
   assert.equal(h.stored.get('esthya:booking-identity:salon'),'synthetic-client');
-  assert.equal(h.destinations[0],'/agendar/salon');await act(async()=>tree.unmount());
+  assert.equal(h.destinations[0],'/acesso');
+  assert.equal(JSON.parse(h.stored.get('esthya:preferred-tenant')).slug,'salon');
+  await act(async()=>tree.unmount());
 });
 for (const [reason,status,code,definitive] of [
   ['invalid',401,'CLIENT_TOKEN_INVALID',true],

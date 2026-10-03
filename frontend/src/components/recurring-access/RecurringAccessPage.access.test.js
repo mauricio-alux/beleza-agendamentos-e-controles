@@ -83,6 +83,7 @@ test('valid persisted TC on initial mount and remount bypasses locate and reiden
   assert.deepEqual(app.calls.find(c=>c.upcoming),{upcoming:'studio-a',token:'valid-existing-token'});
   assert.equal(store.getItem('esthya:booking-identity:studio-a'),'valid-existing-token');
   assert.equal(JSON.parse(store.getItem('esthya:preferred-tenant')).slug,'studio-a');
+  assert.ok(nodes(tree).some(n=>n.props?.href==='/agendar/studio-a'));
  }
 });
 test('known tenant without TC keeps public tenant link, no global locate',async()=>{

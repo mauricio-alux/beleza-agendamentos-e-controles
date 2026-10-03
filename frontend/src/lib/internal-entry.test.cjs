@@ -297,6 +297,7 @@ for(const target of ['client','professional'])for(const known of [true,false])te
 });
 test('pending client probe exposes no switch or add and sends token only in body',async()=>{
  const h=harness();h.seed(baseSession());h.data.set('esthya:booking-identity:salon-b','synthetic-client-token');let finish;
+ h.setAssociations([{id:'pending-association'}]);
  h.setClientResponse((url,init)=>{assert.ok(!url.includes('synthetic-client-token'));assert.equal(init.method,'POST');assert.equal(JSON.parse(init.body).token,'synthetic-client-token');return new Promise(r=>finish=r);});
  const tree=await h.mount('client');assert.equal(tree.root.findAllByType('a').length,0);
  await act(async()=>finish({ok:true,status:200,json:async()=>({data:{available:true}})}));
